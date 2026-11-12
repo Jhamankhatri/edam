@@ -88,16 +88,27 @@ jobs:
         run: |
           set -uo pipefail
           fail=0
+          # Matching is done against a file, never a pipeline: this script runs with
+          # `pipefail`, and `grep -q` exits at the first match, which sends SIGPIPE to the
+          # upstream `tr`/`printf` and makes the pipeline report failure even though the text
+          # was found. NUL bytes are stripped first so grep never treats the body as binary.
+          scratch=$(mktemp -d)
           check() { # name, description, actual, extended-regexp
-            # tr -d '\000' strips NUL bytes: the captured body is the raw HTML part of a
-            # MIME multipart response, so it carries NULs and grep would treat it as binary
-            # and silently report no match.
-            if printf '%s' "$3" | tr -d '\000' | grep -qE "$4"; then
+            printf '%s' "$3" | tr -d '\000' > "$scratch/actual.txt"
+            if grep -qE -- "$4" "$scratch/actual.txt"; then
               printf '::notice title=OK %s::%s\n' "$1" "$2"
             else
               printf '::error title=FAIL %s::%s (expected to match: %s)\n' "$1" "$2" "$4"
-              printf '::error title=FAIL %s body::%s\n' "$1" "$(printf '%s' "$3" | head -c 700 | tr -d '\r')"
+              printf '::error title=FAIL %s body::%s\n' "$1" "$(tr -d '\r' < "$scratch/actual.txt" | head -c 700)"
               fail=1
+            fi
+          }
+          lacks() { # name, description, actual, extended-regexp that must NOT appear
+            printf '%s' "$3" | tr -d '\000' > "$scratch/actual.txt"
+            if grep -qE -- "$4" "$scratch/actual.txt"; then
+              printf '::error title=FAIL %s::%s\n' "$1" "$2"; fail=1
+            else
+              printf '::notice title=OK %s::%s\n' "$1" "$2"
             fi
           }
 
@@ -113,11 +124,7 @@ jobs:
           health_code=$(curl -sS -o /tmp/health.json -w '%{http_code}' http://localhost:18080/actuator/health)
           check HEALTH_CODE "health endpoint status" "$health_code" '^200$'
           check HEALTH_BODY "health body reports UP" "$(cat /tmp/health.json)" '"status"[[:space:]]*:[[:space:]]*"UP"'
-          if printf '%s' "$(cat /tmp/health.json)" | tr -d '\000' | grep -qiE '"(db|diskSpace|ping|database|dataSource)"|postgres|jdbc'; then
-            printf '::error title=FAIL HEALTH_NODETAIL::component detail leaked: %s\n' "$(cat /tmp/health.json)"; fail=1
-          else
-            printf '::notice title=OK HEALTH_NODETAIL::no component detail exposed\n'
-          fi
+          lacks HEALTH_NODETAIL "health exposes no component detail" "$(cat /tmp/health.json)" '"(db|diskSpace|ping|database|dataSource)"|postgres|jdbc'
 
           ## Login page (rendered by JSP from configuration) --------------------
           curl -sS -c /tmp/cookies.txt -o /tmp/login.html -w '%{http_code}' http://localhost:18080/login > /tmp/login.code
@@ -129,15 +136,8 @@ jobs:
           check LOGIN_CSRF "csrf token present" "$login_body" 'name="_csrf"'
           check LOGIN_BRAND "institution branding rendered from configuration" "$login_body" 'DemoBank'
           check LOGIN_BRAND_NAME "institution legal name rendered" "$login_body" 'Demo Bank Limited'
-          # The JSP emits the declarations on separate lines inside a <style> block, so the
-          # pattern spans newlines (-z is avoided for portability; [\s\S] is used instead).
           check LOGIN_THEME "theme tokens injected from configuration" "$login_body" '--edam-primary:[[:space:]]*#[0-9a-fA-F]{6}'
-          printf '::notice title=LOGIN_THEME_DIAG::%s\n' "$(printf '%s' "$login_body" | tr -d '\000' | grep -A4 'edam-primary' | tr '\n' ' ' | head -c 400)"
-          if printf '%s' "$login_body" | tr -d '\000' | grep -qE 'stacktrace|java\.lang|org\.springframework'; then
-            printf '::error title=FAIL LOGIN_NO_LEAK::login page exposes internal detail\n'; fail=1
-          else
-            printf '::notice title=OK LOGIN_NO_LEAK::login page exposes no internal detail\n'
-          fi
+          lacks LOGIN_NO_LEAK "login page exposes no internal detail" "$login_body" 'stacktrace|java\.lang|org\.springframework'
 
           ## Unauthenticated access is redirected, API is refused as JSON ---------
           dash=$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' http://localhost:18080/dashboard)
@@ -154,17 +154,17 @@ jobs:
             40*) printf '::notice title=OK UNKNOWN_PATH::anonymous unknown path answered %s\n' "$unknown" ;;
             *)   printf '::error title=FAIL UNKNOWN_PATH::unexpected status %s (5xx here means the error page is broken)\n' "$unknown"; fail=1 ;;
           esac
-          if tr -d '\000' < /tmp/unknown.html | grep -qE 'stacktrace|java\.lang|org\.springframework'; then
-            printf '::error title=FAIL UNKNOWN_PATH_LEAK::internal detail exposed\n'; fail=1
-          fi
+          lacks UNKNOWN_PATH_LEAK "unknown path exposes no internal detail" "$(cat /tmp/unknown.html)" 'stacktrace|java\.lang|org\.springframework'
 
           ## Correlation id ------------------------------------------------------
-          cid=$(curl -sSI http://localhost:18080/login | tr -d '\r' | grep -i '^X-Correlation-Id:' | head -1)
+          curl -sSI http://localhost:18080/login | tr -d '\r' > "$scratch/headers.txt" || true
+          cid=$(grep -i '^X-Correlation-Id:' "$scratch/headers.txt" | head -1 || true)
           check CORRELATION "correlation id header present" "$cid" '^X-Correlation-Id: [0-9a-f-]{36}$'
 
           ## Sign-in end to end, then a page that renders the authenticated shell --
           curl -sS -b /tmp/cookies.txt -c /tmp/cookies.txt -o /dev/null http://localhost:18080/login
-          token=$(tr -d '\000' < /tmp/login.html | grep -oE 'name="_csrf"[^>]*value="[^"]+"' | head -1 | sed -E 's/.*value="([^"]+)".*/\1/')
+          tr -d '\000' < /tmp/login.html > "$scratch/login.txt"
+          token=$(sed -nE 's/.*name="_csrf"[^>]*value="([^"]+)".*/\1/p' "$scratch/login.txt" | head -1)
           signin=$(curl -sS -b /tmp/cookies.txt -c /tmp/cookies.txt -o /dev/null -w '%{http_code}' \
             -d "username=admin&password=admin-change-me&_csrf=$token" http://localhost:18080/login)
           check SIGNIN_SUBMIT "valid credentials accepted" "$signin" '^(200|302)$'
