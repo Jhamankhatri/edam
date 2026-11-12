@@ -200,3 +200,130 @@ jobs:
       - name: Application log on failure
         if: failure()
         run: tail -c 6000 war.log || true
+
+  prod-profile-smoke:
+    name: prod-profile-smoke-test
+    runs-on: ubuntu-latest
+    needs: build
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: edam
+          POSTGRES_USER: edam
+          POSTGRES_PASSWORD: edam-ci-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U edam -d edam"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Download WAR
+        uses: actions/download-artifact@v4
+        with:
+          name: edam-war
+          path: target
+      - name: Start with the production profile
+        env:
+          EDAM_DB_URL: jdbc:postgresql://localhost:5432/edam
+          EDAM_DB_USERNAME: edam
+          EDAM_DB_PASSWORD: edam-ci-only
+        run: |
+          set -uo pipefail
+          fail=0
+          java -jar target/edam.war --spring.profiles.active=prod --server.port=18081 > prod.log 2>&1 &
+          for _ in $(seq 1 90); do
+            grep -q "Started EdamApplication" prod.log && break
+            sleep 2
+          done
+          if ! grep -q "Started EdamApplication" prod.log; then
+            printf '::error title=FAIL PROD_START::production profile did not start\n'
+            tail -c 3000 prod.log
+            exit 1
+          fi
+          printf '::notice title=OK PROD_START::production profile starts with environment configuration\n'
+
+          # Empty-body checks survive a JSON log without breaking YAML/shell quoting.
+          check_empty() { # name, description, extended-regexp that must NOT appear
+            local pattern="$3"
+            if grep -qE -- "$pattern" prod.log; then
+              printf '::error title=FAIL %s::%s\n' "$1" "$2"
+              grep -E -- "$pattern" prod.log | head -3
+              fail=1
+            else
+              printf '::notice title=OK %s::%s\n' "$1" "$2"
+            fi
+          }
+          check_empty NO_LINE_PATTERN "no human-readable pattern lines (proof the JSON encoder is active)" '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z? +[A-Z]{4,5} \['
+
+          # The prod profile must be ready to serve; health is public there too.
+          health=$(curl -sS -o /tmp/prod-health.json -w '%{http_code}' http://localhost:18081/actuator/health)
+          if [ "$health" = "200" ] && grep -q '"status":"UP"' /tmp/prod-health.json; then
+            printf '::notice title=OK PROD_HEALTH::health reports UP under the production profile\n'
+          else
+            printf '::error title=FAIL PROD_HEALTH::health answered %s: %s\n' "$health" "$(head -c 300 /tmp/prod-health.json)"
+            fail=1
+          fi
+
+          # Anonymous browser traffic is still redirected to sign-in, and no fixture account
+          # exists: the development identity store is profile-gated.
+          login_code=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:18081/login)
+          if [ "$login_code" = "200" ]; then
+            printf '::notice title=OK PROD_LOGIN::login page renders without a development user store\n'
+          else
+            printf '::error title=FAIL PROD_LOGIN::login answered %s\n' "$login_code"
+            fail=1
+          fi
+
+          # Structured output is verified from the log itself. A JSON log line starts with '{'
+          # and carries ECS keys; assert on the parsed content, not on a pretty-looking line.
+          python3 - <<'PY' || fail=1
+          import json, sys
+
+          records = []
+          for line in open('prod.log', encoding='utf-8', errors='replace'):
+              line = line.strip()
+              if not line.startswith('{'):
+                  continue
+              try:
+                  records.append(json.loads(line))
+              except json.JSONDecodeError:
+                  continue
+
+          if not records:
+              print("::error title=FAIL PROD_JSON::no JSON log records found")
+              sys.exit(1)
+
+          sample = records[0]
+          keys = set()
+          def collect(obj):
+              if isinstance(obj, dict):
+                  for key, value in obj.items():
+                      keys.add(key)
+                      collect(value)
+          for record in records:
+              collect(record)
+
+          print("::notice title=OK PROD_JSON::%d structured records parsed" % len(records))
+          required = {"@timestamp", "log.level", "message"}
+          missing = required - keys
+          if missing:
+              print("::error title=FAIL PROD_ECS_FIELDS::missing ECS keys: %s" % sorted(missing))
+              sys.exit(1)
+          print("::notice title=OK PROD_ECS_FIELDS::ECS keys present in structured output")
+          if "correlationId" in keys:
+              print("::notice title=OK PROD_MDC::correlationId present in structured records")
+          else:
+              print("::notice title=PROD_MDC::no request-scoped record in this excerpt; MDC wiring is covered by CorrelationIdFilterTest")
+          PY
+
+          exit $fail
+      - name: Application log on failure
+        if: failure()
+        run: tail -c 6000 prod.log || true

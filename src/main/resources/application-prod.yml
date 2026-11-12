@@ -30,14 +30,12 @@ management:
       show-details: never
 
 logging:
-  # Structured (JSON) console output is production-ready and enabled here. Set
-  # LOG_CONSOLE_LOG_STRUCTURED_FORMAT= to revert to line logs for a specific deployment.
+  # JSON (ECS) console output is selected by the `prod` profile inside logback-spring.xml.
+  # logging.structured.format.console is intentionally absent: it only applies to appenders
+  # Boot creates itself, and EDAM declares its own console appender.
   level:
     root: INFO
     com.edam: INFO
-  structured:
-    format:
-      console: ecs
 
 server:
   forward-headers-strategy: framework   # Honour reverse-proxy headers for redirects.

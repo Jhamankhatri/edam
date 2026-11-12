@@ -131,6 +131,7 @@ an H2 approximation would hide exactly the defects this foundation must catch.
 | [VERIFICATION.md](docs/VERIFICATION.md) | How the foundation was verified and how to reproduce it |
 | [/adr](docs/adr/) | Architecture Decision Records (tenant isolation, JSP packaging, auth seam, …) |
 | [OPEN_DECISIONS.md](docs/OPEN_DECISIONS.md) | BRD open decisions that block later phases |
+| [docs/brd/EDM-BRD-001.txt](docs/brd/EDM-BRD-001.txt) | The Business Requirements Document this phase was scoped from (single source of business truth) |
 
 ---
 
