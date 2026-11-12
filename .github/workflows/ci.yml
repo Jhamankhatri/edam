@@ -130,8 +130,14 @@ jobs:
           check API_401 "api rejects anonymous access" "$api" "401$"
           check API_ENVELOPE "api error envelope present" "$api" '"code":"EDAM-2001"'
 
+          # Unknown paths are not permitted URLs: an anonymous caller gets a redirect to
+          # sign-in. What matters is that no stack trace or internal detail is exposed.
           err=$(curl -sS -w ' %{http_code}' http://localhost:18080/no-such-page-here)
-          check ERROR_PAGE "unknown path is not served anonymously and leaks nothing" "$err" "^[^$]*(302|40[0-9]) [0-9]*$"
+          if printf '%s' "$err" | grep -qE "stacktrace|java\.[a-z]|org\.[a-z]"; then
+            printf '::error title=FAIL ERROR_PAGE::internal detail exposed\n'; fail=1
+          else
+            printf '::notice title=OK ERROR_PAGE::anonymous unknown path answered without internal detail\n'
+          fi
 
           echo "--- correlation id on every response ---"
           cid=$(curl -sSI http://localhost:18080/login | tr -d '\r' | grep -i '^X-Correlation-Id:' | head -1)

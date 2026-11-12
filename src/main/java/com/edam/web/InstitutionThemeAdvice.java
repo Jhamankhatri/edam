@@ -17,8 +17,7 @@ import org.springframework.web.bind.annotation.ModelAttribute;
  * rendering. It must never throw: an unresolvable institution must not break the login or
  * error pages, so lookup failures fall back to the configured profile.
  */
-@ControllerAdvice(assignableTypes = { com.edam.web.HomeController.class,
-		com.edam.common.exception.MvcExceptionHandler.class })
+@ControllerAdvice(basePackages = { "com.edam.web", "com.edam.common.exception" })
 public class InstitutionThemeAdvice {
 
 	private final InstitutionProperties properties;
