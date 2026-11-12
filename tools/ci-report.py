@@ -32,7 +32,10 @@ def report_test_results() -> None:
             name = case.get("name") or "?"
             for tag in ("failure", "error"):
                 for bad in case.findall(tag):
-                    detail = bad.get("message") or bad.text or ""
+                    # AssertJ reports the useful explanation in the element text, and
+                    # JUnit only sometimes duplicates a message attribute; keep both.
+                    parts = [bad.get("message"), bad.text]
+                    detail = " | ".join(part.strip() for part in parts if part and part.strip())
                     emit("error", f"FAIL {classname}.{name}", detail)
 
 

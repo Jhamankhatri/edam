@@ -44,10 +44,13 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
  * assets and the health probes, which are read-only and expose no business data.
  *
  * <p>JSP rendering happens on a servlet FORWARD dispatch (view controller → JSP). The chain
- * is restricted to REQUEST and ERROR dispatches through
- * {@code spring.security.filter.dispatcher-types} (application.yml); otherwise the internal
- * forward to {@code /WEB-INF/jsp/login.jsp} would be re-authorized as a URL, denied for an
- * anonymous visitor and answered with a redirect to the login page — an infinite loop.
+ * is restricted to the REQUEST dispatcher type through
+ * {@code spring.security.filter.dispatcher-types} (application.yml) for two reasons: an
+ * internal forward to {@code /WEB-INF/jsp/login.jsp} must not be re-authorized as a URL
+ * (which would redirect anonymous visitors to {@code /login} in a loop), and a container
+ * error dispatch must not be turned into a redirect, which would disguise server faults as
+ * authentication problems. {@code ServletFilterConfig} re-establishes the security context
+ * for error dispatches so the error page can still render the signed-in user.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableWebSecurity

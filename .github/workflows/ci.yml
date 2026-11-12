@@ -88,60 +88,84 @@ jobs:
         run: |
           set -uo pipefail
           fail=0
-          check() { # name, description, actual, expected-substring
-            if printf '%s' "$3" | grep -q "$4"; then
+          check() { # name, description, actual, extended-regexp
+            if printf '%s' "$3" | grep -qE "$4"; then
               printf '::notice title=OK %s::%s\n' "$1" "$2"
             else
-              printf '::error title=FAIL %s::%s (expected to contain: %s)\n' "$1" "$2" "$4"
+              printf '::error title=FAIL %s::%s (expected to match: %s)\n' "$1" "$2" "$4"
               printf '::error title=FAIL %s body::%s\n' "$1" "$(printf '%s' "$3" | head -c 700)"
               fail=1
             fi
           }
-          jar tf target/edam.war > war-contents.txt
-          check WAR_JSP "JSPs packaged under WEB-INF/jsp" "$(grep -c 'WEB-INF/jsp/' war-contents.txt)" "^[1-9]"
-          check WAR_LIB "libraries in WEB-INF/lib" "$(grep -c 'WEB-INF/lib/' war-contents.txt)" "^[1-9]"
-          check WAR_LIBPROVIDED "embedded container in WEB-INF/lib-provided" "$(grep -c 'WEB-INF/lib-provided/' war-contents.txt)" "^[1-9]"
-          check WAR_JASPER "Jasper present" "$(grep -c 'jasper' war-contents.txt)" "^[1-9]"
 
-          health=$(curl -sS -o /tmp/health.json -w '%{http_code}' http://localhost:18080/actuator/health)
-          check HEALTH_CODE "health endpoint status" "$health" "200"
-          check HEALTH_BODY "health body reports UP" "$(cat /tmp/health.json)" '"status":"UP"'
-          health_json=$(cat /tmp/health.json)
-          if printf '%s' "$health_json" | grep -qiE '"(db|diskSpace|ping|database|dataSource)"|postgres|jdbc'; then
-            printf '::error title=FAIL HEALTH_NODETAIL::%s\n' "$health_json"; fail=1
+          ## Packaging contract ------------------------------------------------
+          jar tf target/edam.war > war-contents.txt
+          check WAR_JSP "JSPs packaged under WEB-INF/jsp" "$(grep -c 'WEB-INF/jsp/' war-contents.txt)" '^[1-9]'
+          check WAR_LIB "libraries in WEB-INF/lib" "$(grep -c 'WEB-INF/lib/[^p]' war-contents.txt)" '^[1-9]'
+          check WAR_LIBPROVIDED "embedded container in WEB-INF/lib-provided" "$(grep -c 'WEB-INF/lib-provided/' war-contents.txt)" '^[1-9]'
+          check WAR_JASPER "Jasper present" "$(grep -c 'jasper' war-contents.txt)" '^[1-9]'
+          check WAR_LAUNCHER "executable WAR launcher present" "$(grep -c 'loader/launch/WarLauncher' war-contents.txt)" '^[1-9]'
+
+          ## Health ------------------------------------------------------------
+          health_code=$(curl -sS -o /tmp/health.json -w '%{http_code}' http://localhost:18080/actuator/health)
+          check HEALTH_CODE "health endpoint status" "$health_code" '^200$'
+          check HEALTH_BODY "health body reports UP" "$(cat /tmp/health.json)" '"status"[[:space:]]*:[[:space:]]*"UP"'
+          if printf '%s' "$(cat /tmp/health.json)" | grep -qiE '"(db|diskSpace|ping|database|dataSource)"|postgres|jdbc'; then
+            printf '::error title=FAIL HEALTH_NODETAIL::component detail leaked: %s\n' "$(cat /tmp/health.json)"; fail=1
           else
             printf '::notice title=OK HEALTH_NODETAIL::no component detail exposed\n'
           fi
 
-          login_body=$(curl -sS http://localhost:18080/login || true)
-          login_code=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:18080/login || true)
-          login="$login_body $login_code"
-          printf '::notice title=LOGIN_DIAG::status=%s headers=%s\n' "$login_code" "$(curl -sSI http://localhost:18080/login | tr -d '\r' | tr '\n' ' ' | head -c 500)"
-          printf '::notice title=LOGIN_BODY::%s\n' "$(printf '%s' "$login_body" | head -c 700)"
-          check LOGIN_CODE "login page renders via JSP" "$login" "200$"
-          check LOGIN_FORM "login form present" "$login" 'name="username"'
-          check LOGIN_CSRF "csrf token present" "$login" 'name="_csrf"'
-          check LOGIN_BRAND "institution branding rendered from configuration" "$login" 'DemoBank'
-
-          dash=$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' http://localhost:18080/dashboard)
-          check DASH_REDIRECT "dashboard requires authentication" "$dash" "/login"
-
-          api=$(curl -sS -w '\n%{http_code}' -H 'Accept: application/json' http://localhost:18080/api/v1/system/info)
-          check API_401 "api rejects anonymous access" "$api" "401$"
-          check API_ENVELOPE "api error envelope present" "$api" '"code":"EDAM-2001"'
-
-          # Unknown paths are not permitted URLs: an anonymous caller gets a redirect to
-          # sign-in. What matters is that no stack trace or internal detail is exposed.
-          err=$(curl -sS -w ' %{http_code}' http://localhost:18080/no-such-page-here)
-          if printf '%s' "$err" | grep -qE "stacktrace|java\.[a-z]|org\.[a-z]"; then
-            printf '::error title=FAIL ERROR_PAGE::internal detail exposed\n'; fail=1
+          ## Login page (rendered by JSP from configuration) --------------------
+          curl -sS -c /tmp/cookies.txt -o /tmp/login.html -w '%{http_code}' http://localhost:18080/login > /tmp/login.code
+          login_body=$(cat /tmp/login.html)
+          check LOGIN_CODE "login page returns 200" "$(cat /tmp/login.code)" '^200$'
+          check LOGIN_FORM "login form present" "$login_body" '<form[^>]+action="/login"'
+          check LOGIN_USERNAME "username field present" "$login_body" 'name="username"'
+          check LOGIN_PASSWORD "password field present" "$login_body" 'name="password"'
+          check LOGIN_CSRF "csrf token present" "$login_body" 'name="_csrf"'
+          check LOGIN_BRAND "institution branding rendered from configuration" "$login_body" 'DemoBank'
+          check LOGIN_THEME "theme tokens injected from configuration" "$login_body" '--edam-primary: #0f5132'
+          if printf '%s' "$login_body" | grep -qE 'stacktrace|java\.lang|org\.springframework'; then
+            printf '::error title=FAIL LOGIN_NO_LEAK::login page exposes internal detail\n'; fail=1
           else
-            printf '::notice title=OK ERROR_PAGE::anonymous unknown path answered without internal detail\n'
+            printf '::notice title=OK LOGIN_NO_LEAK::login page exposes no internal detail\n'
           fi
 
-          echo "--- correlation id on every response ---"
+          ## Unauthenticated access is redirected, API is refused as JSON ---------
+          dash=$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' http://localhost:18080/dashboard)
+          check DASH_REDIRECT "dashboard requires authentication" "$dash" '^302 .*/login$'
+
+          api=$(curl -sS -w ' %{http_code}' -H 'Accept: application/json' http://localhost:18080/api/v1/system/info)
+          check API_401 "api rejects anonymous access" "$api" ' 401$'
+          check API_ENVELOPE "api error envelope present" "$api" '"code":"EDAM-2001"'
+
+          ## Unknown paths: no redirect loop, never a 302 that hides a fault -------
+          unknown=$(curl -sS -o /tmp/unknown.html -w '%{http_code}' http://localhost:18080/no-such-page-here)
+          case "$unknown" in
+            302) printf '::notice title=OK UNKNOWN_PATH::anonymous unknown path redirected to sign-in (%s)\n' "$unknown" ;;
+            40*) printf '::notice title=OK UNKNOWN_PATH::anonymous unknown path answered %s\n' "$unknown" ;;
+            *)   printf '::error title=FAIL UNKNOWN_PATH::unexpected status %s (5xx here means the error page is broken)\n' "$unknown"; fail=1 ;;
+          esac
+          if grep -qE 'stacktrace|java\.lang|org\.springframework' /tmp/unknown.html; then
+            printf '::error title=FAIL UNKNOWN_PATH_LEAK::internal detail exposed\n'; fail=1
+          fi
+
+          ## Correlation id ------------------------------------------------------
           cid=$(curl -sSI http://localhost:18080/login | tr -d '\r' | grep -i '^X-Correlation-Id:' | head -1)
-          check CORRELATION "correlation id header present" "$cid" "X-Correlation-Id"
+          check CORRELATION "correlation id header present" "$cid" '^X-Correlation-Id: [0-9a-f-]{36}$'
+
+          ## Sign-in end to end, then a page that renders the authenticated shell --
+          curl -sS -b /tmp/cookies.txt -c /tmp/cookies.txt -o /dev/null http://localhost:18080/login
+          token=$(grep -oE 'name="_csrf"[^>]*value="[^"]+"' /tmp/login.html | head -1 | sed -E 's/.*value="([^"]+)".*/\1/')
+          signin=$(curl -sS -b /tmp/cookies.txt -c /tmp/cookies.txt -o /dev/null -w '%{http_code}' \
+            -d "username=admin&password=admin-change-me&_csrf=$token" http://localhost:18080/login)
+          check SIGNIN_SUBMIT "valid credentials accepted" "$signin" '^(200|302)$'
+          curl -sS -b /tmp/cookies.txt -o /tmp/dashboard.html -w '%{http_code}' http://localhost:18080/dashboard > /tmp/dash.code
+          check DASH_RENDER "authenticated dashboard renders via JSP" "$(cat /tmp/dash.code)" '^200$'
+          check DASH_SHELL "authenticated layout rendered" "$(cat /tmp/dashboard.html)" 'edam-sidebar'
+          check DASH_USER "signed-in identity rendered" "$(cat /tmp/dashboard.html)" 'Administrator'
+
           echo "--- startup log excerpt ---"
           grep -E "Flyway|Successfully applied|Started EdamApplication" war.log | head -10 || true
           exit $fail

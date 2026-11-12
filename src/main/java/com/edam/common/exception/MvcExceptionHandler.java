@@ -23,8 +23,13 @@ import org.springframework.web.servlet.ModelAndView;
  * the dispatcher with a fresh request; a second REST advice would risk leaking details, so
  * this controller maps only status to a safe page.
  *
- * <p>The template receives only a status-derived title, a safe message and the
- * correlation ID. It never receives the exception object.
+ * <p>The template receives only a status-derived title, a safe message and the correlation
+ * ID. It never receives the exception object. The handler supports {@code GET} (the usual
+ * browser path) and {@code POST} (a failed form submission); any other method on
+ * {@code /error} is answered with 405 by the framework rather than by a stack trace.
+ *
+ * <p>The mapping must stay reachable for unauthenticated callers: an error page that
+ * demands authentication cannot explain anything.
  */
 @Controller
 @RequestMapping("${server.error.path:${error.path:/error}}")
@@ -36,13 +41,15 @@ public class MvcExceptionHandler {
 	public ModelAndView error(HttpServletRequest request) {
 		// A bare GET /error has no ERROR_STATUS_CODE; 500 is the safe interpretation.
 		Object statusAttribute = request.getAttribute(RequestDispatcher.ERROR_STATUS_CODE);
-		int statusCode = (statusAttribute instanceof Integer code) ? code : HttpStatus.INTERNAL_SERVER_ERROR.value();
+		int statusCode = (statusAttribute instanceof Integer code) ? code
+				: HttpStatus.INTERNAL_SERVER_ERROR.value();
 		HttpStatus resolved = HttpStatus.resolve(statusCode);
 		HttpStatus status = (resolved != null) ? resolved : HttpStatus.INTERNAL_SERVER_ERROR;
 
 		Object exceptionAttribute = request.getAttribute(RequestDispatcher.ERROR_EXCEPTION);
 		if (status.is5xxServerError() && exceptionAttribute == null) {
-			// Container-level failures (e.g. a JSP render error) never reach the advice.
+			// Container-level failures (e.g. a JSP render error) never reach the advice, so
+			// this is the only place they can be logged at all.
 			log.error("mvc.error_page correlationId={} status={} path={}", correlationId(request), statusCode,
 					errorPath(request));
 		}

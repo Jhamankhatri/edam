@@ -31,10 +31,16 @@ spring:
     out-of-order: false
   security:
     filter:
-      # REQUEST and ERROR only. FORWARD excludes JSP rendering (view controller → JSP) from
-      # URL re-authorization; without it an anonymous visitor to /login would be redirected
-      # to /login forever. See SecurityConfig.
-      dispatcher-types: request, error
+      # REQUEST only (the Spring Boot default is every dispatcher type).
+      #
+      # FORWARD: JSP rendering is an internal forward from the view controller to
+      #   /WEB-INF/jsp/*. If that forward were re-authorized as a URL, an anonymous visitor
+      #   to /login would be redirected to /login forever.
+      # ERROR: the container's error dispatch to /error must never be intercepted by
+      #   authorization, otherwise a server fault is disguised as a 302 to the login page.
+      #   ServletFilterConfig restores the security context for the error page itself.
+      # ASYNC/INCLUDE: no asynchronous controllers and no server-side includes exist.
+      dispatcher-types: request
   mvc:
     view:
       prefix: /WEB-INF/jsp/
