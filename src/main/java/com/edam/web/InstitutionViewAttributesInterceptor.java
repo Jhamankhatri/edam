@@ -63,7 +63,9 @@ public class InstitutionViewAttributesInterceptor implements HandlerInterceptor 
 
 	public void postHandle(HttpServletRequest request, HttpServletResponse response, Object handler,
 			ModelAndView modelAndView) {
-		if (modelAndView == null || modelAndView.hasObject(ViewConstants.INSTITUTION_THEME)) {
+		// ModelAndView#getModelMap is the supported API in Spring 7 (hasObject was removed).
+		if (modelAndView == null
+				|| modelAndView.getModelMap().containsAttribute(ViewConstants.INSTITUTION_THEME)) {
 			return;
 		}
 		if (modelAndView.getViewName() != null && modelAndView.getViewName().startsWith("redirect:")) {
