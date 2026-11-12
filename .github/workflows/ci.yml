@@ -130,24 +130,30 @@ jobs:
           check API_401 "api rejects anonymous access" "$api" "401$"
           check API_ENVELOPE "api error envelope present" "$api" '"code":"EDAM-2001"'
 
-          err=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:18080/no-such-page-here)
-          check ERROR_PAGE "unknown page yields an error status, not a stack trace" "$err" "^40[0-9]$"
+          err=$(curl -sS -w ' %{http_code}' http://localhost:18080/no-such-page-here)
+          check ERROR_PAGE "unknown path is not served anonymously and leaks nothing" "$err" "^[^$]*(302|40[0-9]) [0-9]*$"
 
           echo "--- correlation id on every response ---"
           cid=$(curl -sSI http://localhost:18080/login | tr -d '\r' | grep -i '^X-Correlation-Id:' | head -1)
           check CORRELATION "correlation id header present" "$cid" "X-Correlation-Id"
-          echo "--- diagnostics (one consolidated annotation; GitHub caps 10 notices per step) ---"
-          sweep=""
-          for path in /login /access-denied /css/edam.css /favicon.ico; do
-            code=$(curl -sS -o /dev/null -w "%{http_code}" "http://localhost:18080$path" || echo ERR)
-            sweep="$sweep $path=$code"
-          done
-          jasper=$(grep -iE "JasperException|Unable to compile|org.apache.jasper" war.log | head -2 | tr '\n' '|' | head -c 500)
-          errlog=$(grep -E "ERROR|Exception" war.log | head -3 | tr '\n' '|' | head -c 600)
-          printf '::error title=DIAGNOSTICS::sweep:%s || jasper:%s || errors:%s\n' "$sweep" "${jasper:-none}" "${errlog:-none}"
           echo "--- startup log excerpt ---"
           grep -E "Flyway|Successfully applied|Started EdamApplication" war.log | head -10 || true
           exit $fail
+      - name: Diagnostics
+        if: always()
+        run: |
+          set +e
+          [ -f war.log ] || exit 0
+          sweep=""
+          for path in /login /access-denied /css/edam.css /favicon.ico; do
+            code=$(curl -sS -o /dev/null -w "%{http_code}" "http://localhost:18080$path")
+            sweep="$sweep $path=$code"
+          done
+          security=$(grep -E "Securing |Failed to authorize|requires an authenticated|Access is denied" war.log | head -4 | tr '\n' '|' | head -c 700)
+          jasper=$(grep -iE "JasperException|Unable to compile|org.apache.jasper" war.log | head -2 | tr '\n' '|' | head -c 500)
+          errors=$(grep -E " ERROR |Exception" war.log | head -3 | tr '\n' '|' | head -c 600)
+          printf '::error title=DIAGNOSTICS::sweep:%s || security:%s || jasper:%s || errors:%s\n' \
+            "$sweep" "${security:-none}" "${jasper:-none}" "${errors:-none}"
       - name: Application log on failure
         if: failure()
         run: tail -c 6000 war.log || true
