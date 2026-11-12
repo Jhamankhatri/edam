@@ -36,9 +36,6 @@ public class RequestCurrencySnapshot {
 	@Column(name = "institution_id", nullable = false, updatable = false)
 	private Long institutionId;
 
-	@Column(name = "currency_code", nullable = false, updatable = false, length = 3)
-	private String currencyCode;
-
 	@Column(name = "rate_to_base", nullable = false, precision = 19, scale = 4)
 	private BigDecimal rateToBase;
 
@@ -51,18 +48,20 @@ public class RequestCurrencySnapshot {
 
 	public RequestCurrencySnapshot(Long institutionId, String currencyCode, BigDecimal rateToBase) {
 		this.institutionId = institutionId;
-		this.currencyCode = currencyCode;
 		this.rateToBase = rateToBase;
 		this.id = new RequestCurrencySnapshotId(null, currencyCode);
 	}
 
+	/**
+	 * Link the snapshot to its request. The currency code lives in the embedded id — mapping it as a
+	 * separate field as well is what Hibernate rejects, because two properties would write one column.
+	 */
 	void attachTo(ExpenseRequest request) {
 		this.request = request;
 		if (this.id == null) {
 			this.id = new RequestCurrencySnapshotId();
 		}
 		this.id.setRequestId(request.getId());
-		this.id.setCurrencyCode(this.currencyCode);
 	}
 
 	public RequestCurrencySnapshotId getId() {
@@ -70,7 +69,7 @@ public class RequestCurrencySnapshot {
 	}
 
 	public String getCurrencyCode() {
-		return this.currencyCode;
+		return this.id == null ? null : this.id.getCurrencyCode();
 	}
 
 	public BigDecimal getRateToBase() {
