@@ -1,5 +1,8 @@
 package com.edam.common.tenant;
 
+import com.edam.common.audit.AuditedEntity;
+import com.edam.common.exception.ResourceNotFoundException;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.MappedSuperclass;
 
@@ -64,7 +67,7 @@ public abstract class InstitutionOwnedEntity extends AuditedEntity {
 	 */
 	public void requireInstitution(Long expectedInstitutionId) {
 		if (expectedInstitutionId == null || !expectedInstitutionId.equals(this.institutionId)) {
-			throw new com.edam.common.exception.ResourceNotFoundException(getClass().getSimpleName(),
+			throw new ResourceNotFoundException(getClass().getSimpleName(),
 					getId() == null ? "unknown" : getId());
 		}
 	}
