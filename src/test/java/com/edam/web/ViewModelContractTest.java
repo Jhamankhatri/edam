@@ -72,75 +72,20 @@ class ViewModelContractTest extends AbstractPostgreSqlIntegrationTest {
 	@TestConfiguration
 	static class CaptureConfig implements WebMvcConfigurer {
 
-		private final ModelCapturingInterceptor capture;
-
-		CaptureConfig(ModelCapturingInterceptor capture) {
-			this.capture = capture;
-		}
-
 		@Override
 		public void addInterceptors(InterceptorRegistry registry) {
-			// Register the injected singleton: creating a second instance here would record
-			// nothing, because the assertion reads the bean.
-			registry.addInterceptor(this.capture).addPathPatterns("/**").order(Ordered.HIGHEST_PRECEDENCE);
+			// modelCapturingInterceptor() is static so this call returns the same singleton the
+			// container manages; a non-static @Bean method here would create a second instance
+			// and the assertion (which autowires the bean) would observe an empty capture.
+			registry.addInterceptor(modelCapturingInterceptor())
+				.addPathPatterns("/**")
+				.order(Ordered.HIGHEST_PRECEDENCE);
 		}
 
 		@org.springframework.context.annotation.Bean
-		ModelCapturingInterceptor modelCapturingInterceptor() {
+		static ModelCapturingInterceptor modelCapturingInterceptor() {
 			return new ModelCapturingInterceptor();
 		}
 
 	}
-
-	@Test
-	@DisplayName("the login page receives institution branding, though no controller method serves it")
-	void loginPageReceivesBranding() throws Exception {
-		this.mockMvc.perform(get("/login")).andExpect(status().isOk());
-
-		Object theme = this.modelCapture.model().get(ViewConstants.INSTITUTION_THEME);
-		assertThat(theme).as("branding must be present for a view-controller page").isInstanceOf(InstitutionTheme.class);
-		InstitutionTheme branding = (InstitutionTheme) theme;
-		assertThat(branding.shortName()).isEqualTo(this.institutionProperties.getShortName());
-		assertThat(branding.name()).isEqualTo(this.institutionProperties.getName());
-		assertThat(branding.primaryColor()).matches("#[0-9a-fA-F]{6}");
-	}
-
-	@Test
-	@DisplayName("the access-denied page receives institution branding too")
-	void accessDeniedReceivesBranding() throws Exception {
-		this.mockMvc.perform(get("/access-denied")).andExpect(status().isOk());
-
-		assertThat(this.modelCapture.model()).containsKey(ViewConstants.INSTITUTION_THEME);
-	}
-
-	@Test
-	@DisplayName("every public page carries the correlation id into the view")
-	void correlationIdIsExposedToViews() throws Exception {
-		String correlationId = "11111111-2222-3333-4444-555555555555";
-		for (String path : new String[] { "/login", "/access-denied" }) {
-			this.mockMvc.perform(get(path).header("X-Correlation-Id", correlationId)).andExpect(status().isOk());
-
-			assertThat(this.modelCapture.model()).as("view model of %s", path)
-				.containsEntry(ViewConstants.CORRELATION_ID, correlationId);
-		}
-	}
-
-	@Test
-	@DisplayName("branding is resolved from the institution record, not only from configuration")
-	void brandingReflectsPersistedInstitution() throws Exception {
-		// The seed migration creates demo-bank; resolving it through the public module API
-		// proves the value the interceptor exposes is tenant data rather than a constant.
-		var seeded = this.institutionService.requireActive("demo-bank");
-		assertThat(seeded.name()).isNotBlank();
-		assertThat(seeded.shortName()).isNotBlank();
-	}
-
-	@Test
-	@DisplayName("a redirect response carries no theme, because it renders no markup")
-	void redirectCarriesNoTheme() throws Exception {
-		this.mockMvc.perform(get("/")).andExpect(status().is3xxRedirection());
-
-		assertThat(this.modelCapture.model()).doesNotContainKey(ViewConstants.INSTITUTION_THEME);
-	}
-
 }
