@@ -15,7 +15,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.servlet.HandlerExecutionChain;
 import org.springframework.web.servlet.HandlerMapping;
-import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
@@ -33,18 +32,11 @@ class InterceptorDiagnosticsTest extends AbstractPostgreSqlIntegrationTest {
 	private MockMvc mockMvc;
 
 	@Autowired
-	private RequestMappingHandlerMapping requestMappingHandlerMapping;
-
-	@Autowired
 	private org.springframework.context.ApplicationContext context;
 
 	@Test
 	void dumpDispatcherState() {
 		StringBuilder report = new StringBuilder();
-
-		report.append("requestMappingInterceptors=")
-			.append(Arrays.toString(this.requestMappingHandlerMapping.getInterceptors()))
-			.append(" | ");
 
 		report.append("allMappings=")
 			.append(context.getBeansOfType(HandlerMapping.class).entrySet().stream()
