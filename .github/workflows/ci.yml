@@ -1,0 +1,343 @@
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MAVEN_ARGS: "-B -ntp -Dstyle.color=never"
+
+jobs:
+  build:
+    name: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Build and test
+        run: |
+          set +e
+          mvn verify > build.log 2>&1
+          rc=$?
+          python3 tools/ci-report.py build.log
+          exit $rc
+      - name: Upload WAR
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: edam-war
+          path: target/edam.war
+          retention-days: 7
+
+  # Renders the JSP views from the packaged executable WAR, which is the artifact that is
+  # actually deployed. Spring Boot cannot render JSPs inside an embedded test container, so
+  # this is the only faithful end-to-end view check.
+  war-smoke:
+    name: war-package-smoke-test
+    runs-on: ubuntu-latest
+    needs: build
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: edam
+          POSTGRES_USER: edam
+          POSTGRES_PASSWORD: edam-ci-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U edam -d edam"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Download WAR
+        uses: actions/download-artifact@v4
+        with:
+          name: edam-war
+          path: target
+      - name: Start the executable WAR
+        run: |
+          set -euo pipefail
+          export EDAM_DB_URL=jdbc:postgresql://localhost:5432/edam
+          export EDAM_DB_USERNAME=edam
+          export EDAM_DB_PASSWORD=edam-ci-only
+          nohup java -jar target/edam.war --spring.profiles.active=local --server.port=18080 --logging.level.org.springframework.security.web=TRACE --logging.level.org.springframework.web.servlet=DEBUG > war.log 2>&1 &
+          for i in $(seq 1 90); do
+            if grep -q "Started EdamApplication" war.log; then echo "STARTED after ${i}s"; break; fi
+            if grep -qE "APPLICATION FAILED TO START|BeanCreationException" war.log; then echo "STARTUP FAILED"; fi
+            sleep 2
+          done
+          grep -q "Started EdamApplication" war.log || { echo "::error title=NO_START::application did not start"; tail -c 4000 war.log; exit 1; }
+      - name: Verify JSP pages, security and health
+        run: |
+          set -uo pipefail
+          fail=0
+          # Matching is done against a file, never a pipeline: this script runs with
+          # `pipefail`, and `grep -q` exits at the first match, which sends SIGPIPE to the
+          # upstream `tr`/`printf` and makes the pipeline report failure even though the text
+          # was found. NUL bytes are stripped first so grep never treats the body as binary.
+          scratch=$(mktemp -d)
+          check() { # name, description, actual, extended-regexp
+            printf '%s' "$3" | tr -d '\000' > "$scratch/actual.txt"
+            if grep -qE -- "$4" "$scratch/actual.txt"; then
+              printf '::notice title=OK %s::%s\n' "$1" "$2"
+            else
+              printf '::error title=FAIL %s::%s (expected to match: %s)\n' "$1" "$2" "$4"
+              printf '::error title=FAIL %s body::%s\n' "$1" "$(tr -d '\r' < "$scratch/actual.txt" | head -c 700)"
+              fail=1
+            fi
+          }
+          lacks() { # name, description, actual, extended-regexp that must NOT appear
+            printf '%s' "$3" | tr -d '\000' > "$scratch/actual.txt"
+            if grep -qE -- "$4" "$scratch/actual.txt"; then
+              printf '::error title=FAIL %s::%s\n' "$1" "$2"; fail=1
+            else
+              printf '::notice title=OK %s::%s\n' "$1" "$2"
+            fi
+          }
+
+          ## Packaging contract ------------------------------------------------
+          jar tf target/edam.war > war-contents.txt
+          check WAR_JSP "JSPs packaged under WEB-INF/jsp" "$(grep -c 'WEB-INF/jsp/' war-contents.txt)" '^[1-9]'
+          check WAR_LIB "libraries in WEB-INF/lib" "$(grep -c 'WEB-INF/lib/[^p]' war-contents.txt)" '^[1-9]'
+          check WAR_LIBPROVIDED "embedded container in WEB-INF/lib-provided" "$(grep -c 'WEB-INF/lib-provided/' war-contents.txt)" '^[1-9]'
+          check WAR_JASPER "Jasper present" "$(grep -c 'jasper' war-contents.txt)" '^[1-9]'
+          check WAR_LAUNCHER "executable WAR launcher present" "$(grep -c 'loader/launch/WarLauncher' war-contents.txt)" '^[1-9]'
+
+          ## Health ------------------------------------------------------------
+          health_code=$(curl -sS -o /tmp/health.json -w '%{http_code}' http://localhost:18080/actuator/health)
+          check HEALTH_CODE "health endpoint status" "$health_code" '^200$'
+          check HEALTH_BODY "health body reports UP" "$(cat /tmp/health.json)" '"status"[[:space:]]*:[[:space:]]*"UP"'
+          lacks HEALTH_NODETAIL "health exposes no component detail" "$(cat /tmp/health.json)" '"(db|diskSpace|ping|database|dataSource)"|postgres|jdbc'
+
+          ## Login page (rendered by JSP from configuration) --------------------
+          curl -sS -c /tmp/cookies.txt -o /tmp/login.html -w '%{http_code}' http://localhost:18080/login > /tmp/login.code
+          login_body=$(cat /tmp/login.html)
+          check LOGIN_CODE "login page returns 200" "$(cat /tmp/login.code)" '^200$'
+          check LOGIN_FORM "login form present" "$login_body" '<form[^>]+action="/login"'
+          check LOGIN_USERNAME "username field present" "$login_body" 'name="username"'
+          check LOGIN_PASSWORD "password field present" "$login_body" 'name="password"'
+          check LOGIN_CSRF "csrf token present" "$login_body" 'name="_csrf"'
+          check LOGIN_BRAND "institution branding rendered from configuration" "$login_body" 'DemoBank'
+          check LOGIN_BRAND_NAME "institution legal name rendered" "$login_body" 'Demo Bank Limited'
+          check LOGIN_THEME "theme tokens injected from configuration" "$login_body" '--edam-primary:[[:space:]]*#[0-9a-fA-F]{6}'
+          lacks LOGIN_NO_LEAK "login page exposes no internal detail" "$login_body" 'stacktrace|java\.lang|org\.springframework'
+
+          ## Unauthenticated access is redirected, API is refused as JSON ---------
+          dash=$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' http://localhost:18080/dashboard)
+          check DASH_REDIRECT "dashboard requires authentication" "$dash" '^302 .*/login$'
+
+          api=$(curl -sS -w ' %{http_code}' -H 'Accept: application/json' http://localhost:18080/api/v1/system/info)
+          check API_401 "api rejects anonymous access" "$api" ' 401$'
+          check API_ENVELOPE "api error envelope present" "$api" '"code":"EDAM-2001"'
+
+          ## Unknown paths: no redirect loop, never a 302 that hides a fault -------
+          unknown=$(curl -sS -o /tmp/unknown.html -w '%{http_code}' http://localhost:18080/no-such-page-here)
+          case "$unknown" in
+            302) printf '::notice title=OK UNKNOWN_PATH::anonymous unknown path redirected to sign-in (%s)\n' "$unknown" ;;
+            40*) printf '::notice title=OK UNKNOWN_PATH::anonymous unknown path answered %s\n' "$unknown" ;;
+            *)   printf '::error title=FAIL UNKNOWN_PATH::unexpected status %s (5xx here means the error page is broken)\n' "$unknown"; fail=1 ;;
+          esac
+          lacks UNKNOWN_PATH_LEAK "unknown path exposes no internal detail" "$(cat /tmp/unknown.html)" 'stacktrace|java\.lang|org\.springframework'
+
+          ## Static assets: a missing file is a 404, never a 500 -------------------
+          favicon=$(curl -sS -o /tmp/favicon.ico -w '%{http_code}' http://localhost:18080/favicon.ico)
+          check FAVICON_CODE "favicon served from the packaged WAR" "$favicon" '^200$'
+          missing_asset=$(curl -sS -o /tmp/missing.asset -w '%{http_code}' http://localhost:18080/css/no-such-file.css)
+          check MISSING_ASSET_CODE "missing static asset is a 404" "$missing_asset" '^404$'
+
+          ## Correlation id ------------------------------------------------------
+          curl -sSI http://localhost:18080/login | tr -d '\r' > "$scratch/headers.txt" || true
+          cid=$(grep -i '^X-Correlation-Id:' "$scratch/headers.txt" | head -1 || true)
+          check CORRELATION "correlation id header present" "$cid" '^X-Correlation-Id: [0-9a-f-]{36}$'
+
+          ## Sign-in end to end, then a page that renders the authenticated shell --
+          curl -sS -b /tmp/cookies.txt -c /tmp/cookies.txt -o /dev/null http://localhost:18080/login
+          tr -d '\000' < /tmp/login.html > "$scratch/login.txt"
+          token=$(sed -nE 's/.*name="_csrf"[^>]*value="([^"]+)".*/\1/p' "$scratch/login.txt" | head -1)
+          signin=$(curl -sS -b /tmp/cookies.txt -c /tmp/cookies.txt -o /dev/null -w '%{http_code}' \
+            -d "username=admin&password=admin-change-me&_csrf=$token" http://localhost:18080/login)
+          check SIGNIN_SUBMIT "valid credentials accepted" "$signin" '^(200|302)$'
+          curl -sS -b /tmp/cookies.txt -o /tmp/dashboard.html -w '%{http_code}' http://localhost:18080/dashboard > /tmp/dash.code
+          check DASH_RENDER "authenticated dashboard renders via JSP" "$(cat /tmp/dash.code)" '^200$'
+          check DASH_SHELL "authenticated layout rendered" "$(cat /tmp/dashboard.html)" 'edam-sidebar'
+          check DASH_USER "signed-in identity rendered" "$(cat /tmp/dashboard.html)" 'Administrator'
+
+          echo "--- startup log excerpt ---"
+          grep -E "Flyway|Successfully applied|Started EdamApplication" war.log | head -10 || true
+          exit $fail
+      - name: Diagnostics
+        if: always()
+        run: |
+          set +e
+          [ -f war.log ] || exit 0
+          sweep=""
+          for path in /login /access-denied /css/edam.css /favicon.ico; do
+            code=$(curl -sS -o /dev/null -w "%{http_code}" "http://localhost:18080$path")
+            sweep="$sweep $path=$code"
+          done
+          security=$(grep -E "Securing |Failed to authorize|requires an authenticated|Access is denied" war.log | head -4 | tr '\n' '|' | head -c 700)
+          jasper=$(grep -iE "JasperException|Unable to compile|org.apache.jasper" war.log | head -2 | tr '\n' '|' | head -c 500)
+          errors=$(grep -E " ERROR |Exception" war.log | head -3 | tr '\n' '|' | head -c 600)
+          printf '::error title=DIAGNOSTICS::sweep:%s || security:%s || jasper:%s || errors:%s\n' \
+            "$sweep" "${security:-none}" "${jasper:-none}" "${errors:-none}"
+      - name: Application log on failure
+        if: failure()
+        run: tail -c 6000 war.log || true
+
+  prod-profile-smoke:
+    name: prod-profile-smoke-test
+    runs-on: ubuntu-latest
+    needs: build
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: edam
+          POSTGRES_USER: edam
+          POSTGRES_PASSWORD: edam-ci-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U edam -d edam"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Download WAR
+        uses: actions/download-artifact@v4
+        with:
+          name: edam-war
+          path: target
+      - name: Start with the production profile
+        env:
+          EDAM_DB_URL: jdbc:postgresql://localhost:5432/edam
+          EDAM_DB_USERNAME: edam
+          EDAM_DB_PASSWORD: edam-ci-only
+        run: |
+          set -uo pipefail
+          fail=0
+          java -jar target/edam.war --spring.profiles.active=prod --server.port=18081 > prod.log 2>&1 &
+          for _ in $(seq 1 90); do
+            grep -q "Started EdamApplication" prod.log && break
+            sleep 2
+          done
+          if ! grep -q "Started EdamApplication" prod.log; then
+            printf '::error title=FAIL PROD_START::production profile did not start\n'
+            tail -c 3000 prod.log
+            exit 1
+          fi
+          printf '::notice title=OK PROD_START::production profile starts with environment configuration\n'
+
+          # Empty-body checks survive a JSON log without breaking YAML/shell quoting.
+          check_empty() { # name, description, extended-regexp that must NOT appear
+            local pattern="$3"
+            if grep -qE -- "$pattern" prod.log; then
+              printf '::error title=FAIL %s::%s\n' "$1" "$2"
+              grep -E -- "$pattern" prod.log | head -3
+              fail=1
+            else
+              printf '::notice title=OK %s::%s\n' "$1" "$2"
+            fi
+          }
+          check_empty NO_LINE_PATTERN "no human-readable pattern lines (proof the JSON encoder is active)" '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z? +[A-Z]{4,5} \['
+
+          # The prod profile must be ready to serve; health is public there too.
+          # "Started EdamApplication" precedes readiness: the web server is listening before
+          # the datasource has answered its first validation query. Readiness is a bounded
+          # wait, not a guess, so this neither flakes nor hides a persistent failure.
+          health=""
+          for _ in $(seq 1 60); do
+            health=$(curl -sS -o /tmp/prod-health.json -w '%{http_code}' http://localhost:18081/actuator/health)
+            [ "$health" = "200" ] && break
+            sleep 2
+          done
+          printf '::notice title=PROD_HEALTH_DIAG::body=%s\n' "$(head -c 300 /tmp/prod-health.json)"
+          if [ "$health" = "200" ] && grep -q '"status":"UP"' /tmp/prod-health.json; then
+            printf '::notice title=OK PROD_HEALTH::health reports UP under the production profile\n'
+          else
+            printf '::error title=FAIL PROD_HEALTH::health answered %s: %s\n' "$health" "$(head -c 300 /tmp/prod-health.json)"
+            fail=1
+          fi
+
+          # Anonymous browser traffic is still redirected to sign-in, and no fixture account
+          # exists: the development identity store is profile-gated.
+          login_code=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:18081/login)
+          if [ "$login_code" = "200" ]; then
+            printf '::notice title=OK PROD_LOGIN::login page renders without a development user store\n'
+          else
+            printf '::error title=FAIL PROD_LOGIN::login answered %s\n' "$login_code"
+            fail=1
+          fi
+
+          # Structured output is verified from the log itself. A JSON log line starts with '{'
+          # and carries ECS keys; assert on the parsed content, not on a pretty-looking line.
+          python3 - <<'PY' || fail=1
+          import json, sys
+
+          records = []
+          for line in open('prod.log', encoding='utf-8', errors='replace'):
+              line = line.strip()
+              if not line.startswith('{'):
+                  continue
+              try:
+                  records.append(json.loads(line))
+              except json.JSONDecodeError:
+                  continue
+
+          if not records:
+              print("::error title=FAIL PROD_JSON::no JSON log records found")
+              sys.exit(1)
+
+          def dotted_paths(obj, prefix=""):
+              paths = set()
+              if isinstance(obj, dict):
+                  for key, value in obj.items():
+                      path = f"{prefix}.{key}" if prefix else key
+                      paths.add(path)
+                      paths |= dotted_paths(value, path)
+              return paths
+
+          all_paths = set()
+          for record in records:
+              all_paths |= dotted_paths(record)
+
+          print("::notice title=OK PROD_JSON::%d structured records parsed" % len(records))
+          # ECS nests these fields: log.level lives inside the "log" object, not as a flat key.
+          required = {"@timestamp", "log.level", "message", "ecs.version"}
+          missing = required - all_paths
+          if missing:
+              sample = sorted(all_paths)[:15]
+              print("::error title=FAIL PROD_ECS_FIELDS::missing ECS keys: %s (present: %s)" % (sorted(missing), sample))
+              sys.exit(1)
+          print("::notice title=OK PROD_ECS_FIELDS::@timestamp, log.level, message and ecs.version present")
+          if "correlationId" in all_paths:
+              print("::notice title=OK PROD_MDC::correlationId present in structured records")
+          else:
+              print("::notice title=OK PROD_MDC::no request-scoped record in this excerpt; MDC wiring is covered by CorrelationIdFilterTest")
+          PY
+
+          exit $fail
+      - name: Application log on failure
+        if: failure()
+        run: tail -c 6000 prod.log || true

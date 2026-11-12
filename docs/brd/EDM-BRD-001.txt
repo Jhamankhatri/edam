@@ -1,0 +1,597 @@
+EXPENSE DELEGATION MATRIX
+BUSINESS REQUIREMENTS DOCUMENT
+Target Platform: Java Spring Boot | PostgreSQL | JSP
+Version 1.0 – Draft for Review
+Prepared for: EDM Product Rebuild
+Source Reference: Expense Delegation Matrix – Product Requirements and Functional-Technical Specification, Version 0.1, dated 30 October 2026
+Prepared on: 12 November 2026
+CONFIDENTIAL – BUSINESS AND TECHNICAL REVIEW
+ 
+Document Control
+Attribute	Value
+Document Title	Expense Delegation Matrix (EDM) – Business Requirements Document
+Document ID	EDM-BRD-001 (proposed)
+Version	1.0 – Draft for Review
+Date	12 November 2026
+Product Type	Configurable OPEX/CAPEX expense request and approval workflow platform
+Target Technology	Java, Spring Boot, PostgreSQL, JSP
+Reference Implementation	Albaraka EDM_V3 – ASP.NET / SQL Server
+Document Status	Draft – requires business-owner validation and sign-off
+Document Owner / Approver	To be nominated
+Prepared By	Product Rebuild – Requirements Baseline
+
+Revision History
+Version	Date	Description
+1.0	12-Nov-2026	Initial BRD draft derived from the supplied 93-page EDM reference specification and the target-platform/productization direction stated by the requester.
+
+Evidence and Interpretation Convention
+Label	Meaning
+SOURCE-CONFIRMED	Explicitly documented in the supplied EDM reference specification.
+SOURCE-INFERRED	Reasonable interpretation of the source; requires confirmation.
+OPEN DECISION	The source is incomplete, inconsistent or does not define the behaviour.
+TARGET PROPOSAL	A proposed design requirement for the new Spring Boot product; not claimed to exist in the current .NET system.
+
+Important: This BRD preserves the supplied source as the baseline. It does not silently resolve undocumented workflow behaviour. Where the source does not establish a rule, the item is recorded as an open decision for the business owner.
+Table of Contents
+•	1. Executive Summary
+•	2. Business Context and Problem Statement
+•	3. Product Vision and Objectives
+•	4. Scope and Boundaries
+•	5. Stakeholders and User Roles
+•	6. Product Navigation and Functional Modules
+•	7. End-to-End Business Processes
+•	8. Detailed Functional Requirements
+•	9. Business Rules and Validation Catalogue
+•	10. Approval and Delegation Framework
+•	11. Data and Information Requirements
+•	12. Reporting, Notifications and Audit
+•	13. Security and Access Control
+•	14. Non-Functional Requirements
+•	15. Target Solution and Configuration Requirements
+•	16. Migration and Legacy Replacement
+•	17. Acceptance Criteria and Traceability
+•	18. Open Decisions, Gaps and Risks
+•	19. Delivery Phasing
+•	Appendices
+ 
+1. Executive Summary
+The Expense Delegation Matrix (EDM) is a configuration-driven expense request, delegation and approval platform for Head Office Operating Expenditure (OPEX) and Capital Expenditure (CAPEX). Administrators configure categories, sub-categories, delegation rules, recommending authorities, Expense Committee (EC) levels, currencies and approval limits. Requesters then submit expenses; the system determines the approval route from the configured rules rather than asking the requester to choose approvers.
+The reference implementation is an ASP.NET Web Forms application backed by Microsoft SQL Server stored procedures and shared Albaraka/ApplicationPanel master data. The proposed rebuild will implement the documented business capabilities on Java Spring Boot, PostgreSQL and JSP. The rebuild is intended to reduce database-procedure coupling, improve maintainability and make the product reusable for multiple client institutions.
+The reference document describes 13 functional modules, OPEX and CAPEX form field maps, 46 OPEX save parameters, 57 CAPEX save parameters, approval workflows, reporting, configuration audit trails and several known gaps. The BRD treats those findings as the functional baseline and separately labels target-product proposals.
+2. Business Context and Problem Statement
+2.1 Current Situation
+•	The existing EDM is implemented in .NET / ASP.NET Web Forms and Microsoft SQL Server.
+•	A significant amount of behaviour is implemented in stored procedures and direct database queries, making business flow difficult to maintain and evolve in the application layer.
+•	The current implementation depends on shared ApplicationPanel user, department and branch data.
+•	The supplied reference records inconsistent/legacy table usage, unclear workflow combinations, incomplete role-based access checks and undocumented deployment/NFR details.
+•	The current application is reported by the requester as unstable and difficult to maintain; this operational assessment is requester-provided context, not a measured finding in the reference specification.
+2.2 Business Problem
+The business needs a stable, auditable and configurable workflow product that can enforce expense delegation consistently across OPEX and CAPEX without rebuilding client-specific logic for each bank or institution.
+2.3 Desired Business Outcome
+•	A maintainable application-layer workflow engine with database persistence and integrity constraints.
+•	Central administration of approval routing and financial thresholds.
+•	Consistent request, approval, revert, resubmission and reporting experiences.
+•	Tenant/client-specific branding and business configuration without code changes for ordinary configuration differences.
+•	Clear traceability for every request, approval action, configuration change and notification.
+3. Product Vision and Objectives
+ID	Objective	Requirement Basis
+OBJ-01	Configure delegation authority centrally and dynamically.	Source-confirmed
+OBJ-02	Automatically route requests using category, sub-category, expense nature, amount and configured authority.	Source-confirmed; detailed algorithm partly open
+OBJ-03	Support separate OPEX and CAPEX request, register and approval experiences.	Source-confirmed
+OBJ-04	Support multiple currencies and PKR conversion using administered rates.	Source-confirmed
+OBJ-05	Provide approval history, milestones and auditability.	Source-confirmed
+OBJ-06	Provide operational and management reporting across OPEX and CAPEX.	Source-confirmed
+OBJ-07	Support returned-request correction, resubmission and selective revert.	Source-confirmed
+OBJ-08	Support reusable client configuration including branding, theme and institution identity.	Target proposal from requester
+OBJ-09	Keep core business rules in Java services and use PostgreSQL for persistence, constraints and transactional integrity.	Target proposal from requester
+
+4. Scope and Boundaries
+4.1 In Scope
+•	Head Office OPEX request creation, register, approval, return, correction and resubmission.
+•	Head Office CAPEX request creation, register, approval, return, correction and resubmission.
+•	Category, sub-category and Expense Delegation Matrix administration.
+•	Expense Committee member pool and approval-level configuration.
+•	Currency and PKR conversion-rate administration.
+•	Department Head general approval limit.
+•	Recommending Authority assignment.
+•	OPEX/CAPEX exceeding-limit configuration.
+•	Reporting, category/sub-category analytics, request audit trail and Excel export.
+•	Configuration audit history and transaction approval history.
+•	Email notifications at workflow stages, using the documented email mechanism.
+•	Client-level configuration and branding as a target-product requirement.
+4.2 Explicit Boundaries
+Area	Baseline Position
+Branch expenses	Branch is a charge-allocation target; the documented request channels are Head Office OPEX and Head Office CAPEX.
+External ERP / core banking / GL	No business integration is described in the supplied reference. Do not assume an integration is required.
+Document storage	Attachment records exist, but physical storage provider/location is not documented.
+Authentication / SSO	The reference relies on Albaraka portal login/session; exact authentication protocol is not supplied.
+Legacy tables	Legacy request/status/checklist tables are referenced; their current business role is not established.
+Notifications	Email notifications are documented; SMS and in-app notification behaviour is not established.
+
+5. Stakeholders and User Roles
+Role	Business Responsibility	Notes / Access Position
+Requester / Preparer	Creates OPEX/CAPEX requests; views own requests; corrects and resubmits returned requests.	Department assignment required for OPEX submission; CAPEX new request restricted by configured department list in source.
+Unit Head / Department Head	First approver in Phase 1; may approve, forward, revert or reject as permitted.	Selected on the request form; exact delegation authority model requires confirmation.
+Recommending Authority	Approves after Phase 1 and before EC stage when configured.	Assigned by department and selected in delegation matrix.
+Expense Committee Member	Acts on configured EC approval steps and contributes to quorum.	May approve, reject or revert when pending at current step.
+CEO	May be a required EC participant or standalone approver.	CEO cannot reject an EC request; may approve or revert.
+CFO	May be a required EC participant; standalone limit is mentioned in narrative.	CFO action restrictions and standalone mechanics are not fully specified.
+Head of Admin & GST / HOD	Standalone approval mechanism.	Terminology varies between GST and GSD in the source; confirm official designation.
+Designated Revert Recipient	Receives a selectively reverted request and can edit it in My Approvals.	Eligibility conditions for selective revert are not defined.
+Administrator / Authorised Configurator	Maintains categories, matrix, EC members/levels, currencies, limits and authorities.	Current source does not establish a complete role-based permission model.
+Finance / Report User	Uses reports and CAPEX finance information.	Existing reporting role checks are disabled/overridden; target permissions must be defined.
+
+6. Product Navigation and Functional Modules
+Module ID	Module	Functional Capability
+FM-01	Head Office OPEX Request	Create, validate, submit, edit returned request, selective revert, vendor addition.
+FM-02	OPEX Request Register	My Request / My Approvals, search/filter, view, export, eligible print/PDF.
+FM-03	OPEX Approval	Review details, attachments and history; approve, forward, revert or reject as authorised.
+FM-04	Head Office CAPEX Request	Create and maintain CAPEX request, asset allocations, item-wise budget details, checklist and submission.
+FM-05	CAPEX Request Register	My Request / My Approvals, search/filter, view, export, eligible print, new CAPEX request if department is eligible.
+FM-06	CAPEX Approval	Review CAPEX details, finance information, checklist and approval history; perform permitted actions.
+FM-07	Category / Sub-category / EDM	Maintain categories, sub-categories, delegation rules, approval types and audit logs.
+FM-08	Expense Committee	Maintain EC member pool, designations, approval levels, member assignments, quorum and CEO/CFO requirements.
+FM-09	Currency Management	Maintain currency code/name/PKR rate and status; audit history.
+FM-10	Department Head Approval Limit	Maintain the single General Delegation PKR limit and description.
+FM-11	Recommending Authority	Assign authority title, department and employee; audit history.
+FM-12	Reporting	Summary metrics, filters, result list, details, audit trail, category analytics and Excel export.
+FM-13	OPEX/CAPEX Exceeding Limit	Maintain one threshold per expense nature; audit history. Enforcement in routing is unresolved.
+
+6.1 Navigation Behaviour
+•	OPEX submission returns the user to the OPEX register.
+•	CAPEX submission returns the user to the CAPEX register.
+•	Register rows open the relevant approval/view page.
+•	A reverted request opens in editable mode for its creator in My Request or designated recipient in My Approvals; other users see the read-only approval view.
+•	Reporting detail links open the relevant OPEX or CAPEX approval/detail page.
+•	Register default date filter is the previous 30 days through today.
+7. End-to-End Business Processes
+7.1 OPEX Request Lifecycle
+1.	Requester opens OPEX form; system pre-fills requester, department, date and reference.
+2.	Requester enters expense classification, vendor, currency, amounts, allocations, invoices, business flags and justification.
+3.	Requester completes required-document checklist and uploads supporting documents.
+4.	System validates required values, invoice/approval amount equality, positive amount, justification and conditional attachments.
+5.	System saves request and resolves the approval route from active configuration.
+6.	Requester tracks the request in My Request; approvers see assigned items in My Approvals.
+7.	If returned, the creator or designated revert recipient corrects and resubmits under the applicable workflow path.
+7.2 CAPEX Request Lifecycle
+8.	Eligible department user opens CAPEX form; new-request access is limited to Admin, Information Technology and Digital in the reference implementation.
+9.	Requester enters category/sub-category, vendor, currency, amount, tax, payment terms, finance fields, asset-book allocations, item-wise details and budget information.
+10.	System validates invoice total, approval amount and charge total; requires item-wise details and valid warranty date.
+11.	Requester completes checklist and attaches required documents.
+12.	System saves request and routes it through the configured CAPEX workflow.
+13.	If routing fails after save, the legacy application deletes the request; the new design must instead use an atomic transaction so incomplete requests are not committed. (Target proposal)
+14.	Returned CAPEX requests can be corrected and resubmitted when eligible.
+7.3 Approval Processing
+15.	Approver opens an assigned request; request details are read-only.
+16.	System verifies that the user has a pending approval at the current workflow step and has not already acted at that step.
+17.	Action panel is displayed only when assignment, status and workflow rules permit it.
+18.	Approver selects an available action. Remarks are required for approve, reject and revert; forward requires a recipient and remarks.
+19.	System records the action, updates workflow progress/status and triggers applicable email notification.
+20.	EC progress is calculated using the configured quorum and any required CEO/CFO participation.
+7.4 Revert and Resubmission
+•	A revert action requires remarks/comments.
+•	An EC-stage revert returns the request to the last Phase-1 approver.
+•	The requester sees the reverted request in My Request and can edit it.
+•	In My Approvals, only the designated revert recipient receives editable access; other approvers receive read-only view.
+•	Selective revert to a chosen previous approver is supported for eligible requests; eligibility criteria remain an open decision.
+•	Workflow resume and Phase-2 resubmission are separate documented operations in the legacy implementation; the exact target state machine must be approved.
+8. Detailed Functional Requirements
+8.1 Request Creation – Common Requirements
+ID	Requirement	Evidence / Note
+FR-REQ-001	The system shall generate a unique request reference number.	Source-confirmed; reference-generation algorithm should be redesigned and approved.
+FR-REQ-002	The system shall populate requester, department, preparer, location, request date and user identity from authenticated context/master data.	Source-confirmed
+FR-REQ-003	The system shall require request type, category, sub-category, vendor and currency.	Source-confirmed for OPEX; CAPEX has its own required classification rules.
+FR-REQ-004	The system shall provide charge allocation to branches and Head Office departments.	Source-confirmed
+FR-REQ-005	The system shall support invoice/quotation rows and calculate the invoice total.	Source-confirmed
+FR-REQ-006	The system shall require invoice total to equal approval amount and be greater than zero.	Source-confirmed
+FR-REQ-007	The system shall calculate and display PKR equivalent using the selected currency's configured PKR rate.	Source-confirmed; formula/rounding are open decisions.
+FR-REQ-008	The system shall capture GST/WHT flags and values and selected Sales Tax Authorities where applicable.	Source-confirmed; mandatory status differs by form.
+FR-REQ-009	The system shall support required-document checklist, uploads and conditional attachment validation.	Source-confirmed
+FR-REQ-010	The system shall save request, child rows, selected authorities and workflow initiation consistently.	Target proposal: one transaction boundary.
+
+8.2 OPEX-Specific Requirements
+•	Non-recurring expenses require expenditure justification.
+•	Quotation 1 is always required. Quotations 2 and 3 are required when Three Quotations Attached is selected; otherwise comments are required for missing optional quotations.
+•	Already Approved requires an approved-document attachment.
+•	Tax-exemption and GRN documents are required when their respective options are selected.
+•	OPEX captures accrued amount, amount, last approved amount, YTD and MTD expenses, recurring status, budgeted/unbudgeted flags and term of payment.
+•	OPEX captures previous expense summary rows and branch / Head Office charge allocations.
+•	OPEX supports add-vendor modal through the department vendor capability; the exact OPEX modal field map is not separately supplied.
+8.3 CAPEX-Specific Requirements
+•	New CAPEX requests are restricted to Admin, Information Technology and Digital departments in the reference implementation; the target must make this an institution configuration, not a code constant.
+•	Category and sub-category are required; selecting Other requires CategoryOther and/or SubcategoryOther.
+•	Request type and Sales Tax Authority selection are required.
+•	Invoice total, approval amount and total charges must be positive and equal.
+•	Item-wise details are mandatory before proceeding.
+•	Warranty date cannot be in the past.
+•	Unbudgeted or over-budget requests require a reason of at most 500 characters.
+•	CAPEX captures purchase nature, warranty, finance date/comment, budget comments, terms and conditions, asset classification flags and values.
+•	CAPEX item-wise rows include actual and budget rates/units/amounts and system-calculated variances; exact formulas are not documented.
+8.4 Register Requirements
+•	Each register shall provide My Request and My Approvals views.
+•	Search/filter by reference, expense/request type, status, date range and Head Office/branch or department.
+•	Default date range is previous 30 days through current date.
+•	Data must be scoped to the authenticated user's permitted visibility.
+•	Returned request edit destination depends on creator or designated revert-recipient identity.
+•	Excel export is supported for filtered results.
+•	Print/PDF is available only for qualifying approved requests in My Request; exact eligibility conditions are open.
+8.5 Approval Requirements
+•	Approval pages display request details read-only, allocations, checklist, attachments and milestone/history.
+•	Actions are visible only for a valid pending assignment and current workflow state.
+•	Approve, reject and revert require remarks; forward requires a selected recipient and remarks.
+•	EC users may approve, reject or revert when assigned and pending; an EC user cannot act twice at the same step.
+•	CEO may approve or revert but cannot reject an EC request.
+•	EC revert requires comments and routes back to the last Phase-1 approver.
+•	EC section is hidden when there is no applicable EC workflow, including department-head-limit and superseded workflows.
+8.6 Configuration Requirements
+Module	Requirements / Validations
+FM-07 Category	Add, edit, activate/deactivate, delete, list and audit. Active category names unique. Cannot delete while sub-categories exist.
+FM-07 Sub-category	Add, edit, activate/deactivate, delete, list and audit. Sub-category linked to category; active name unique within category.
+FM-07 Delegation Matrix	Configure category, sub-category, OPEX/CAPEX nature, recommending authority(ies), approver type(s), EC level(s), CEO/CFO/HOD and amount limits. Require category, nature, at least one recommending authority and at least one approver type. Positive amounts, max two decimals, non-overlapping EC ranges, no duplicate active category/sub-category/nature rule.
+FM-08 EC Member Pool	Add/edit/activate/deactivate members/designations. Prevent duplicate member/designation; direct user to reactivate inactive existing record. Only one active CEO, CFO and Head of Admin & GSD.
+FM-08 Approval Levels	Configure name, amount lower/upper bounds, selected EC members, required member count, minimum approvals and optional required CEO/CFO. Minimum approvals cannot exceed member count; lower bound < upper bound; at least one approver; required CEO/CFO must be assigned; max 10 selected EC members for new levels; edit selected count must match configured count.
+FM-09 Currency	Code, name and PKR rate required. Uppercase and unique code; code locked during edit; rate numeric up to four decimals; status changes require confirmation; deletion may be blocked when currency is in use.
+FM-10 Department Head Limit	One General Delegation record only, including inactive record; update/reactivate existing. PKR amount > 0 and max two decimals. Description optional up to 500 characters. At/below threshold routes to Phase 1 only.
+FM-11 Recommending Authority	Title, department and user required. Title letters/numbers/spaces, max 200 characters. User list depends on department. Title read-only on edit; referenced authority cannot be deleted; status/delete confirmation.
+FM-13 Exceeding Limit	One record per nature (OPEX/CAPEX), amount > 0 and max two decimals, optional description max 255 characters, status confirmation. Whether threshold is enforced in routing is unresolved.
+
+9. Business Rules and Validation Catalogue
+Rule Group	Rule Summary
+OPEX	Required request type/category/sub-category/vendor/currency; invoice total equals approval amount and > 0; non-recurring requires justification; conditional quotations and attachments.
+CAPEX	Required type/category/sub-category/STA; Other values required when selected; invoice/approval/charge totals equal and > 0; item details mandatory; warranty date not past; unbudgeted/over-budget reason required, max 500.
+Routing	At/below Department Head limit → Department Head only; above → Phase 1 then configured recommending authority and EC route. Default PKR 20,000 exists in legacy helper when no configured limit.
+Delegation matrix	Active category/sub-category/nature combination unique; EC amount ranges cannot overlap; configured amount limits positive, max two decimals.
+EC	Minimum approval count <= required member count; lower amount < upper amount; at least one approver; single active CEO/CFO/HOD; member count restrictions.
+Currency	Unique uppercase code; rate max four decimals; cannot delete in-use currency.
+Registers	Default prior-30-day range; own requests/approval items scoped to user; edit rights for reverted items depend on creator/revert recipient.
+Reporting	OPEX/CAPEX/both; date and amount ranges valid; status summary cards filter results; export max 10,000 matching records.
+Exceeding limits	One configuration per OPEX/CAPEX nature; enforcement in live routing not verified.
+
+10. Approval and Delegation Framework
+10.1 Documented High-Level Route
+The documented normal route is: Request Submission → Department Head / Unit Head (Phase 1) → Recommending Authority (where configured) → Expense Committee level(s) (Phase 2), with CEO and/or CFO participation when configured.
+10.2 Department Head Limit
+•	Approval amount at or below the configured General Delegation limit routes to the Department Head only (Phase 1).
+•	Approval amount above the limit proceeds through Phase 1 and then the configured later approval route.
+•	Legacy helper default is PKR 20,000 when no configured limit is available.
+10.3 EC Levels and Quorum
+•	EC levels have configured amount ranges, selected members, required EC member count and minimum approval count.
+•	The reference narrative describes Levels 1–3 as descending approval intensity; exact amount boundaries and relationship to configurable EC levels are not verified.
+•	Required CEO/CFO participation is configured at EC level; CEO cannot reject. CFO action restrictions need confirmation.
+10.4 Standalone Approvals
+Standalone CEO and Head of Admin & GST (HOD) routing, and CEO/CFO standalone approval limits, are described in the product narrative. Their precise sequence, limits, interaction with EC levels and action permissions are not sufficiently defined. These must not be implemented by assumption.
+10.5 Approval State Machine
+The source names Pending, Approve, Reject, Revert and Forward; CAPEX also uses Submitted. The complete state machine, terminal statuses, allowed transitions, cancellation/deletion policy and concurrency behaviour are not supplied. A formally approved state-transition matrix is a release prerequisite.
+Action	Documented Permission / Constraint
+Approve	Unit Head and assigned EC member; CEO can approve. Remarks required.
+Forward	Unit Head; recipient required and remarks required. EC/CEO forward permissions not stated.
+Reject	Unit Head and EC member; CEO cannot reject EC request. Remarks required.
+Revert	Unit Head, EC member and CEO as described; remarks/comments required. EC revert returns to last Phase-1 approver.
+Edit / Resubmit	Creator from My Request or designated revert recipient from My Approvals for returned requests.
+
+11. Data and Information Requirements
+11.1 Core Business Entities
+Entity	Key Information / Relationships
+Client / Institution	Target proposal: client identity, tenant configuration, branding, feature settings and isolated business data.
+User / Department / Branch	Reference master data currently sourced from ApplicationPanel; target integration or local master-data strategy is open.
+Category / Sub-category	Sub-category belongs to category; classification appears on the relevant OPEX/CAPEX form.
+Delegation Matrix Rule	Category, sub-category, expense nature, recommending authority, approver type, EC level and amount constraints.
+EC Member / Approval Level	Member designation, amount range, member mapping, quorum, CEO/CFO requirement.
+Currency	Currency code, name, PKR rate and active status.
+OPEX Request	Header, expense flags, vendor, currency, invoices, summary, charges, attachments, STA and workflow.
+CAPEX Request	Header, finance and budget fields, classification, invoices, item details, budget summary, charges, attachments, STA and workflow.
+Approval Workflow / Action Log	Step, assigned approver, action, remarks, status, timestamp and history.
+Audit Event	Configuration/request event, actor, timestamp, old/new values and client context where available.
+
+11.2 Reference Data and Integration
+The legacy implementation uses ApplicationPanel users, departments and branches; a second AppPanelDB department reference is used by vendor insertion. The target product must decide whether client master data is integrated through a defined adapter/API, synchronized into EDM, or maintained locally. No external ERP, GL or core banking business integration is documented.
+11.3 Data Integrity
+•	Use relational constraints for mandatory relationships, unique active business keys and delete guards.
+•	Persist request header and child rows atomically.
+•	Use decimal types with explicit precision/scale for money and rates.
+•	Retain historical configuration snapshots or effective-dated references so later configuration changes do not silently alter previously submitted request routing. (Target proposal; business approval required.)
+•	Use optimistic locking or equivalent protection to prevent simultaneous conflicting approval actions. (Target proposal.)
+12. Reporting, Notifications and Audit
+12.1 Operational Registers
+•	OPEX and CAPEX registers show own requests and assigned approvals.
+•	Search filters include reference, type, status, date range and Head Office/branch/department.
+•	CAPEX list columns include reference, vendor, request date, type, amount and status.
+•	Excel export is supported; eligible approved requests can be printed or output to PDF.
+12.2 Management Reporting
+•	Summary totals and status-based counts/PKR amounts: pending, approved, rejected, forwarded and reverted.
+•	Filters: request type (OPEX/CAPEX/both), status, date, department, category, sub-category, currency, amount range, vendor/reference/preparer search.
+•	Sorting, paging, summary-card filtering, request detail links and category/sub-category analytics.
+•	Excel export is limited to 10,000 records and requires matching data.
+12.3 Notifications
+Email notifications are documented at initial request generation and subsequent approval steps, using role/phase-specific templates. Exact template text, event matrix, retry policy, sender identity, failure handling and notification preferences are not supplied.
+12.4 Audit Requirements
+•	Configuration audit history exists for categories, sub-categories, amount ranges, delegation matrix, EC members/levels, currency, Department Head limit, Recommending Authority and exceeding limits.
+•	Request traceability includes Phase-1 workflow actions, EC step progress, EC actions/comments, milestones/timeline and cross-request audit trail.
+•	User identity and IP address are captured on request save; timestamps are system/database generated in the reference.
+•	Target design should record actor, action, entity, entity ID, timestamp, correlation/request ID, before/after values where appropriate, and source IP where legally permitted.
+13. Security and Access Control
+The reference implementation has authentication/session checks in many pages but does not establish a complete role-based permission model. Some configuration pages have no role check in page source. The reporting module hard-codes every signed-in user as Finance_Admin and disables intended role checks. This is a material control gap.
+13.1 Target Requirements
+•	Require authenticated access to all application pages and server endpoints.
+•	Enforce authorization on the server for every operation; hiding a JSP button is not an authorization control.
+•	Define institution-configurable roles and permissions for request creation, viewing, approval, configuration, reporting, audit viewing and export.
+•	Enforce record-level access: requester ownership, current workflow assignment, designated revert recipient, department restrictions and tenant boundary.
+•	Prevent duplicate or replayed approval actions through transactional state checks.
+•	Protect vendor CNIC, NTN, STRN, contact number and address according to the client's security/privacy policy.
+•	Never log passwords, authentication tokens, full sensitive identifiers or document contents.
+•	Define session timeout, password/SSO policy, encryption, retention and backup requirements with the client security team.
+These security controls are target proposals and must be approved by the bank/client security stakeholders; the reference document does not provide encryption, masking, retention or certification requirements.
+14. Non-Functional Requirements
+The source document does not supply measured performance targets, availability SLAs, RPO/RTO, concurrent-user volumes or formal usability/accessibility standards. The following are required NFR categories for business and technical sign-off; numeric targets remain open.
+NFR ID	Category	Requirement / Decision Needed
+NFR-01	Availability	Agree uptime target, maintenance window and service hours.
+NFR-02	Performance	Set page response, search, report and workflow action targets under agreed data volumes.
+NFR-03	Scalability	Support multiple client institutions and growth in users, requests, attachments and audit records.
+NFR-04	Security	Approve authentication, authorization, encryption, masking, secrets management and security testing.
+NFR-05	Audit	Audit events must be queryable, exportable where permitted and protected from unauthorised modification.
+NFR-06	Reliability	Use transactional workflow updates, idempotent action handling and recoverable email dispatch.
+NFR-07	Maintainability	Layered Spring Boot architecture, documented domain services, automated tests and database migrations.
+NFR-08	Compatibility	Support agreed browsers, server OS, Java/Spring Boot/JSP versions and deployment topology.
+NFR-09	Backup / DR	Agree backup frequency, retention, RPO, RTO and restore-test cadence.
+NFR-10	Localization	Confirm supported languages, date/number formats, time zones and RTL requirements.
+NFR-11	Accessibility	Agree accessibility standard and keyboard/screen-reader expectations.
+NFR-12	Observability	Structured logs, correlation IDs, health checks, metrics and operational alerts.
+
+15. Target Solution and Configuration Requirements
+15.1 Target Technology
+Layer	Target
+Web UI	JSP server-rendered embedded UI; reusable layouts, tags/fragments and client-side enhancement only where useful.
+Application	Java Spring Boot modular monolith initially; controllers, application services, domain services, repositories and integration adapters.
+Persistence	PostgreSQL with normalized relational model, foreign keys, unique constraints and database migrations.
+Workflow	Application-layer workflow/routing engine; configuration-driven rules; transactional action processing.
+Reporting	Dedicated query/service layer with pagination, filters, aggregation and export.
+Files	Abstract document-storage service; storage provider is configurable after client decision.
+Notifications	Email adapter with templates, outbox/retry mechanism and configurable SMTP/provider settings.
+Operations	Externalized environment configuration, secrets management, health/metrics/logging and repeatable deployment.
+
+15.2 Architecture Principles
+•	Keep business rules and workflow decisions in Java domain/application services; use PostgreSQL for persistence, relational integrity, indexes and transactional guarantees.
+•	Do not reproduce the legacy stored-procedure architecture one-for-one. Reimplement the business behaviour, not the old technical coupling.
+•	Use a modular monolith as the initial deployment shape unless scale or organizational boundaries justify service decomposition.
+•	Separate OPEX and CAPEX domain-specific fields while reusing common request lifecycle, attachment, allocation, approval, audit and reporting capabilities where semantics match.
+•	Keep client-specific differences in configuration/strategy/adapter layers, not scattered if/else conditions or hard-coded constants.
+•	Use database migration scripts (e.g. versioned migrations) as the controlled schema change mechanism.
+•	Use DTO validation at request boundaries and domain validation in services; never trust client-side validation alone.
+•	Use transactional boundaries around request submission, route creation, approval action, revert and resubmission.
+15.3 Multi-Client / Tenant Configuration
+The requester explicitly requires a product that can be sold to multiple clients with minimal code changes. The following are target-product requirements, not confirmed features of the legacy Albaraka application.
+Config Area	Required Behaviour
+Institution identity	Client/institution name, short name, legal identity and product label.
+Branding	Logo, favicon, login branding, header/footer identity and email branding.
+Theme	Primary/secondary/accent colours, typography choice and supported light/dark theme where approved.
+UI presentation	Configurable labels, date/number/currency formats and optional module visibility.
+Business configuration	Allowed departments, currency defaults, department-head threshold, approval levels, limits, approver designations and request-specific rules.
+Workflow configuration	OPEX/CAPEX route definitions, standalone approvers, EC quorum and effective dates.
+Notification configuration	Sender identity, templates, SMTP/provider configuration and event enablement.
+Document configuration	Checklist labels, required document rules, allowed file types and size limits.
+Security configuration	Roles, permissions, session policy, password/SSO options and data retention settings.
+Tenant isolation	A tenant must only access its own configuration, requests, files, reports and audit data.
+
+Architecture decision required: choose between (A) one PostgreSQL database with tenant_id on tenant-owned records, (B) schema-per-tenant, or (C) database-per-tenant. For banking clients with strict data isolation, schema/database-per-tenant may be preferable, but final selection depends on hosting, regulatory, operational and cost requirements. Do not mix tenant-owned data without a formally approved isolation model.
+15.4 Branding and Configuration Administration
+•	Logo/theme changes should be manageable by an authorised client administrator or platform operator without code deployment.
+•	Branding assets and theme tokens should be stored as client configuration with safe defaults.
+•	Configuration changes should be audited and should not retroactively modify submitted request data.
+•	Configuration should be separated into platform-level settings, tenant-level settings and workflow/business settings.
+•	Secrets such as database credentials and SMTP passwords must be managed outside ordinary UI configuration and stored in a secure secret store/environment.
+15.5 Suggested Application Modules
+Module	Responsibility
+identity-access	Authentication integration, users, roles, permissions and tenant context.
+tenant-configuration	Institution profile, logo, theme, locale, feature/module settings.
+master-data	Departments, branches, employees, vendors, currencies, tax authorities and request types.
+expense-configuration	Categories, sub-categories, delegation matrix, limits and recommending authorities.
+committee-management	EC member pool, approval levels, quorum and CEO/CFO assignments.
+expense-request	OPEX/CAPEX forms, validation, allocations, invoices, budget details and attachments.
+workflow-engine	Route evaluation, step assignment, approval actions, revert, resume and resubmission.
+notification	Email templates, event dispatch, retry and delivery history.
+reporting-audit	Registers, dashboards, exports, request history and configuration audit.
+
+16. Migration and Legacy Replacement
+•	Perform a source-to-target mapping of all OPEX/CAPEX headers, child tables, configuration, workflow history, audit logs, attachments and master references.
+•	Preserve business identifiers/reference numbers where the business requires historical continuity.
+•	Validate legacy data quality, orphan records, duplicate configuration, missing users/departments and inconsistent status values before migration.
+•	Reconcile legacy tables such as tbl_requests, tbl_requests_history, tbl_status, tbl_checklist, tbl_ho_opex_configs and tbl_approval_steps before deciding whether to migrate or retire them.
+•	Reconcile tbl_ExpenseCommittee versus tbl_ECMemberPool and the alternate/shared EC log tables.
+•	Do not migrate stored procedures as the target architecture. Extract and test their business outcomes and implement equivalent Java services.
+•	Define cutover, reconciliation totals, rollback plan, parallel-run strategy (if required) and business sign-off.
+Migration is a separate workstream. The source does not provide a complete data dictionary, SQL schema, foreign keys, attachment storage details or production data volume.
+17. Acceptance Criteria and Traceability
+ID	Acceptance Criteria
+AC-01	A configured active OPEX category/sub-category is available only to the OPEX request form; CAPEX configuration is available only to CAPEX, consistent with expense nature.
+AC-02	A request cannot be submitted if mandatory fields, amount equality, positive amount or conditional attachment rules fail.
+AC-03	A valid request is saved with its child records and a reproducible configured approval route.
+AC-04	A request at or below the configured department-head threshold follows the approved Phase-1-only rule.
+AC-05	A request above the threshold follows the business-approved configured route, including recommending authority and EC quorum where applicable.
+AC-06	Only a currently assigned eligible approver can act; duplicate action attempts are rejected safely.
+AC-07	CEO cannot reject an EC request.
+AC-08	EC revert requires comments and returns to the last Phase-1 approver.
+AC-09	Only the creator or designated revert recipient can edit a returned request in the corresponding register context.
+AC-10	Configuration changes are audited with actor and timestamp; old/new values are captured where applicable.
+AC-11	Reports support the approved filters, status metrics, category analytics and 10,000-record export limit unless the business formally changes it.
+AC-12	Tenant A cannot view or modify Tenant B data, branding, attachments, reports or configuration.
+AC-13	Changing a tenant's logo/theme is reflected without rebuilding or redeploying application code.
+AC-14	The application has automated tests for request validation, route selection, quorum, action permissions, revert and tenant isolation.
+
+17.1 Requirement Traceability
+The source-to-target traceability baseline is FM-01 through FM-13 and the original rule families OPX-BR, MYA-BR, OAP-BR, CPX-BR, CAP-BR, CSC-BR, EXC-BR, CUR-BR, DHL-BR, RCA-BR, RPT-BR and EXL-BR. Each implementation story and test case should retain the applicable source module/rule identifier.
+18. Open Decisions, Gaps and Risks
+ID	Open Item / Risk	Required Business Decision
+OD-01	Relationship between narrative Levels 1–3 and configurable EC approval levels is not verified.	Approve exact mapping, level semantics and amount-band selection.
+OD-02	Precise route order/combination for standalone CEO, CFO and HOD relative to EC levels is unclear.	Provide signed routing decision table for all route patterns.
+OD-03	Standalone CEO/CFO limits and standalone HOD mechanics are incomplete.	Define trigger, threshold, approver, action set and completion behaviour.
+OD-04	CFO action restrictions are not stated.	Confirm approve/reject/revert/forward permissions and remarks rules.
+OD-05	Exceeding-limit configuration exists but live enforcement is not verified.	Decide whether FM-13 affects routing, validation, warning only or is retired.
+OD-06	Department Head limit is described as General Delegation; category-specific fields appear in some related data/query references.	Confirm whether one global threshold is sufficient or category/department thresholds are required.
+OD-07	PKR conversion formula and rounding behaviour are not stated.	Confirm rate direction, multiplication/division, decimal scale and rounding mode.
+OD-08	CAPEX item-wise amount/variance formulas are not stated.	Confirm formulas and rounding.
+OD-09	Full request status state machine and terminal states are missing.	Approve statuses, transitions, cancellation, deletion and reopen rules.
+OD-10	Selective revert eligibility conditions are missing.	Define who can revert, which steps can be selected and restrictions.
+OD-11	Authentication mechanism is inherited from Albaraka portal; no reusable identity integration is specified.	Choose local authentication, SSO/AD/OIDC/SAML or client adapter.
+OD-12	No verified role-permission matrix exists in the source.	Approve role-to-permission and data-scope matrix.
+OD-13	Finance approver role is not defined although CAPEX finance fields exist.	Clarify whether finance fields are entered by requester or a separate finance approver.
+OD-14	Physical attachment storage, file limits and retention are not documented.	Choose storage provider, size/type policy, encryption and retention.
+OD-15	Email templates, SMTP/provider settings, retries and failure policy are incomplete.	Approve event matrix, template ownership and delivery handling.
+OD-16	Legacy master data dependencies and duplicate user/department stores exist.	Approve master-data source and integration contract.
+OD-17	EC member-pool and committee tables differ; EC log tables have alternate variants.	Reconcile actual source-of-truth tables and historical records.
+OD-18	Legacy object references include unclassified/legacy tables and naming inconsistencies.	Complete SQL schema and code impact analysis before migration.
+OD-19	No performance, availability, DR or security numeric targets are supplied.	Obtain NFR/SLA sign-off from client IT/security.
+OD-20	Multi-tenancy model and client-specific configuration scope are not in legacy source.	Select tenant isolation model and platform-vs-tenant admin responsibilities.
+OD-21	CAPEX allowed departments and PKR 20,000 fallback are hard-coded in legacy implementation.	Externalize as institution configuration and define safe defaults.
+OD-22	Print/PDF eligibility conditions and export format details for configuration logs are incomplete.	Confirm print criteria, formats and retention.
+
+The reference specification states that 16 contradictions were identified (C-01 to C-16), but the supplied chapter content does not provide a fully enumerated contradiction register in the visible body. The specific discrepancies that are described in the document are therefore represented above as open decisions only where their substance is available; a full reconciliation requires the original source code/SQL or a separate contradiction register.
+19. Delivery Phasing
+Phase	Scope	Exit Condition
+0 – Discovery & Sign-off	Resolve routing, status, roles, tenant model, data ownership, attachments, NFRs and migration decisions.	Approved BRD and decision log.
+1 – Platform Foundation	Spring Boot/JSP foundation, PostgreSQL schema, tenant context, identity/access, institution branding and configuration framework.	Tenant isolation and base configuration tests pass.
+2 – Master & Workflow Configuration	Categories, sub-categories, currency, authorities, EC pool/levels, Department Head limit and EDM matrix.	Configuration validation/audit passes; route test matrix approved.
+3 – OPEX	OPEX form, checklist, register, approval, revert/resubmit, notifications.	OPEX end-to-end UAT passed.
+4 – CAPEX	CAPEX form, asset allocations, budget/item details, register, approval, finance fields and revert/resubmit.	CAPEX end-to-end UAT passed.
+5 – Reporting & Audit	Registers, dashboards, analytics, exports, print/PDF and audit screens.	Report reconciliation and access tests passed.
+6 – Migration & Cutover	Legacy mapping, migration rehearsal, reconciliation, production deployment and support handover.	Business sign-off and cutover checklist complete.
+
+Appendix A – OPEX and CAPEX Save Parameter Baseline
+The legacy OPEX save procedure is documented with 46 parameters; CAPEX with 57 parameters. These are retained here as a source-to-target mapping checklist, not as a recommendation to reproduce a single-procedure save design.
+A.1 OPEX – 46 Parameters
+#	Parameter
+1	ReqID
+2	ReqDate
+3	ReferenceID
+4	ReqDepartment
+5	PrepardBy
+6	Location
+7	Type
+8	EXPENSE_CHARGE_TO_BRANCH
+9	EXPENSE_CHARGE_TO_HEAD_OFFICE
+10	Vendor
+11	currency
+12	otherCurrency
+13	ApprovalAmount
+14	GST
+15	WHT
+16	GSTValue
+17	WHTValue
+18	STAID
+19	@STA_LIST
+20	AmountInWords
+21	LastApproved
+22	Accrued
+23	Amount
+24	InvoiceAttached
+25	INVOICES_QUOTATION
+26	PREVIOUS_EXPENSE_SUMMARY
+27	YTD_EXPENSE_AMOUNT
+28	MTD_EXPENSE_AMOUNT
+29	isRecurring
+30	comments
+31	ATACHMENTS
+32	UnitHead
+33	TOPayment
+34	UID
+35	IPAddress
+36	ThreeQuotationsAttached
+37	AlreadyApproved
+38	CategoryID
+39	SubcategoryID
+40	CategoryOther
+41	SubcategoryOther
+42	PreserveStatus
+43	Budgeted
+44	UnBudgeted
+45	IsTaxExemption
+46	GRN
+
+A.2 CAPEX – 57 Parameters
+#	Parameter
+1	ReqID
+2	ReqDate
+3	ReferenceID
+4	ReqDepartment
+5	PrepardBy
+6	Location
+7	Type
+8	EXPENSE_CHARGE_TO_BRANCH
+9	EXPENSE_CHARGE_TO_HEAD_OFFICE
+10	Vendor
+11	currency
+12	otherCurrency
+13	ApprovalAmount
+14	GST
+15	WHT
+16	GSTValue
+17	WHTValue
+18	STAID
+19	@STA_LIST
+20	AmountInWords
+21	INVOICES_QUOTATION
+22	PREVIOUS_EXPENSE_SUMMARY
+23	comments
+24	ATACHMENTS
+25	UnitHead
+26	UID
+27	IPAddress
+28	ThreeQuotationsAttached
+29	AlreadyApproved
+30	Nature
+31	Budget
+32	Warranty
+33	WarrantyDate
+34	ReasonBUDGET
+35	TermAndCond
+36	FinanceDate
+37	BudgetComments
+38	FinanceComment
+39	Classification
+40	IsLeaseholdImprovement
+41	LeaseholdImprovementValue
+42	IsFurnitureAndFixture
+43	FurnitureAndFixtureValue
+44	IsOfficeEquipment
+45	OfficeEquipmentValue
+46	IsComputerEquipment
+47	ComputerEquipmentValue
+48	IsComputerSoftware
+49	ComputerSoftwareValue
+50	CAPEX_BUDGET_SUMMARY
+51	CategoryID
+52	SubcategoryID
+53	CategoryOther
+54	SubcategoryOther
+55	PreserveStatus
+56	IsTaxExemption
+57	GRN
+
+Appendix B – Core Form Field Inventory
+The full reference field IDs are to be maintained in the detailed functional specification and UI-to-domain mapping. The following groups preserve the source's field coverage.
+Form	Field Group	Key Fields / Controls
+OPEX	Header	txtReference, txtDate, lblRequestingDepartment, prepardBYDepartment, txtLocation, ddlType, ddlCategory, ddlSubcategory, txtCategoryOther, txtSubcategoryOther.
+OPEX	Allocations	ddl_MECTB_Branch, txt_MECTB_Amount, grd_MECTB, ddl_MECTHO_Branch, txt_MECTHO_Amount, grd_MECTHO, cumulative totals.
+OPEX	Vendor / Currency / Tax	ddlVendor, ddlCurrency, txtOtherCurrency, txtApprovalAmount, txtPKRAmount, chkGST/txtGSTValue, chkWHT/txtWHTValue, lst_STA, txtAmountInWords.
+OPEX	Business Flags	ThreeQuotationsAttached, AlreadyApproved, TaxExemption, GRN, Accrued, Amount, LastApproved, InvoiceAttached, YTD/MTD, Recurring, Budget, TOPayment, comments, UnitHead.
+OPEX	Invoices / Summary / Checklist	Invoice number, amount, date, nature, reason; previous expense summary; grdChecklist and ATACHMENTS.
+CAPEX	Header	txtReference, txtDate, department/preparer/location, ddlType, ddlCategory, ddlSubcategory, Other category/sub-category fields.
+CAPEX	Asset Book	Branch and Head Office asset allocations, row grids and calculated totals.
+CAPEX	Vendor / Currency / Tax	Vendor modal fields including contact, CNIC, NTN, STRN, address; currency, amount, PKR amount, GST/WHT, STA.
+CAPEX	Business / Finance	Nature, Budget, Warranty, WarrantyDate, ReasonBUDGET, TermAndCond, FinanceDate, BudgetComments, FinanceComment, UnitHead.
+CAPEX	Classification / Item Details	Leasehold, furniture, office equipment, computer equipment, computer software flags/values; actual/budget rates and units; calculated amounts/variances; CAPEX_BUDGET_SUMMARY.
+
+Appendix C – Legacy Database and Procedure Inventory Notes
+The source inventories the following major data groups: OPEX request/header, workflow, EC workflow/log, invoice, summary, attachment, Head Office and branch charges, STA; equivalent CAPEX groups plus budget summary; category/sub-category, delegation matrix, approval levels and members, EC committee, recommending authority, Department Head limit, exceeding limit, currency, monthly expense history; configuration audit logs; user/department/branch master data; and legacy request/status/checklist tables.
+The source also documents module-specific stored procedures for request insert/view, workflow actions, revert/resume/resubmit/delete, dropdown loaders, configuration CRUD/toggle/delete, audit retrieval and reporting. Exact procedure parameters/result sets are generally not supplied except for the two request-save parameter maps. The target implementation should use these inventories as migration and behaviour-traceability references, not as an instruction to retain stored procedures.
+Appendix D – Source Limitations and Sign-off
+•	Source document version 0.1 is a draft for review, dated 30 October 2026.
+•	The source states it was compiled from product narrative/business analysis, stored-procedure/table inventories and OPEX/CAPEX form field reference maps.
+•	The source identifies documentation gaps around schema data types, foreign keys, procedure parameters/result sets, routing algorithm details, status state machine, authentication/authorization, deployment and NFRs.
+•	The source QA record states all 13 modules were covered, business rules were preserved, OPEX 46/CAPEX 57 parameters were preserved, and 16 contradictions were identified.
+Sign-off Role	Name	Signature	Date
+Business Owner			
+Finance / Expense Control			
+IT / Solution Architecture			
+Information Security			
+Product Owner			
+
