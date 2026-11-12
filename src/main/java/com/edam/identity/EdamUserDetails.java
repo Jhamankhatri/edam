@@ -8,20 +8,27 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 /**
- * Development-only {@link UserDetails} that pairs the application {@link EdamPrincipal}
- * with an encoded credential for {@code DaoAuthenticationProvider}.
+ * {@link UserDetails} wrapper that pairs the application {@link EdamPrincipal} with an optional
+ * encoded credential, so that both identity adapters can return the same type.
  *
- * <p>Production identity adapters authenticate externally and construct an
- * {@link EdamPrincipal} directly, so this wrapper never appears in the production model.
- * {@link #toString()} deliberately omits the password hash.
+ * <h2>Why a wrapper at all</h2>
+ * Spring Security's contract requires {@code getPassword()}, while {@link EdamPrincipal} deliberately
+ * carries no credential material. Keeping the password in a separate, short-lived object means the
+ * principal placed in the security context can never leak a hash when it is serialised, logged or
+ * put in a session.
+ *
+ * <p>The database adapter returns this wrapper with a {@code null} password: it identifies a user
+ * from stored memberships but does not verify credentials, because BRD OD-24 leaves the identity
+ * provider (and therefore the credential model) to the bank. {@link #toString()} deliberately omits
+ * the hash in both cases.
  */
-public final class DevUserDetails implements UserDetails {
+public final class EdamUserDetails implements UserDetails {
 
 	private final transient EdamPrincipal principal;
 
 	private final transient String encodedPassword;
 
-	DevUserDetails(EdamPrincipal principal, String encodedPassword) {
+	public EdamUserDetails(EdamPrincipal principal, String encodedPassword) {
 		this.principal = principal;
 		this.encodedPassword = encodedPassword;
 	}
@@ -68,7 +75,7 @@ public final class DevUserDetails implements UserDetails {
 
 	@Override
 	public String toString() {
-		return "DevUserDetails[" + this.principal.username() + "]";
+		return "EdamUserDetails[" + this.principal.username() + "]";
 	}
 
 }

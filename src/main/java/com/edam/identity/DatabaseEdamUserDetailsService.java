@@ -13,10 +13,8 @@ import com.edam.iam.UserMembershipRepository;
 import com.edam.institution.Institution;
 import com.edam.institution.InstitutionRepository;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 
 /**
@@ -33,65 +31,75 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
  *       approved.</li>
  * </ul>
  *
+ * <h2>Precedence</h2>
+ * Only one identity adapter may be active. This class is a plain component, not a
+ * {@code @Configuration}, so it cannot race with another conditional bean definition; the choice is
+ * made in one place by {@code IdentityConfiguration}. This also fixes a real startup failure:
+ * annotating the class {@code @Configuration} and naming its {@code @Bean} method after the class
+ * produced two definitions with the same name.
+ *
  * <h2>Multiple memberships</h2>
  * A username may hold memberships in several institutions. All of them are loaded into the
  * principal as a set; nothing assumes a single tenant (IAM-04). A membership whose institution is
- * missing or not {@code ACTIVE} is skipped, so a deactivated tenant cannot be entered by logging
- * in.
- *
- * <h2>Failure behaviour</h2>
- * Unknown users raise {@link UsernameNotFoundException}. The message is uniform and never reveals
- * whether an account exists.
+ * missing or not operational is skipped, so a suspended tenant cannot be entered by logging in.
  */
-@Configuration(proxyBeanMethods = false)
-@ConditionalOnProperty(prefix = "edam.security.local-identity", name = "enabled", havingValue = "true",
-		matchIfMissing = true)
-public class DatabaseEdamUserDetailsService {
+public class DatabaseEdamUserDetailsService implements EdamUserDetailsService {
 
-	@Bean
-	@ConditionalOnMissingBean(EdamUserDetailsService.class)
-	EdamUserDetailsService databaseEdamUserDetailsService(UserMembershipRepository memberships,
+	private static final Logger log = LoggerFactory.getLogger(DatabaseEdamUserDetailsService.class);
+
+	private final UserMembershipRepository memberships;
+
+	private final InstitutionRepository institutions;
+
+	public DatabaseEdamUserDetailsService(UserMembershipRepository memberships,
 			InstitutionRepository institutions) {
-		return username -> {
-			List<UserMembership> active = memberships.findActiveByUsername(username);
-			if (active.isEmpty()) {
-				throw new UsernameNotFoundException("Unknown user");
-			}
-			Map<Long, Institution> byId = new LinkedHashMap<>();
-			institutions.findAll()
-				.forEach(institution -> byId.put(institution.getId(), institution));
+		this.memberships = memberships;
+		this.institutions = institutions;
+	}
 
-			Map<String, Set<String>> rolesByInstitution = new LinkedHashMap<>();
-			Map<String, Set<String>> permissionsByInstitution = new LinkedHashMap<>();
-			Set<String> institutionCodes = new LinkedHashSet<>();
-			String displayName = null;
-			String employeeId = null;
-			for (UserMembership membership : active) {
-				Institution institution = byId.get(membership.getInstitutionId());
-				if (institution == null || !institution.isActive()) {
-					// Deactivated or missing tenant: membership is not usable.
-					continue;
-				}
-				String code = institution.getCode();
-				rolesByInstitution.computeIfAbsent(code, key -> new LinkedHashSet<>())
-					.addAll(membership.roleCodes());
-				permissionsByInstitution.computeIfAbsent(code, key -> new LinkedHashSet<>())
-					.addAll(membership.permissionCodes());
-				institutionCodes.add(code);
-				if (displayName == null && membership.getDisplayName() != null) {
-					displayName = membership.getDisplayName();
-				}
-				if (employeeId == null) {
-					employeeId = membership.getEmployeeId();
-				}
+	@Override
+	public EdamUserDetails loadUserByUsername(String username) {
+		List<UserMembership> active = this.memberships.findActiveByUsername(username);
+		if (active.isEmpty()) {
+			throw new UsernameNotFoundException("Unknown user");
+		}
+		Map<Long, Institution> byId = new LinkedHashMap<>();
+		this.institutions.findAll().forEach(institution -> byId.put(institution.getId(), institution));
+
+		Map<String, Set<String>> rolesByInstitution = new LinkedHashMap<>();
+		Map<String, Set<String>> permissionsByInstitution = new LinkedHashMap<>();
+		Set<String> institutionCodes = new LinkedHashSet<>();
+		String displayName = null;
+		String employeeId = null;
+		for (UserMembership membership : active) {
+			Institution institution = byId.get(membership.getInstitutionId());
+			if (institution == null || !institution.isOperational()) {
+				log.debug("identity.membership_skipped reason=institution_not_operational institutionId={}",
+						membership.getInstitutionId());
+				continue;
 			}
-			if (institutionCodes.isEmpty()) {
-				throw new UsernameNotFoundException("Unknown user");
+			String code = institution.getCode();
+			rolesByInstitution.computeIfAbsent(code, key -> new LinkedHashSet<>())
+				.addAll(membership.roleCodes());
+			permissionsByInstitution.computeIfAbsent(code, key -> new LinkedHashSet<>())
+				.addAll(membership.permissionCodes());
+			institutionCodes.add(code);
+			if (displayName == null && membership.getDisplayName() != null) {
+				displayName = membership.getDisplayName();
 			}
-			return new DevUserDetails(new EdamPrincipal(employeeId, username,
-					displayName == null ? username : displayName, rolesByInstitution, permissionsByInstitution,
-					institutionCodes), null);
-		};
+			if (employeeId == null) {
+				employeeId = membership.getEmployeeId();
+			}
+		}
+		if (institutionCodes.isEmpty()) {
+			throw new UsernameNotFoundException("Unknown user");
+		}
+		EdamPrincipal principal = new EdamPrincipal(employeeId, username,
+				displayName == null ? username : displayName, rolesByInstitution, permissionsByInstitution,
+				institutionCodes);
+		// No credential: this adapter identifies, it does not authenticate. A provider that needs a
+		// password must obtain it from the approved identity source.
+		return new EdamUserDetails(principal, null);
 	}
 
 }

@@ -10,11 +10,8 @@ import com.edam.common.security.EdamPrincipal;
 import com.edam.common.security.EdamUserDetailsService;
 import com.edam.common.security.Permissions;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.stereotype.Component;
 
 /**
  * Development-only identity store.
@@ -33,17 +30,19 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
  * <p>The raw passwords below are development fixtures, not secrets. They are never logged and
  * must never be copied into a deployed environment.
  */
-@Configuration(proxyBeanMethods = false)
-@ConditionalOnProperty(prefix = "edam.security.dev-users", name = "enabled", havingValue = "true")
+@Component
 public class InMemoryEdamUserDetailsService {
 
 	private static Set<String> allPermissions() {
 		return Permissions.all();
 	}
 
-	@Bean
-	@ConditionalOnMissingBean(EdamUserDetailsService.class)
-	EdamUserDetailsService devEdamUserDetailsService(
+	/**
+	 * Builds the fixture store. Exposed as a factory rather than a {@code @Bean} so that
+	 * {@code IdentityConfiguration} is the only place that decides whether it is used — a conditional
+	 * bean here would race the database adapter's definition.
+	 */
+	public EdamUserDetailsService userDetailsService(
 			org.springframework.security.crypto.password.PasswordEncoder encoder) {
 		Map<String, DemoUser> users = new HashMap<>();
 
@@ -88,13 +87,13 @@ public class InMemoryEdamUserDetailsService {
 		 * {@code DaoAuthenticationProvider}. The password is hashed on first use with the
 		 * configured encoder and never leaves this object.
 		 */
-		DevUserDetails toPrincipal(org.springframework.security.crypto.password.PasswordEncoder encoder) {
+		EdamUserDetails toPrincipal(org.springframework.security.crypto.password.PasswordEncoder encoder) {
 			Map<String, Set<String>> immutablePermissions = new LinkedHashMap<>();
 			this.permissionsByInstitution
 				.forEach((institution, permissions) -> immutablePermissions.put(institution, Set.copyOf(permissions)));
 			EdamPrincipal principal = new EdamPrincipal(this.username, this.username, this.displayName,
 					this.institutionRoles, immutablePermissions, this.institutionRoles.keySet());
-			return new DevUserDetails(principal, encoder.encode(this.rawPassword));
+			return new EdamUserDetails(principal, encoder.encode(this.rawPassword));
 		}
 
 	}

@@ -120,7 +120,7 @@ public class InstitutionContext {
 		}
 		// The development adapter wraps the principal with a credential holder.
 		Object details = authentication.getPrincipal();
-		if (details != null && details.getClass().getName().endsWith("DevUserDetails")) {
+		if (details != null && details.getClass().getName().endsWith("EdamUserDetails")) {
 			try {
 				Object inner = details.getClass().getMethod("principal").invoke(details);
 				if (inner instanceof EdamPrincipal principal) {
