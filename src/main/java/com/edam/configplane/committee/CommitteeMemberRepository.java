@@ -20,4 +20,9 @@ public interface CommitteeMemberRepository extends JpaRepository<CommitteeMember
 
 	boolean existsByInstitutionIdAndDesignationAndActiveTrue(Long institutionId, CommitteeDesignation designation);
 
+	Optional<CommitteeMember> findFirstByInstitutionIdAndDesignationAndActiveTrue(Long institutionId,
+			CommitteeDesignation designation);
+
+	boolean existsByInstitutionIdAndEmployeeId(Long institutionId, String employeeId);
+
 }

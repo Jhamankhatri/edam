@@ -33,6 +33,16 @@ public enum CommitteeDesignation {
 		this.mayReject = mayReject;
 	}
 
+	/** Human-readable office name, safe to place in a business error message. */
+	public String displayName() {
+		return switch (this) {
+			case CEO -> "Chief Executive Officer";
+			case CFO -> "Chief Financial Officer";
+			case HEAD_OF_ADMIN_GSD -> "Head of Admin & GSD";
+			case MEMBER -> "committee member";
+		};
+	}
+
 	/** True when the institution may have only one active member holding this office. */
 	public boolean isSingleActiveHolder() {
 		return this.singleActiveHolder;

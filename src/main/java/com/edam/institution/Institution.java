@@ -88,6 +88,35 @@ public class Institution extends AuditableEntity {
 	@Column(name = "active", nullable = false)
 	private boolean active = true;
 
+	/** Optional longer name used on documents and reports. */
+	@Size(max = 200)
+	@Column(name = "display_name", length = 200)
+	private String displayName;
+
+	/** Address shown to users when they need help; not a credential or a secret. */
+	@Size(max = 200)
+	@Column(name = "support_email", length = 200)
+	private String supportEmail;
+
+	/** Date pattern used when presenting and exporting dates (BRD CFG). */
+	@NotBlank
+	@Column(name = "date_format", nullable = false, length = 40)
+	private String dateFormat = "dd MMM yyyy";
+
+	/** Number pattern used when presenting and exporting amounts. */
+	@NotBlank
+	@Column(name = "number_format", nullable = false, length = 40)
+	private String numberFormat = "#,##0.00";
+
+	/**
+	 * Lifecycle state (INS-01). Distinct from {@link #active}: {@code active} is a soft delete for
+	 * the institution record, while {@code status} is the governed lifecycle (a suspended
+	 * institution keeps its data and its audit trail but cannot be entered).
+	 */
+	@NotBlank
+	@Column(name = "status", nullable = false, length = 16)
+	private String status = "ACTIVE";
+
 	public String getCode() {
 		return this.code;
 	}
@@ -182,6 +211,52 @@ public class Institution extends AuditableEntity {
 
 	public void setActive(boolean active) {
 		this.active = active;
+	}
+
+
+	public String getDisplayName() {
+		return this.displayName;
+	}
+
+	public void setDisplayName(String displayName) {
+		this.displayName = displayName;
+	}
+
+	public String getSupportEmail() {
+		return this.supportEmail;
+	}
+
+	public void setSupportEmail(String supportEmail) {
+		this.supportEmail = supportEmail;
+	}
+
+	public String getDateFormat() {
+		return this.dateFormat;
+	}
+
+	public void setDateFormat(String dateFormat) {
+		this.dateFormat = dateFormat;
+	}
+
+	public String getNumberFormat() {
+		return this.numberFormat;
+	}
+
+	public void setNumberFormat(String numberFormat) {
+		this.numberFormat = numberFormat;
+	}
+
+	public String getStatus() {
+		return this.status;
+	}
+
+	public void setStatus(String status) {
+		this.status = status;
+	}
+
+	/** True when the institution may be entered by its users. */
+	public boolean isOperational() {
+		return this.active && "ACTIVE".equals(this.status);
 	}
 
 }
