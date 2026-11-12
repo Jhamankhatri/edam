@@ -61,6 +61,9 @@ public class SecurityConfig {
 	SecurityFilterChain securityFilterChain(HttpSecurity http, JsonMapper jsonMapper) throws Exception {
 		RequestMatcher[] publicMatchers = { PathRequest.toStaticResources().atCommonLocations(),
 				PathPatternRequestMatcher.pathPattern("/login"),
+				// The container's error dispatch re-enters the filter chain. Without this,
+				// an authenticated 500 would turn into a 302 to /login.
+				PathPatternRequestMatcher.pathPattern("/error"),
 				PathPatternRequestMatcher.pathPattern("/css/**"),
 				PathPatternRequestMatcher.pathPattern("/js/**"),
 				PathPatternRequestMatcher.pathPattern("/images/**"),

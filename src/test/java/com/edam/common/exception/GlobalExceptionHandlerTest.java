@@ -52,7 +52,7 @@ class GlobalExceptionHandlerTest {
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 		assertThat(response.getBody().error().code()).isEqualTo("EDAM-4001");
-		assertThat(response.getBody().error().message()).isEqualTo("Expense request '123' was not found.");
+		assertThat(response.getBody().error().message()).isEqualTo("Expense request was not found.");
 	}
 
 	@Test
