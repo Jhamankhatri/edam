@@ -19,32 +19,38 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
-
       - name: Build and test
         run: |
           set +e
           mvn verify > build.log 2>&1
           rc=$?
-          emit() { printf '::%s title=%s::%s\n' "$1" "$2" "$(printf '%s' "$3" | head -c 1200)"; }
-          # Compiler errors
-          grep -E "^\[ERROR\] /home" build.log | head -15 | while IFS= read -r l; do emit error compile "$l"; done
-          # Test failures with messages, in the order Maven prints them
-          grep -E "^\[ERROR\]   [A-Za-z].*Test\." build.log | head -20 | while IFS= read -r l; do emit error failure "$l"; done
-          # Root causes
-          grep -E "^Caused by:|^\s+Caused by:" build.log | sort -u | head -12 | while IFS= read -r l; do emit error causedby "$l"; done
-          # Application-bean / context startup failures
-          grep -E "UnsatisfiedDependency|NoSuchBean|BeanCreationException|Failed to (load|instantiate)|Error creating bean" build.log | sort -u | head -8 | while IFS= read -r l; do emit error context "$l"; done
-          # JSP / Jasper problems
-          grep -iE "jasper|jsp" build.log | grep -iE "error|exception" | sort -u | head -8 | while IFS= read -r l; do emit error jsp "$l"; done
+          python3 - <<'PY'
+          import re, textwrap
+          log = open('build.log', encoding='utf-8', errors='replace').read()
+          def emit(kind, title, msg):
+              msg = ' '.join(str(msg).split())
+              print(f"::{kind} title={title}::{msg[:1400]}")
+          # Prioritise the deepest causes.
+          for m in list(re.finditer(r'Caused by: ([\w.$]+)(?::\s*(.{0,220}))?', log))[:8]:
+              emit('error', 'caused-by', m.group(1) + ' :: ' + (m.group(2) or ''))
+          for pat in ['UnsatisfiedDependencyException', 'BeanCreationException', 'NoSuchBeanDefinitionException',
+                      'No qualifying bean', 'Failed to instantiate', 'Unable to start ServletWebServerApplicationContext',
+                      'SQL State', 'Migration .* failed', 'Schema-validation', 'missing column', 'wrong column type',
+                      'JasperException', 'Unable to compile class for JSP', 'NoClassDefFoundError', 'ClassNotFoundException',
+                      'Field .* required a bean', 'Parameter \\d+ of (constructor|method)']:
+              for m in list(re.finditer(pat, log))[:3]:
+                  line_start = log.rfind('\n', 0, m.start()) + 1
+                  line_end = log.find('\n', m.end())
+                  emit('error', 'ctx', log[line_start:line_end][:600])
+          PY
           for f in target/surefire-reports/*.txt; do
             [ -f "$f" ] || continue
-            emit notice "TEST $(basename "$f" .txt)" "$(grep -E 'Tests run' "$f" | head -1)"
+            printf '::notice title=TEST %s::%s\n' "$(basename "$f" .txt)" "$(grep -E 'Tests run' "$f" | head -1)"
           done
           exit $rc
