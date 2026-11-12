@@ -33,6 +33,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * Central translation of exceptions into {@link ApiResponse} envelopes for API clients.
@@ -149,6 +150,31 @@ public class GlobalExceptionHandler {
 		log.warn("request.no_handler path={}", ApiPaths.applicationPath(request));
 		return respond(HttpStatus.NOT_FOUND, ApiResponse.failure(ErrorCode.NOT_FOUND, ErrorCode.NOT_FOUND.safeMessage(),
 				correlationId(request), ApiPaths.applicationPath(request)));
+	}
+
+	/**
+	 * A request for a static resource that does not exist.
+	 *
+	 * <p>{@code NoResourceFoundException} is a {@link jakarta.servlet.ServletException} and an
+	 * {@link org.springframework.web.ErrorResponse}, not a handler-mapping failure, so without
+	 * this method it is caught by the catch-all and answered with 500. A missing file is a
+	 * client error; reporting it as a server error misleads monitoring and callers alike.
+	 *
+	 * <p>API clients get the JSON envelope. Other callers get an empty 404: a static resource
+	 * request must not be answered with an HTML document, and returning no body guarantees no
+	 * framework message (which names the requested path) reaches the response.
+	 */
+	@ExceptionHandler(NoResourceFoundException.class)
+	public Object handleNoResource(NoResourceFoundException ex, HttpServletRequest request) {
+		String path = ApiPaths.applicationPath(request);
+		log.warn("request.no_resource path={} resource={}", path, ex.getResourcePath());
+		if (ApiPaths.wantsApiResponse(request)) {
+			return respond(HttpStatus.NOT_FOUND, ApiResponse.failure(ErrorCode.NOT_FOUND,
+					ErrorCode.NOT_FOUND.safeMessage(), correlationId(request), path));
+		}
+		return ResponseEntity.status(HttpStatus.NOT_FOUND)
+			.header("Cache-Control", "no-store")
+			.build();
 	}
 
 	// ------------------------------------------------------------------------

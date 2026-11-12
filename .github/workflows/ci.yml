@@ -156,6 +156,12 @@ jobs:
           esac
           lacks UNKNOWN_PATH_LEAK "unknown path exposes no internal detail" "$(cat /tmp/unknown.html)" 'stacktrace|java\.lang|org\.springframework'
 
+          ## Static assets: a missing file is a 404, never a 500 -------------------
+          favicon=$(curl -sS -o /tmp/favicon.ico -w '%{http_code}' http://localhost:18080/favicon.ico)
+          check FAVICON_CODE "favicon served from the packaged WAR" "$favicon" '^200$'
+          missing_asset=$(curl -sS -o /tmp/missing.asset -w '%{http_code}' http://localhost:18080/css/no-such-file.css)
+          check MISSING_ASSET_CODE "missing static asset is a 404" "$missing_asset" '^404$'
+
           ## Correlation id ------------------------------------------------------
           curl -sSI http://localhost:18080/login | tr -d '\r' > "$scratch/headers.txt" || true
           cid=$(grep -i '^X-Correlation-Id:' "$scratch/headers.txt" | head -1 || true)

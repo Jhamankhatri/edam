@@ -12,6 +12,7 @@ import org.springframework.dao.QueryTimeoutException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -116,6 +117,37 @@ class GlobalExceptionHandlerTest {
 		assertThat(response.getBody().error().code()).isEqualTo(ErrorCode.INTERNAL_ERROR.code());
 		assertThat(response.getBody().error().message()).doesNotContain("sensitive internals")
 			.doesNotContain("NullPointerException");
+	}
+
+	@Test
+	@DisplayName("a missing static resource is a 404, never a 500")
+	void missingResourceIsClientError() {
+		Object response = this.handler.handleNoResource(
+				new NoResourceFoundException(org.springframework.http.HttpMethod.GET, "/favicon.ico", "favicon.ico"),
+				new MockHttpServletRequest("GET", "/favicon.ico"));
+
+		assertThat(response).isInstanceOf(ResponseEntity.class);
+		ResponseEntity<?> entity = (ResponseEntity<?>) response;
+		assertThat(entity.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+		// No body: the framework message names the missing path and must not be echoed.
+		assertThat(entity.getBody()).isNull();
+		assertThat(entity.getHeaders().getCacheControl()).contains("no-store");
+	}
+
+	@Test
+	@DisplayName("a missing API resource keeps the JSON envelope")
+	void missingApiResourceUsesEnvelope() {
+		Object response = this.handler.handleNoResource(
+				new NoResourceFoundException(org.springframework.http.HttpMethod.GET, "/api/v1/missing", "missing"),
+				apiRequest());
+
+		assertThat(response).isInstanceOf(ResponseEntity.class);
+		@SuppressWarnings("unchecked")
+		ResponseEntity<ApiResponse<Void>> entity = (ResponseEntity<ApiResponse<Void>>) response;
+		assertThat(entity.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+		assertThat(entity.getBody()).isNotNull();
+		assertThat(entity.getBody().error().code()).isEqualTo(ErrorCode.NOT_FOUND.code());
+		assertThat(entity.getBody().error().message()).doesNotContain("missing");
 	}
 
 	@Test
