@@ -89,11 +89,11 @@ jobs:
           set -uo pipefail
           fail=0
           check() { # name, description, actual, extended-regexp
-            if printf '%s' "$3" | grep -qE "$4"; then
+            if printf '%s' "$3" | grep -qaE "$4"; then
               printf '::notice title=OK %s::%s\n' "$1" "$2"
             else
               printf '::error title=FAIL %s::%s (expected to match: %s)\n' "$1" "$2" "$4"
-              printf '::error title=FAIL %s body::%s\n' "$1" "$(printf '%s' "$3" | head -c 700)"
+              printf '::error title=FAIL %s body::%s\n' "$1" "$(printf '%s' "$3" | head -c 700 | tr -d '\r')"
               fail=1
             fi
           }
@@ -110,7 +110,7 @@ jobs:
           health_code=$(curl -sS -o /tmp/health.json -w '%{http_code}' http://localhost:18080/actuator/health)
           check HEALTH_CODE "health endpoint status" "$health_code" '^200$'
           check HEALTH_BODY "health body reports UP" "$(cat /tmp/health.json)" '"status"[[:space:]]*:[[:space:]]*"UP"'
-          if printf '%s' "$(cat /tmp/health.json)" | grep -qiE '"(db|diskSpace|ping|database|dataSource)"|postgres|jdbc'; then
+          if printf '%s' "$(cat /tmp/health.json)" | grep -qaiE '"(db|diskSpace|ping|database|dataSource)"|postgres|jdbc'; then
             printf '::error title=FAIL HEALTH_NODETAIL::component detail leaked: %s\n' "$(cat /tmp/health.json)"; fail=1
           else
             printf '::notice title=OK HEALTH_NODETAIL::no component detail exposed\n'
@@ -127,8 +127,8 @@ jobs:
           check LOGIN_BRAND "institution branding rendered from configuration" "$login_body" 'DemoBank'
           check LOGIN_BRAND_NAME "institution legal name rendered" "$login_body" 'Demo Bank Limited'
           check LOGIN_THEME "theme tokens injected from configuration" "$login_body" '--edam-primary:[[:space:]]*#[0-9a-fA-F]{6}'
-          printf '::notice title=LOGIN_THEME_DIAG::%s\n' "$(printf '%s' "$login_body" | grep -A4 'edam-primary' | tr '\n' ' ' | head -c 400)"
-          if printf '%s' "$login_body" | grep -qE 'stacktrace|java\.lang|org\.springframework'; then
+          printf '::notice title=LOGIN_THEME_DIAG::%s\n' "$(printf '%s' "$login_body" | grep -a -A4 'edam-primary' | tr '\n' ' ' | head -c 400)"
+          if printf '%s' "$login_body" | grep -qaE 'stacktrace|java\.lang|org\.springframework'; then
             printf '::error title=FAIL LOGIN_NO_LEAK::login page exposes internal detail\n'; fail=1
           else
             printf '::notice title=OK LOGIN_NO_LEAK::login page exposes no internal detail\n'
@@ -149,7 +149,7 @@ jobs:
             40*) printf '::notice title=OK UNKNOWN_PATH::anonymous unknown path answered %s\n' "$unknown" ;;
             *)   printf '::error title=FAIL UNKNOWN_PATH::unexpected status %s (5xx here means the error page is broken)\n' "$unknown"; fail=1 ;;
           esac
-          if grep -qE 'stacktrace|java\.lang|org\.springframework' /tmp/unknown.html; then
+          if grep -qaE 'stacktrace|java\.lang|org\.springframework' /tmp/unknown.html; then
             printf '::error title=FAIL UNKNOWN_PATH_LEAK::internal detail exposed\n'; fail=1
           fi
 
@@ -159,7 +159,7 @@ jobs:
 
           ## Sign-in end to end, then a page that renders the authenticated shell --
           curl -sS -b /tmp/cookies.txt -c /tmp/cookies.txt -o /dev/null http://localhost:18080/login
-          token=$(grep -oE 'name="_csrf"[^>]*value="[^"]+"' /tmp/login.html | head -1 | sed -E 's/.*value="([^"]+)".*/\1/')
+          token=$(grep -aoE 'name="_csrf"[^>]*value="[^"]+"' /tmp/login.html | head -1 | sed -E 's/.*value="([^"]+)".*/\1/')
           signin=$(curl -sS -b /tmp/cookies.txt -c /tmp/cookies.txt -o /dev/null -w '%{http_code}' \
             -d "username=admin&password=admin-change-me&_csrf=$token" http://localhost:18080/login)
           check SIGNIN_SUBMIT "valid credentials accepted" "$signin" '^(200|302)$'
