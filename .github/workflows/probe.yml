@@ -1,0 +1,15 @@
+name: probe
+on: [push, workflow_dispatch]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          echo "== java =="; which java; java -version 2>&1
+          echo "== javac =="; javac -version 2>&1
+          echo "== mvn =="; mvn -v 2>&1 | head -5
+          echo "== psql =="; which psql; psql --version 2>&1
+          echo "== postgres bin =="; ls /usr/lib/postgresql/ 2>&1
+          echo "== docker =="; docker --version 2>&1
+          echo "== runner os =="; cat /etc/os-release | head -3
