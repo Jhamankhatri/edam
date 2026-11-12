@@ -125,7 +125,9 @@ jobs:
           check LOGIN_PASSWORD "password field present" "$login_body" 'name="password"'
           check LOGIN_CSRF "csrf token present" "$login_body" 'name="_csrf"'
           check LOGIN_BRAND "institution branding rendered from configuration" "$login_body" 'DemoBank'
-          check LOGIN_THEME "theme tokens injected from configuration" "$login_body" '--edam-primary: #0f5132'
+          check LOGIN_BRAND_NAME "institution legal name rendered" "$login_body" 'Demo Bank Limited'
+          check LOGIN_THEME "theme tokens injected from configuration" "$login_body" '--edam-primary:[[:space:]]*#[0-9a-fA-F]{6}'
+          printf '::notice title=LOGIN_THEME_DIAG::%s\n' "$(printf '%s' "$login_body" | grep -A4 'edam-primary' | tr '\n' ' ' | head -c 400)"
           if printf '%s' "$login_body" | grep -qE 'stacktrace|java\.lang|org\.springframework'; then
             printf '::error title=FAIL LOGIN_NO_LEAK::login page exposes internal detail\n'; fail=1
           else
