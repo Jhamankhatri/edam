@@ -1,6 +1,6 @@
 package com.edam.common.tenant;
 
-import com.edam.common.audit.AuditedEntity;
+import com.edam.common.audit.AuditableEntity;
 import com.edam.common.exception.ResourceNotFoundException;
 
 import jakarta.persistence.Column;
@@ -37,7 +37,7 @@ import jakarta.persistence.MappedSuperclass;
  * constraints plus tests are verifiable; a filter that can be switched off is not.
  */
 @MappedSuperclass
-public abstract class InstitutionOwnedEntity extends AuditedEntity {
+public abstract class InstitutionOwnedEntity extends AuditableEntity {
 
 	@Column(name = "institution_id", nullable = false, updatable = false)
 	private Long institutionId;
