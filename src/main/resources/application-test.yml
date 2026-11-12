@@ -1,0 +1,10 @@
+spring:
+  flyway:
+    enabled: true
+    clean-disabled: false
+
+logging:
+  level:
+    root: WARN
+    com.edam: INFO
+    org.flywaydb: INFO

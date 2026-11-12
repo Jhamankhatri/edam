@@ -1,0 +1,31 @@
+<aside id="edam-sidebar" class="edam-sidebar" aria-label="Primary Navigation">
+    <div class="edam-nav-section-title">Foundation</div>
+    <ul class="edam-nav-list">
+        <li>
+            <a class="edam-nav-link ${activeNav eq 'foundation' ? 'is-active' : ''}" href="<c:url value='/' />">
+                <span>Platform Overview</span>
+                <span class="edam-phase-tag">Active</span>
+            </a>
+        </li>
+        <li>
+            <a class="edam-nav-link" href="<c:url value='/api/v1/health' />">
+                <span>Health Endpoint</span>
+                <span class="edam-phase-tag">API</span>
+            </a>
+        </li>
+    </ul>
+
+    <div class="edam-nav-section-title">Expense Channels (Planned)</div>
+    <ul class="edam-nav-list">
+        <li class="edam-nav-disabled"><span>OPEX Requests (FM-01..03)</span><span class="edam-phase-tag">Phase 3</span></li>
+        <li class="edam-nav-disabled"><span>CAPEX Requests (FM-04..06)</span><span class="edam-phase-tag">Phase 4</span></li>
+    </ul>
+
+    <div class="edam-nav-section-title">Administration (Planned)</div>
+    <ul class="edam-nav-list">
+        <li class="edam-nav-disabled"><span>Delegation Matrix (FM-07)</span><span class="edam-phase-tag">Phase 2</span></li>
+        <li class="edam-nav-disabled"><span>Expense Committee (FM-08)</span><span class="edam-phase-tag">Phase 2</span></li>
+        <li class="edam-nav-disabled"><span>Currencies &amp; Limits (FM-09..13)</span><span class="edam-phase-tag">Phase 2</span></li>
+        <li class="edam-nav-disabled"><span>Reporting &amp; Audit (FM-12)</span><span class="edam-phase-tag">Phase 5</span></li>
+    </ul>
+</aside>

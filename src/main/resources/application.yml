@@ -1,0 +1,90 @@
+spring:
+  application:
+    name: edam
+
+  mvc:
+    view:
+      prefix: /WEB-INF/jsp/
+      suffix: .jsp
+
+  web:
+    error:
+      include-message: never
+      include-stacktrace: never
+      include-binding-errors: never
+      include-exception: false
+      whitelabel:
+        enabled: false
+
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: ${EDAM_DB_URL:}
+    username: ${EDAM_DB_USERNAME:}
+    password: ${EDAM_DB_PASSWORD:}
+    hikari:
+      pool-name: edam-hikari-pool
+      maximum-pool-size: ${EDAM_DB_MAX_POOL_SIZE:15}
+      minimum-idle: ${EDAM_DB_MIN_IDLE:2}
+      connection-timeout: 10000
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    validate-on-migrate: true
+    locations: classpath:db/migration
+
+  jackson:
+    datatype:
+      datetime:
+        write-dates-as-timestamps: false
+
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: framework
+  servlet:
+    session:
+      timeout: ${EDAM_SESSION_TIMEOUT:30m}
+      cookie:
+        http-only: true
+        same-site: lax
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+
+edam:
+  jpa:
+    auditing:
+      enabled: true
+  security:
+    institution-header-name: X-Institution-Code
+  default-institution:
+    code: ${EDAM_DEFAULT_INSTITUTION_CODE:PLATFORM}
+    name: ${EDAM_DEFAULT_INSTITUTION_NAME:EDAM Enterprise Platform}
+    short-name: ${EDAM_DEFAULT_INSTITUTION_SHORT_NAME:EDAM}
+    product-title: ${EDAM_DEFAULT_PRODUCT_TITLE:Expense Delegation & Approval Management}
+    logo-path: ${EDAM_DEFAULT_LOGO_PATH:/assets/images/edam-logo.svg}
+    favicon-path: ${EDAM_DEFAULT_FAVICON_PATH:/assets/images/edam-logo.svg}
+    primary-color: ${EDAM_DEFAULT_PRIMARY_COLOR:#1B365D}
+    secondary-color: ${EDAM_DEFAULT_SECONDARY_COLOR:#334E68}
+    accent-color: ${EDAM_DEFAULT_ACCENT_COLOR:#0F766E}
+    theme-mode: ${EDAM_DEFAULT_THEME_MODE:LIGHT}
+    footer-text: ${EDAM_DEFAULT_FOOTER_TEXT:EDAM Enterprise Platform — Configurable Delegation & Approval Foundation}
+    default-currency-code: ${EDAM_DEFAULT_CURRENCY_CODE:USD}
+    locale: ${EDAM_DEFAULT_LOCALE:en-US}
+    time-zone: ${EDAM_DEFAULT_TIME_ZONE:UTC}

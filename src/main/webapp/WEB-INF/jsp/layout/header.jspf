@@ -1,0 +1,38 @@
+<c:set var="resolvedLocale" value="${not empty branding.locale ? branding.locale : 'en'}" />
+<c:set var="resolvedFavicon" value="${not empty branding.faviconPath ? branding.faviconPath : '/assets/images/edam-logo.svg'}" />
+<c:set var="resolvedLogo" value="${not empty branding.logoPath ? branding.logoPath : '/assets/images/edam-logo.svg'}" />
+<!DOCTYPE html>
+<html lang="<c:out value='${resolvedLocale}' />">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><c:out value="${pageTitle}" default="Platform" /> — <c:out value="${branding.shortName}" default="EDAM" /></title>
+    <link rel="icon" href="<c:url value='${resolvedFavicon}' />">
+    <link rel="stylesheet" href="<c:url value='/assets/css/edam.css' />">
+    <link rel="stylesheet" href="<c:url value='/assets/theme/institution-theme.css' />">
+    <script defer src="<c:url value='/assets/js/edam.js' />"></script>
+</head>
+<body>
+<header class="edam-header">
+    <a class="edam-brand" href="<c:url value='/' />">
+        <img class="edam-brand-logo" src="<c:url value='${resolvedLogo}' />" alt="<c:out value='${branding.shortName}' default='EDAM' />">
+        <span>
+            <span class="edam-brand-title"><c:out value="${branding.name}" default="EDAM Enterprise Platform" /></span>
+            <span class="edam-brand-subtitle"><c:out value="${branding.productTitle}" default="Expense Delegation & Approval Management" /></span>
+        </span>
+    </a>
+    <div class="edam-header-meta">
+        <c:if test="${not empty activeInstitutionCode}">
+            <span class="edam-badge">Institution: <c:out value="${activeInstitutionCode}" /></span>
+        </c:if>
+        <c:if test="${not empty activeUsername}">
+            <span class="edam-badge edam-badge-accent"><c:out value="${activeUsername}" /></span>
+            <form method="post" action="<c:url value='/logout' />">
+                <c:if test="${not empty _csrf}">
+                    <input type="hidden" name="${_csrf.parameterName}" value="${_csrf.token}">
+                </c:if>
+                <button type="submit" class="edam-btn edam-btn-outline-light">Sign Out</button>
+            </form>
+        </c:if>
+    </div>
+</header>

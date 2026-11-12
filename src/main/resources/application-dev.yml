@@ -1,0 +1,13 @@
+spring:
+  datasource:
+    url: ${EDAM_DB_URL:jdbc:postgresql://localhost:5432/edam}
+    username: ${EDAM_DB_USERNAME:edam}
+    password: ${EDAM_DB_PASSWORD:}
+
+logging:
+  level:
+    root: INFO
+    com.edam: DEBUG
+    org.flywaydb: INFO
+    org.springframework.security: INFO
+    org.hibernate.SQL: WARN

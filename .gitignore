@@ -1,0 +1,30 @@
+# Build artifacts
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# Logs and local runtime files
+logs/
+*.log
+*.pid
+
+# Environment / local secrets
+.env
+.env.*
+!.env.example
+application-local.yml
+application-local.properties
+
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+.factorypath
+
+# OS files
+.DS_Store
+Thumbs.db

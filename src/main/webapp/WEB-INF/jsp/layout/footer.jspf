@@ -1,0 +1,6 @@
+<footer class="edam-footer">
+    <span><c:out value="${branding.footerText}" default="EDAM Enterprise Platform — Configurable Delegation & Approval Foundation" /></span>
+    <span>Correlation ID: <code><c:out value="${correlationId}" default="none" /></code></span>
+</footer>
+</body>
+</html>

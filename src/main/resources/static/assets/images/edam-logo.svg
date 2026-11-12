@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="40" height="40" role="img" aria-label="EDAM Platform Logo">
+  <rect x="2" y="2" width="36" height="36" rx="8" fill="#1B365D"/>
+  <path d="M11 13h18v4H15v3h11v4H15v3h14v4H11V13z" fill="#FFFFFF"/>
+  <circle cx="30" cy="11" r="3" fill="#0F766E"/>
+</svg>

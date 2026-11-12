@@ -1,0 +1,346 @@
+:root {
+  --edam-primary: #1B365D;
+  --edam-secondary: #334E68;
+  --edam-accent: #0F766E;
+  --edam-bg: #F4F6F9;
+  --edam-surface: #FFFFFF;
+  --edam-border: #D9E2EC;
+  --edam-text: #102A43;
+  --edam-muted: #627D98;
+  --edam-success-bg: #E6FFFA;
+  --edam-success-text: #0F766E;
+  --edam-error-bg: #FFF5F5;
+  --edam-error-text: #9B2C2C;
+  --edam-radius: 8px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: var(--edam-bg);
+  color: var(--edam-text);
+  line-height: 1.5;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.edam-header {
+  background-color: var(--edam-primary);
+  color: #FFFFFF;
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 3px solid var(--edam-accent);
+}
+
+.edam-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-decoration: none;
+  color: #FFFFFF;
+}
+
+.edam-brand-logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  background-color: #FFFFFF;
+  padding: 2px;
+}
+
+.edam-brand-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.edam-brand-subtitle {
+  font-size: 0.75rem;
+  opacity: 0.85;
+  display: block;
+}
+
+.edam-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.edam-badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background-color: rgba(255, 255, 255, 0.16);
+  color: #FFFFFF;
+}
+
+.edam-badge-accent {
+  background-color: var(--edam-accent);
+  color: #FFFFFF;
+}
+
+.edam-shell {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.edam-sidebar {
+  width: 260px;
+  background-color: var(--edam-surface);
+  border-right: 1px solid var(--edam-border);
+  padding: 1rem 0.75rem;
+  flex-shrink: 0;
+}
+
+.edam-sidebar.is-collapsed {
+  display: none;
+}
+
+.edam-nav-section-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--edam-muted);
+  margin: 1rem 0.75rem 0.4rem;
+}
+
+.edam-nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.edam-nav-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.55rem 0.75rem;
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--edam-text);
+  font-size: 0.9rem;
+  margin-bottom: 0.2rem;
+}
+
+.edam-nav-link:hover {
+  background-color: var(--edam-bg);
+}
+
+.edam-nav-link.is-active {
+  background-color: var(--edam-primary);
+  color: #FFFFFF;
+  font-weight: 600;
+}
+
+.edam-nav-disabled {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  color: var(--edam-muted);
+  font-size: 0.87rem;
+  cursor: default;
+}
+
+.edam-phase-tag {
+  font-size: 0.68rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  background-color: var(--edam-bg);
+  color: var(--edam-muted);
+  border: 1px solid var(--edam-border);
+}
+
+.edam-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.edam-navbar {
+  background-color: var(--edam-surface);
+  border-bottom: 1px solid var(--edam-border);
+  padding: 0.65rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.edam-navbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.edam-page-heading {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.edam-content {
+  padding: 1.5rem;
+  max-width: 1200px;
+  width: 100%;
+}
+
+.edam-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.edam-card {
+  background-color: var(--edam-surface);
+  border: 1px solid var(--edam-border);
+  border-radius: var(--edam-radius);
+  padding: 1.25rem;
+  box-shadow: 0 1px 2px rgba(16, 42, 67, 0.04);
+}
+
+.edam-card-title {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--edam-primary);
+}
+
+.edam-kv-list {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 0.45rem 0.75rem;
+  font-size: 0.88rem;
+}
+
+.edam-kv-list dt {
+  color: var(--edam-muted);
+  font-weight: 600;
+}
+
+.edam-kv-list dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.edam-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.48rem 0.95rem;
+  border-radius: 6px;
+  border: 1px solid var(--edam-border);
+  background-color: var(--edam-surface);
+  color: var(--edam-text);
+  font-size: 0.87rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.edam-btn-primary {
+  background-color: var(--edam-primary);
+  border-color: var(--edam-primary);
+  color: #FFFFFF;
+}
+
+.edam-btn-outline-light {
+  background-color: transparent;
+  border-color: rgba(255, 255, 255, 0.45);
+  color: #FFFFFF;
+}
+
+.edam-form-group {
+  margin-bottom: 1rem;
+}
+
+.edam-form-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.edam-form-input {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--edam-border);
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.edam-alert {
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.edam-alert-error {
+  background-color: var(--edam-error-bg);
+  color: var(--edam-error-text);
+  border: 1px solid #FEB2B2;
+}
+
+.edam-alert-success {
+  background-color: var(--edam-success-bg);
+  color: var(--edam-success-text);
+  border: 1px solid #81E6D9;
+}
+
+.edam-login-wrapper {
+  max-width: 420px;
+  margin: 3rem auto;
+  padding: 0 1rem;
+}
+
+.edam-status-box {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 6px;
+  background-color: var(--edam-bg);
+  border: 1px solid var(--edam-border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+}
+
+.edam-footer {
+  background-color: var(--edam-surface);
+  border-top: 1px solid var(--edam-border);
+  padding: 0.85rem 1.5rem;
+  font-size: 0.8rem;
+  color: var(--edam-muted);
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+@media (max-width: 820px) {
+  .edam-shell {
+    flex-direction: column;
+  }
+
+  .edam-sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--edam-border);
+  }
+}

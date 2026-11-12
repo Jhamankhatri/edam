@@ -1,0 +1,9 @@
+<div class="edam-navbar">
+    <div class="edam-navbar-left">
+        <button id="edam-sidebar-toggle" type="button" class="edam-btn" aria-label="Toggle Navigation">Menu</button>
+        <h1 class="edam-page-heading"><c:out value="${pageTitle}" default="Overview" /></h1>
+    </div>
+    <div>
+        <span class="edam-phase-tag">Phase 1 — Foundation</span>
+    </div>
+</div>
