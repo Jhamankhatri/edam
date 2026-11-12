@@ -69,17 +69,25 @@ class ViewModelContractTest extends AbstractPostgreSqlIntegrationTest {
 	 * reverse order, so the highest precedence means it observes the model <em>after</em> the
 	 * production interceptor has contributed the view attributes.
 	 */
-	@TestConfiguration(proxyBeanMethods = false)
+	@TestConfiguration
 	static class CaptureConfig implements WebMvcConfigurer {
 
-		@org.springframework.context.annotation.Bean
-		ModelCapturingInterceptor modelCapturingInterceptor() {
-			return new ModelCapturingInterceptor();
+		private final ModelCapturingInterceptor capture;
+
+		CaptureConfig(ModelCapturingInterceptor capture) {
+			this.capture = capture;
 		}
 
 		@Override
 		public void addInterceptors(InterceptorRegistry registry) {
-			registry.addInterceptor(modelCapturingInterceptor()).addPathPatterns("/**").order(Ordered.HIGHEST_PRECEDENCE);
+			// Register the injected singleton: creating a second instance here would record
+			// nothing, because the assertion reads the bean.
+			registry.addInterceptor(this.capture).addPathPatterns("/**").order(Ordered.HIGHEST_PRECEDENCE);
+		}
+
+		@org.springframework.context.annotation.Bean
+		ModelCapturingInterceptor modelCapturingInterceptor() {
+			return new ModelCapturingInterceptor();
 		}
 
 	}
