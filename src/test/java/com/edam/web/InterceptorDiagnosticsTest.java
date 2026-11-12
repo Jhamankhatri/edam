@@ -35,7 +35,7 @@ class InterceptorDiagnosticsTest extends AbstractPostgreSqlIntegrationTest {
 	private org.springframework.context.ApplicationContext context;
 
 	@Test
-	void dumpDispatcherState() {
+	void dumpDispatcherState() throws Exception {
 		StringBuilder report = new StringBuilder();
 
 		report.append("allMappings=")
