@@ -76,11 +76,16 @@ the code so the secret never reaches a log call.
 
 ## 5. Structured logging
 
-* `local`/`test`: human-readable pattern (see §2).
-* `prod`: **ECS JSON** via `logging.structured.format.console: ecs` in `application-prod.yml`. Spring Boot
-  replaces the encoder with `StructuredLogEncoder`, so the same `log.info("...")` calls become JSON with
-  `@timestamp`, `log.level`, `log.logger`, `process.thread.name`, `service.name` and the MDC entries
-  (including `correlationId`).
+* `local`/`test` (and any deployment without the `prod` profile): human-readable pattern (see §2).
+* `prod`: **ECS JSON**, one object per line, selected by `springProfile name="prod"` in `logback-spring.xml`,
+  which configures Boot's `StructuredLogEncoder` with `format=ecs`. The same `log.info("...")` calls become
+  JSON with `@timestamp`, `log.level`, `log.logger`, `process.thread.name`, `service.name` and the MDC
+  entries (including `correlationId`).
+
+> Why not `logging.structured.format.console`? That property only affects appenders Spring Boot creates
+> itself. EDAM declares its own console appender, so the property is silently inert — a trap worth knowing
+> before changing this file. The `prod-profile-smoke-test` CI job parses the real log to prove the encoder
+> is active, so this claim cannot rot unnoticed.
 * Prefer parameterised messages with a stable prefix, `area.event key=value ...`, e.g.
   `http.request method=GET path=/dashboard status=200 durationMs=42`. This is greppable in line mode and
   indexable in JSON mode.

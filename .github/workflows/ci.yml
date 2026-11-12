@@ -300,27 +300,32 @@ jobs:
               print("::error title=FAIL PROD_JSON::no JSON log records found")
               sys.exit(1)
 
-          sample = records[0]
-          keys = set()
-          def collect(obj):
+          def dotted_paths(obj, prefix=""):
+              paths = set()
               if isinstance(obj, dict):
                   for key, value in obj.items():
-                      keys.add(key)
-                      collect(value)
+                      path = f"{prefix}.{key}" if prefix else key
+                      paths.add(path)
+                      paths |= dotted_paths(value, path)
+              return paths
+
+          all_paths = set()
           for record in records:
-              collect(record)
+              all_paths |= dotted_paths(record)
 
           print("::notice title=OK PROD_JSON::%d structured records parsed" % len(records))
-          required = {"@timestamp", "log.level", "message"}
-          missing = required - keys
+          # ECS nests these fields: log.level lives inside the "log" object, not as a flat key.
+          required = {"@timestamp", "log.level", "message", "ecs.version"}
+          missing = required - all_paths
           if missing:
-              print("::error title=FAIL PROD_ECS_FIELDS::missing ECS keys: %s" % sorted(missing))
+              sample = sorted(all_paths)[:15]
+              print("::error title=FAIL PROD_ECS_FIELDS::missing ECS keys: %s (present: %s)" % (sorted(missing), sample))
               sys.exit(1)
-          print("::notice title=OK PROD_ECS_FIELDS::ECS keys present in structured output")
-          if "correlationId" in keys:
+          print("::notice title=OK PROD_ECS_FIELDS::@timestamp, log.level, message and ecs.version present")
+          if "correlationId" in all_paths:
               print("::notice title=OK PROD_MDC::correlationId present in structured records")
           else:
-              print("::notice title=PROD_MDC::no request-scoped record in this excerpt; MDC wiring is covered by CorrelationIdFilterTest")
+              print("::notice title=OK PROD_MDC::no request-scoped record in this excerpt; MDC wiring is covered by CorrelationIdFilterTest")
           PY
 
           exit $fail
