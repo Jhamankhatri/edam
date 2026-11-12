@@ -1,8 +1,8 @@
 package com.edam.web;
 
 /**
- * View-model attribute names shared by controllers and the JSP layouts. Centralized so a
- * typo becomes a compile error instead of a silently blank page element.
+ * View-model attribute names shared by controllers, interceptors and the JSP layouts.
+ * Centralized so a typo becomes a compile error instead of a silently blank page element.
  */
 public final class ViewConstants {
 
@@ -12,6 +12,16 @@ public final class ViewConstants {
 	public static final String PAGE_TITLE = "pageTitle";
 
 	public static final String PRINCIPAL = "principal";
+
+	/**
+	 * Institution branding view model ({@link InstitutionTheme}). Always contributed by
+	 * {@link InstitutionViewAttributesInterceptor}; a view must never read configuration
+	 * directly.
+	 */
+	public static final String INSTITUTION_THEME = "institutionTheme";
+
+	/** Request correlation ID, rendered on the error page so users can quote it to support. */
+	public static final String CORRELATION_ID = "correlationId";
 
 	public static final String NAV_DASHBOARD = "dashboard";
 

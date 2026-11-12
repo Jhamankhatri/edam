@@ -60,8 +60,10 @@ and its audit event must commit together) and whose operational team is small.
    authorities.
 4. **Dispatch** — controllers return either a view name (JSP) or an `ApiResponse<T>` envelope.
 5. **Rendering** — JSPs live under `WEB-INF/jsp` (unreachable by direct URL) and are built from layout
-   fragments. They receive a `ModelMap` assembled by controllers plus the global `InstitutionThemeAdvice`
-   attributes (`institutionTheme`, `correlationId`).
+   fragments. They receive a `ModelMap` assembled by controllers plus the attributes contributed by
+   `InstitutionViewAttributesInterceptor` (`institutionTheme`, `correlationId`). An interceptor, not a
+   `@ControllerAdvice`, because advice `@ModelAttribute` methods never run for pages rendered by a view
+   controller — the bug that made the login page render with blank branding.
 6. **Failure** — API requests are answered by `GlobalExceptionHandler` (`@RestControllerAdvice`); HTML
    failures reach the container's error dispatch and are rendered by `MvcExceptionHandler`. No stack trace,
    SQL, class name or infrastructure detail ever reaches a client; the correlation ID is the contract for
@@ -159,6 +161,6 @@ Full rationale and consequences are in [adr/](adr/). Summary:
 |---|---|---|
 | No tracing backend (no Micrometer Tracing/Zipkin) | Correlation IDs cover the single-service case; tracing adds infrastructure with no benefit yet | When an external integration (email, file storage, core banking) is added |
 | Session-based authentication, no token/API auth | The UI is server-rendered; APIs are consumed by the same session today | When external systems call EDAM APIs (needs OAuth2/mTLS decision) |
-| `InstitutionThemeAdvice` is global (not package-scoped) | Package scoping silently excludes view controllers — the login page renders blank (see ADR-0005) | Not expected; the cost is one skipped lookup on API requests |
+| View attributes come from an interceptor, not a `@ControllerAdvice` | Advice `@ModelAttribute` never runs for view-controller pages — the login page rendered blank (see ADR-0005) | Not expected; the cost is one skipped lookup on API requests |
 | Branding lookup per HTML request | Correctness over micro-optimisation; a cache needs invalidation semantics | If profiling shows it matters; then add a tenant-branding cache |
 | No tenant filter on JPA yet | No tenant-owned tables exist; a half-implemented discriminator is worse than none | Immediately with the first tenant-owned table (see ADR-0002) |

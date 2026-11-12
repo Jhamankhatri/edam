@@ -72,7 +72,7 @@ BRD section.
 * Throw a typed exception (`BusinessException`, `ResourceNotFoundException`, `ValidationFailedException`,
   `ConcurrentModificationException`); let `GlobalExceptionHandler` translate it.
 * No `catch (Exception e) {}`. If a failure is deliberately contained, catch the narrowest type, log at
-  `WARN`/`ERROR` and state in a comment why degradation is correct (see `InstitutionThemeAdvice`).
+  `WARN`/`ERROR` and state in a comment why degradation is correct (see `InstitutionViewAttributesInterceptor`).
 * Business messages are user-safe. Internal causes go to the log and behind the correlation ID.
 * Never return `null` where a collection is expected; return `List.of()` / `Optional.empty()`.
 

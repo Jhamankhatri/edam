@@ -1,8 +1,14 @@
 package com.edam.config;
 
+import com.edam.common.security.InstitutionContext;
+import com.edam.institution.InstitutionProperties;
+import com.edam.institution.InstitutionService;
+import com.edam.web.InstitutionViewAttributesInterceptor;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.view.InternalResourceViewResolver;
@@ -16,12 +22,30 @@ import org.springframework.web.servlet.view.InternalResourceViewResolver;
  * the {@code defaultViewResolver} bean name — the exact name Spring Boot's auto-configuration
  * uses — which both overrides it and keeps the prefix/suffix in one reviewable place.
  *
+ * <p>{@link InstitutionViewAttributesInterceptor} is registered for every path so that pages
+ * rendered by view controllers (login, access denied) receive the same model attributes as
+ * controller-rendered pages. See that class for why an interceptor rather than a
+ * {@code @ControllerAdvice} is required.
+ *
  * <p>Localisation is intentionally not enabled yet: supported languages, number formats and
  * RTL support remain open decisions (NFR-10). The UI renders in the institution's configured
  * language tag until that is approved.
  */
 @Configuration(proxyBeanMethods = false)
 public class WebMvcConfig implements WebMvcConfigurer {
+
+	private final InstitutionProperties institutionProperties;
+
+	private final InstitutionService institutionService;
+
+	private final InstitutionContext institutionContext;
+
+	public WebMvcConfig(InstitutionProperties institutionProperties, InstitutionService institutionService,
+			InstitutionContext institutionContext) {
+		this.institutionProperties = institutionProperties;
+		this.institutionService = institutionService;
+		this.institutionContext = institutionContext;
+	}
 
 	/**
 	 * JSP resolver. {@code redirectContextRelative} prepends the context path to redirect
@@ -37,6 +61,12 @@ public class WebMvcConfig implements WebMvcConfigurer {
 		resolver.setRedirectContextRelative(true);
 		resolver.setRedirectHttp10Compatible(false);
 		return resolver;
+	}
+
+	@Override
+	public void addInterceptors(InterceptorRegistry registry) {
+		registry.addInterceptor(new InstitutionViewAttributesInterceptor(this.institutionProperties,
+				this.institutionService, this.institutionContext)).addPathPatterns("/**");
 	}
 
 	@Override

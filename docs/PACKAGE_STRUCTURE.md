@@ -62,7 +62,7 @@ com.edam
 └── web                                 Server-rendered UI controllers and view models
     ├── HomeController                  /, /dashboard
     ├── SystemController                /api/v1/system/info
-    ├── InstitutionThemeAdvice          Global view attributes (branding, correlation ID)
+    ├── InstitutionViewAttributesInterceptor  Branding + correlation ID for every page
     ├── InstitutionTheme                View model record for branding
     └── ViewConstants                   Shared view-attribute names
 ```
