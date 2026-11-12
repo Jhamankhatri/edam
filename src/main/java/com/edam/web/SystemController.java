@@ -37,7 +37,15 @@ public class SystemController {
 		this.applicationVersion = applicationVersion;
 	}
 
+	/**
+	 * Application metadata for integrators.
+	 *
+	 * <p>Public because it carries no business data and must work before sign-in: a deployment check
+	 * needs to confirm the version it is talking to. An authenticated caller gets the same answer.
+	 */
 	@GetMapping("/info")
+	@com.edam.common.security.PublicEndpoint(
+			reason = "Application name and version only; no business data, needed before sign-in")
 	public ResponseEntity<ApiResponse<Map<String, Object>>> info(HttpServletRequest request) {
 		Map<String, Object> data = new LinkedHashMap<>();
 		data.put("application", this.applicationName);
