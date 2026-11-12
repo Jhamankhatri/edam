@@ -24,6 +24,7 @@ or from CI does not belong in a "done" column.
 | 4 | PostgreSQL connectivity | **Pass** | Flyway migrates on startup; the seed institution is read and rendered into the login page; `InstitutionMappingIntegrationTest` asserts mapping against a real PostgreSQL |
 | 5 | Flyway migration execution | **Pass** | `V1__baseline.sql`, `V2__institution_seed.sql` applied on every smoke run; app fails fast if they do not apply |
 | 6 | JSP rendering from the executable WAR | **Pass** | `/login` → 200 with `<form action="/login">`, `name="username"`, `name="password"`, `name="_csrf"`, `<h1>DemoBank</h1>`, theme block; `/access-denied` → 200; authenticated `/dashboard` → 200 rendered through the JSP layout |
+| 6b | Production profile boots and logs structured JSON | **Pass** | `prod-profile-smoke-test` starts the WAR with `--spring.profiles.active=prod` from environment configuration only: health UP, login page 200, 35 log records parsed as ECS JSON (`@timestamp`, `log.level`, `message`, `ecs.version`) with `correlationId` in the MDC, and zero human-readable pattern lines |
 | 7 | Secrets / sensitive-log review | **Pass with notes** | see §5 |
 | 8 | Dependency / duplication review | **Pass with notes** | see §6 |
 
@@ -42,6 +43,12 @@ or from CI does not belong in a "done" column.
 | `GlobalExceptionHandlerTest` | 10 | Unit | Every error family maps to the right status + stable `EDAM-*` code; no internal detail in payloads; missing static resource is 404 (not 500) with no body; `no-store` |
 | `ApiPathsTest` | 7 | Unit | Context-path handling and API-vs-HTML detection |
 | `PackagedWarTest` | 3 | Build-output assertion | WAR contains JSPs, `WEB-INF/lib-provided` (Tomcat provided), Jasper, `WarLauncher`; no test jars leak into the artifact |
+
+In addition to the unit/integration suites, CI runs three jobs against the **packaged artifact**:
+`build-and-test` (`mvn verify`), `war-package-smoke-test` (runs `java -jar` under the `local`
+profile and asserts rendered JSP pages, security headers, CSRF, sign-in, correlation ID, a
+served favicon and a 404 for a missing asset) and `prod-profile-smoke-test` (runs under the
+`prod` profile and proves structured logging, as described in §1).
 
 ---
 
@@ -85,10 +92,13 @@ recorded in [adr/0003-executable-war-for-jsp.md](adr/0003-executable-war-for-jsp
   are not enabled by any other profile.
 * **CI database credentials** (`edam` / `edam-ci-only`) are throwaway credentials for an
   ephemeral service container. They are not secrets for any real environment.
-* **Logging**: `logback-spring.xml` uses the `correlationId` conversion rule; the request log
-  records `method`, `path`, `status`, `durationMs` and never query strings, bodies, headers
-  other than the correlation ID, or principal credentials. Exception logging records the class
-  name and stack trace server-side only; responses carry the `EDAM-*` code and correlation ID.
+* **Logging**: `logback-spring.xml` puts the correlation ID on every line at every level. The
+  request log records `method`, `path`, `status`, `durationMs` and never query strings, bodies,
+  headers other than the correlation ID, or principal credentials. Exception logging records the
+  class name and stack trace server-side only; responses carry the `EDAM-*` code and correlation ID.
+  The `prod` profile emits ECS JSON, verified by parsing the log in CI (the correlation ID is
+  present in the JSON records). Note: `logging.structured.format.console` has **no effect** on a
+  self-declared appender — the profile selects `StructuredLogEncoder` in `logback-spring.xml`.
 * **Responses**: no stack traces, SQL, framework messages, or internal class names — asserted
   by `GlobalExceptionHandlerTest`, `WebLayerSecurityTest` and the `*_LEAK` smoke checks.
 * **Not yet reviewed by a human security reviewer.** No secret-scanning tool (gitleaks, etc.)

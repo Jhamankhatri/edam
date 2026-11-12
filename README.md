@@ -100,7 +100,7 @@ an H2 approximation would hide exactly the defects this foundation must catch.
 | Modular monolith package structure | ✅ | Capability modules under `com.edam`; boundaries documented in [PACKAGE_STRUCTURE.md](docs/PACKAGE_STRUCTURE.md) |
 | Spring Boot configuration, profiles | ✅ | `local`, `test`, `prod`; fail-fast posture |
 | Centralized logging + correlation IDs | ✅ | MDC correlation ID on every line; access log with method/path/status/duration |
-| Structured logging | ✅ | ECS JSON in `prod` via `logging.structured.format.console` |
+| Structured logging | ✅ | ECS JSON under the `prod` profile (encoder selected in `logback-spring.xml`); parsed and asserted in CI |
 | Global exception handling (API) | ✅ | `@RestControllerAdvice`; stable `EDAM-*` codes; no internal detail |
 | Global exception handling (HTML) | ✅ | MVC error controller rendered from the container error path |
 | Standard application response envelope | ✅ | `ApiResponse<T>` |
