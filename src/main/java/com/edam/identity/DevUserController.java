@@ -27,7 +27,17 @@ import org.springframework.web.bind.annotation.RestController;
 @ConditionalOnProperty(prefix = "edam.security.dev-users", name = "enabled", havingValue = "true")
 public class DevUserController {
 
+	/**
+	 * The caller's own identity.
+	 *
+	 * <p>Public <em>as an endpoint</em> because it must answer for any authenticated user without
+	 * requiring a permission — a user with no roles still needs to see who they are and which
+	 * institutions they belong to, so the client can render a tenant selector. It reads only the
+	 * principal from the security context and exposes no other user's data.
+	 */
 	@GetMapping
+	@com.edam.common.security.PublicEndpoint(
+			reason = "Returns only the caller's own identity; a user with no roles must still see it")
 	public ApiResponse<Map<String, Object>> me(@AuthenticationPrincipal EdamPrincipal principal,
 			HttpServletRequest request) {
 		Map<String, Object> data = new LinkedHashMap<>();
@@ -42,6 +52,7 @@ public class DevUserController {
 	}
 
 	@GetMapping("/permissions")
+	@com.edam.common.security.PublicEndpoint(reason = "The caller's own effective permission codes only")
 	public ApiResponse<List<String>> permissions(@AuthenticationPrincipal EdamPrincipal principal,
 			HttpServletRequest request) {
 		List<String> permissions = (principal == null) ? List.of()

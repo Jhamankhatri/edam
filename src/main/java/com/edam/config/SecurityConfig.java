@@ -184,7 +184,7 @@ public class SecurityConfig {
 			if (loaded instanceof EdamPrincipal principal) {
 				return principal;
 			}
-			if (loaded instanceof com.edam.identity.DevUserDetails devUserDetails) {
+			if (loaded instanceof com.edam.identity.EdamUserDetails devUserDetails) {
 				return devUserDetails.principal();
 			}
 			throw new AuthenticationServiceException("Identity adapter did not return an EDAM principal");

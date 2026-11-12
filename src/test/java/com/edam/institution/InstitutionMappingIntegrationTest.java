@@ -1,6 +1,5 @@
 package com.edam.institution;
 
-import java.math.BigDecimal;
 import java.util.List;
 
 import com.edam.testsupport.AbstractPostgreSqlIntegrationTest;
@@ -51,7 +50,7 @@ class InstitutionMappingIntegrationTest extends AbstractPostgreSqlIntegrationTes
 		institution.setName("Audit Bank");
 		institution.setShortName("AuditBank");
 		institution.setBaseCurrency("PKR");
-		institution.setDepartmentHeadLimit(new BigDecimal("15000.00"));
+		institution.setSupportEmail("support@audit-bank.example");
 
 		Institution saved = this.institutions.saveAndFlush(institution);
 

@@ -217,11 +217,10 @@ public class InstitutionProperties {
 	 */
 	public static class Features {
 
-		/**
-		 * Whether only the departments configured as CAPEX-eligible may raise CAPEX
-		 * requests. The legacy application hard-coded three departments (OD-21).
-		 */
-		private boolean capexDepartmentRestrictionEnabled = true;
+		/* CAPEX department restriction moved to a per-institution feature flag
+		 * (FeatureKey.CAPEX_DEPARTMENT_RESTRICTION). Keeping a global copy would mean the value an
+		 * administrator sets in one institution could be overridden by deployment configuration,
+		 * which is exactly the confusion audit defect D-3 described. */
 
 		/**
 		 * Department Head approval threshold fallback in the institution base currency,
@@ -231,22 +230,22 @@ public class InstitutionProperties {
 		@NotNull
 		private java.math.BigDecimal departmentHeadLimitFallback = new java.math.BigDecimal("20000.00");
 
-		/**
-		 * Whether the "exceeding limit" configuration (FM-13) participates in routing.
-		 * Unverified in the reference implementation (OD-05), therefore off by default.
+		/*
+		 * Removed: `exceeding-limit-enforced-in-routing`.
+		 *
+		 * The flag asserted that the FM-13 threshold participates in routing, which BRD OD-27
+		 * explicitly leaves unanswered. A boolean cannot represent "undecided", and a configurable
+		 * one lets an operator accidentally encode a banking policy the bank has not approved.
+		 * Exceeding limits are now stored as data (configplane.limit) and nothing routes on them.
+		 *
+		 * Removed: `require-institution-context`. Tenant resolution is not optional: 
+		 * InstitutionContext fails closed and @EdamPermission requires a resolved institution, so a
+		 * switch that could turn that off was a one-line way to disable isolation.
+		 *
+		 * Removed: `capex-department-restriction-enabled` as a global setting. It is now a per
+		 * institution feature flag (FeatureKey.CAPEX_DEPARTMENT_RESTRICTION) because one client's
+		 * choice must not change another's behaviour (audit defect D-3).
 		 */
-		private boolean exceedingLimitEnforcedInRouting = false;
-
-		/** Whether tenant context must be supplied on every request (see SECURITY_GUIDELINES). */
-		private boolean requireInstitutionContext = false;
-
-		public boolean isCapexDepartmentRestrictionEnabled() {
-			return this.capexDepartmentRestrictionEnabled;
-		}
-
-		public void setCapexDepartmentRestrictionEnabled(boolean capexDepartmentRestrictionEnabled) {
-			this.capexDepartmentRestrictionEnabled = capexDepartmentRestrictionEnabled;
-		}
 
 		public java.math.BigDecimal getDepartmentHeadLimitFallback() {
 			return this.departmentHeadLimitFallback;
@@ -254,22 +253,6 @@ public class InstitutionProperties {
 
 		public void setDepartmentHeadLimitFallback(java.math.BigDecimal departmentHeadLimitFallback) {
 			this.departmentHeadLimitFallback = departmentHeadLimitFallback;
-		}
-
-		public boolean isExceedingLimitEnforcedInRouting() {
-			return this.exceedingLimitEnforcedInRouting;
-		}
-
-		public void setExceedingLimitEnforcedInRouting(boolean exceedingLimitEnforcedInRouting) {
-			this.exceedingLimitEnforcedInRouting = exceedingLimitEnforcedInRouting;
-		}
-
-		public boolean isRequireInstitutionContext() {
-			return this.requireInstitutionContext;
-		}
-
-		public void setRequireInstitutionContext(boolean requireInstitutionContext) {
-			this.requireInstitutionContext = requireInstitutionContext;
 		}
 
 	}

@@ -1,0 +1,3378 @@
+EXPENSE DELEGATION MATRIX (EDM)  |  BUSINESS REQUIREMENTS DOCUMENT
+
+EXPENSE DELEGATION MATRIX
+
+BUSINESS REQUIREMENTS DOCUMENT
+
+Target Platform: Java 21 | Spring Boot | PostgreSQL | REST APIs | React (separate frontend)
+
+Version 2.0 – Expanded Draft for Review
+
+CONFIDENTIAL – BUSINESS AND TECHNICAL REVIEW
+
+
+EDAM Business Requirements Document v2.0 – Expanded Draft | Confidential
+
+EXPENSE DELEGATION MATRIX (EDM)  |  BUSINESS REQUIREMENTS DOCUMENT
+
+Document Control
+
+Attribute
+
+Value
+
+Document Title
+
+Expense Delegation Matrix (EDM) – Business Requirements Document
+
+Document ID
+
+EDM-BRD-001 (proposed)
+
+Version
+
+2.0 – Expanded Draft for Review
+
+Date
+
+12 November 2026
+
+Product Type
+
+Configurable OPEX/CAPEX expense request and approval workflow platform
+
+Target Technology
+
+Java 21, Spring Boot, PostgreSQL, REST APIs, React (separate frontend)
+
+Reference Implementation
+
+Albaraka EDM_V3 – ASP.NET / SQL Server
+
+Document Status
+
+Draft – requires business-owner validation and sign-off
+
+Document Owner / Approver
+
+To be nominated
+
+Prepared By
+
+Product Rebuild – Requirements Baseline
+
+Target Architecture
+
+API-first modular monolith backend; independently deployable React frontend; PostgreSQL; secure tenant-aware configuration services.
+
+Revision History
+
+Version
+
+Date
+
+Description
+
+2.0
+
+12-Nov-2026
+
+Expanded product scope: institution management, tenant-aware RBAC, configurable workflow/rules, advanced audit, dashboard, notification/template administration, secure mail credentials, API-first backend and separate React frontend.
+
+Evidence and Interpretation Convention
+
+Label
+
+Meaning
+
+SOURCE-CONFIRMED
+
+Explicitly documented in the supplied EDM reference specification.
+
+SOURCE-INFERRED
+
+Reasonable interpretation of the source; requires confirmation.
+
+OPEN DECISION
+
+The source is incomplete, inconsistent or does not define the behaviour.
+
+TARGET PROPOSAL
+
+A proposed design requirement for the new Spring Boot product; not claimed to exist in the current .NET system.
+
+Important: This BRD preserves the supplied source as the baseline. It does not silently resolve undocumented workflow behaviour. Where the source does not establish a rule, the item is recorded as an open decision for the business owner.
+
+Table of Contents
+
+1. Executive Summary
+
+2. Business Context and Problem Statement
+
+3. Product Vision and Objectives
+
+4. Scope and Boundaries
+
+5. Stakeholders and User Roles
+
+6. Product Navigation and Functional Modules
+
+7. End-to-End Business Processes
+
+8. Detailed Functional Requirements
+
+9. Business Rules and Validation Catalogue
+
+10. Approval and Delegation Framework
+
+11. Data and Information Requirements
+
+12. Reporting, Notifications and Audit
+
+13. Security and Access Control
+
+14. Non-Functional Requirements
+
+15. Target Solution and Configuration Requirements
+
+16. Migration and Legacy Replacement
+
+17. Acceptance Criteria and Traceability
+
+18. Open Decisions, Gaps and Risks
+
+19. Delivery Phasing
+
+20. Version 2.0 Product Scope Expansion and Change Summary
+
+21. Product Vision, Institution Model and Tenant Administration
+
+22. Configurable Branding, Themes and Frontend Configuration APIs
+
+23. Advanced Role, Permission and Access Management
+
+24. Configurable Workflow Engine and Workflow Designer
+
+25. Configurable Business Rules and Policy Administration
+
+26. Advanced Audit, Activity History and Compliance Evidence
+
+27. Advanced Management Dashboard and Analytics
+
+28. Notification Center, Email Template Designer and Delivery Administration
+
+29. API-First Backend and Separate React Frontend Requirements
+
+30. Security, Privacy and Banking Control Requirements
+
+31. Document Management and Attachment Security
+
+32. Integration and Master Data Administration
+
+33. Reporting, Export and Data Governance Expansion
+
+34. Expanded Non-Functional Requirements
+
+35. Updated Target Architecture and Technology Direction
+
+36. Revised Delivery Roadmap and Release Gates
+
+37. New Functional Requirement Register (Version 2.0)
+
+38. Open Decisions Added or Reaffirmed for Version 2.0
+
+39. Requirements Traceability and Change Control
+
+40. Version 2.0 Acceptance Criteria
+
+41. Important Implementation Guardrails
+
+42. Version 2.0 Sign-Off
+
+Appendices
+
+
+EDAM Business Requirements Document v2.0 – Expanded Draft | Confidential
+
+EXPENSE DELEGATION MATRIX (EDM)  |  BUSINESS REQUIREMENTS DOCUMENT
+
+1. Executive Summary
+
+The Expense Delegation Matrix (EDM) is a configuration-driven expense request, delegation and approval platform for Head Office Operating Expenditure (OPEX) and Capital Expenditure (CAPEX). Administrators configure categories, sub-categories, delegation rules, recommending authorities, Expense Committee (EC) levels, currencies and approval limits. Requesters then submit expenses; the system determines the approval route from the configured rules rather than asking the requester to choose approvers.
+
+The reference implementation is an ASP.NET Web Forms application backed by Microsoft SQL Server stored procedures and shared Albaraka/ApplicationPanel master data. The target product will expose versioned REST APIs from a Java Spring Boot backend using PostgreSQL. The user interface will be a separately developed React application. The backend must expose institution branding, theme tokens, navigation/feature configuration, workflow definitions, business rules, permissions and notification-template configuration through secured APIs so that the later React implementation does not require backend contract redesign. The rebuild is intended to reduce database-procedure coupling, improve maintainability and make the product reusable for multiple client institutions.
+
+The reference document describes 13 functional modules, OPEX and CAPEX form field maps, 46 OPEX save parameters, 57 CAPEX save parameters, approval workflows, reporting, configuration audit trails and several known gaps. The BRD treats those findings as the functional baseline and separately labels target-product proposals.
+
+2. Business Context and Problem Statement
+
+2.1 Current Situation
+
+The existing EDM is implemented in .NET / ASP.NET Web Forms and Microsoft SQL Server.
+
+A significant amount of behaviour is implemented in stored procedures and direct database queries, making business flow difficult to maintain and evolve in the application layer.
+
+The current implementation depends on shared ApplicationPanel user, department and branch data.
+
+The supplied reference records inconsistent/legacy table usage, unclear workflow combinations, incomplete role-based access checks and undocumented deployment/NFR details.
+
+The current application is reported by the requester as unstable and difficult to maintain; this operational assessment is requester-provided context, not a measured finding in the reference specification.
+
+2.2 Business Problem
+
+The business needs a stable, auditable and configurable workflow product that can enforce expense delegation consistently across OPEX and CAPEX without rebuilding client-specific logic for each bank or institution.
+
+2.3 Desired Business Outcome
+
+A maintainable application-layer workflow engine with database persistence and integrity constraints.
+
+Central administration of approval routing and financial thresholds.
+
+Consistent request, approval, revert, resubmission and reporting experiences.
+
+Tenant/client-specific branding and business configuration without code changes for ordinary configuration differences.
+
+Clear traceability for every request, approval action, configuration change and notification.
+
+3. Product Vision and Objectives
+
+ID
+
+Objective
+
+Requirement Basis
+
+OBJ-01
+
+Configure delegation authority centrally and dynamically.
+
+Source-confirmed
+
+OBJ-02
+
+Automatically route requests using category, sub-category, expense nature, amount and configured authority.
+
+Source-confirmed; detailed algorithm partly open
+
+OBJ-03
+
+Support separate OPEX and CAPEX request, register and approval experiences.
+
+Source-confirmed
+
+OBJ-04
+
+Support multiple currencies and PKR conversion using administered rates.
+
+Source-confirmed
+
+OBJ-05
+
+Provide approval history, milestones and auditability.
+
+Source-confirmed
+
+OBJ-06
+
+Provide operational and management reporting across OPEX and CAPEX.
+
+Source-confirmed
+
+OBJ-07
+
+Support returned-request correction, resubmission and selective revert.
+
+Source-confirmed
+
+OBJ-08
+
+Support reusable client configuration including branding, theme and institution identity.
+
+Target proposal from requester
+
+OBJ-09
+
+Keep core business rules in Java services and use PostgreSQL for persistence, constraints and transactional integrity.
+
+Target proposal from requester
+
+4. Scope and Boundaries
+
+4.1 In Scope
+
+Head Office OPEX request creation, register, approval, return, correction and resubmission.
+
+Head Office CAPEX request creation, register, approval, return, correction and resubmission.
+
+Category, sub-category and Expense Delegation Matrix administration.
+
+Expense Committee member pool and approval-level configuration.
+
+Currency and PKR conversion-rate administration.
+
+Department Head general approval limit.
+
+Recommending Authority assignment.
+
+OPEX/CAPEX exceeding-limit configuration.
+
+Reporting, category/sub-category analytics, request audit trail and Excel export.
+
+Configuration audit history and transaction approval history.
+
+Email notifications at workflow stages, using the documented email mechanism.
+
+Client-level configuration and branding as a target-product requirement.
+
+4.2 Explicit Boundaries
+
+Area
+
+Baseline Position
+
+Branch expenses
+
+Branch is a charge-allocation target; the documented request channels are Head Office OPEX and Head Office CAPEX.
+
+External ERP / core banking / GL
+
+No business integration is described in the supplied reference. Do not assume an integration is required.
+
+Document storage
+
+Attachment records exist, but physical storage provider/location is not documented.
+
+Authentication / SSO
+
+The reference relies on Albaraka portal login/session; exact authentication protocol is not supplied.
+
+Legacy tables
+
+Legacy request/status/checklist tables are referenced; their current business role is not established.
+
+Notifications
+
+Email notifications are documented; SMS and in-app notification behaviour is not established.
+
+5. Stakeholders and User Roles
+
+Role
+
+Business Responsibility
+
+Notes / Access Position
+
+Requester / Preparer
+
+Creates OPEX/CAPEX requests; views own requests; corrects and resubmits returned requests.
+
+Department assignment required for OPEX submission; CAPEX new request restricted by configured department list in source.
+
+Unit Head / Department Head
+
+First approver in Phase 1; may approve, forward, revert or reject as permitted.
+
+Selected on the request form; exact delegation authority model requires confirmation.
+
+Recommending Authority
+
+Approves after Phase 1 and before EC stage when configured.
+
+Assigned by department and selected in delegation matrix.
+
+Expense Committee Member
+
+Acts on configured EC approval steps and contributes to quorum.
+
+May approve, reject or revert when pending at current step.
+
+CEO
+
+May be a required EC participant or standalone approver.
+
+CEO cannot reject an EC request; may approve or revert.
+
+CFO
+
+May be a required EC participant; standalone limit is mentioned in narrative.
+
+CFO action restrictions and standalone mechanics are not fully specified.
+
+Head of Admin & GST / HOD
+
+Standalone approval mechanism.
+
+Terminology varies between GST and GSD in the source; confirm official designation.
+
+Designated Revert Recipient
+
+Receives a selectively reverted request and can edit it in My Approvals.
+
+Eligibility conditions for selective revert are not defined.
+
+Administrator / Authorised Configurator
+
+Maintains categories, matrix, EC members/levels, currencies, limits and authorities.
+
+Current source does not establish a complete role-based permission model.
+
+Finance / Report User
+
+Uses reports and CAPEX finance information.
+
+Existing reporting role checks are disabled/overridden; target permissions must be defined.
+
+6. Product Navigation and Functional Modules
+
+Module ID
+
+Module
+
+Functional Capability
+
+FM-01
+
+Head Office OPEX Request
+
+Create, validate, submit, edit returned request, selective revert, vendor addition.
+
+FM-02
+
+OPEX Request Register
+
+My Request / My Approvals, search/filter, view, export, eligible print/PDF.
+
+FM-03
+
+OPEX Approval
+
+Review details, attachments and history; approve, forward, revert or reject as authorised.
+
+FM-04
+
+Head Office CAPEX Request
+
+Create and maintain CAPEX request, asset allocations, item-wise budget details, checklist and submission.
+
+FM-05
+
+CAPEX Request Register
+
+My Request / My Approvals, search/filter, view, export, eligible print, new CAPEX request if department is eligible.
+
+FM-06
+
+CAPEX Approval
+
+Review CAPEX details, finance information, checklist and approval history; perform permitted actions.
+
+FM-07
+
+Category / Sub-category / EDM
+
+Maintain categories, sub-categories, delegation rules, approval types and audit logs.
+
+FM-08
+
+Expense Committee
+
+Maintain EC member pool, designations, approval levels, member assignments, quorum and CEO/CFO requirements.
+
+FM-09
+
+Currency Management
+
+Maintain currency code/name/PKR rate and status; audit history.
+
+FM-10
+
+Department Head Approval Limit
+
+Maintain the single General Delegation PKR limit and description.
+
+FM-11
+
+Recommending Authority
+
+Assign authority title, department and employee; audit history.
+
+FM-12
+
+Reporting
+
+Summary metrics, filters, result list, details, audit trail, category analytics and Excel export.
+
+FM-13
+
+OPEX/CAPEX Exceeding Limit
+
+Maintain one threshold per expense nature; audit history. Enforcement in routing is unresolved.
+
+6.1 Navigation Behaviour
+
+OPEX submission returns the user to the OPEX register.
+
+CAPEX submission returns the user to the CAPEX register.
+
+Register rows open the relevant approval/view page.
+
+A reverted request opens in editable mode for its creator in My Request or designated recipient in My Approvals; other users see the read-only approval view.
+
+Reporting detail links open the relevant OPEX or CAPEX approval/detail page.
+
+Register default date filter is the previous 30 days through today.
+
+7. End-to-End Business Processes
+
+7.1 OPEX Request Lifecycle
+
+Requester opens OPEX form; system pre-fills requester, department, date and reference.
+
+Requester enters expense classification, vendor, currency, amounts, allocations, invoices, business flags and justification.
+
+Requester completes required-document checklist and uploads supporting documents.
+
+System validates required values, invoice/approval amount equality, positive amount, justification and conditional attachments.
+
+System saves request and resolves the approval route from active configuration.
+
+Requester tracks the request in My Request; approvers see assigned items in My Approvals.
+
+If returned, the creator or designated revert recipient corrects and resubmits under the applicable workflow path.
+
+7.2 CAPEX Request Lifecycle
+
+Eligible department user opens CAPEX form; new-request access is limited to Admin, Information Technology and Digital in the reference implementation.
+
+Requester enters category/sub-category, vendor, currency, amount, tax, payment terms, finance fields, asset-book allocations, item-wise details and budget information.
+
+System validates invoice total, approval amount and charge total; requires item-wise details and valid warranty date.
+
+Requester completes checklist and attaches required documents.
+
+System saves request and routes it through the configured CAPEX workflow.
+
+If routing fails after save, the legacy application deletes the request; the new design must instead use an atomic transaction so incomplete requests are not committed. (Target proposal)
+
+Returned CAPEX requests can be corrected and resubmitted when eligible.
+
+7.3 Approval Processing
+
+Approver opens an assigned request; request details are read-only.
+
+System verifies that the user has a pending approval at the current workflow step and has not already acted at that step.
+
+Action panel is displayed only when assignment, status and workflow rules permit it.
+
+Approver selects an available action. Remarks are required for approve, reject and revert; forward requires a recipient and remarks.
+
+System records the action, updates workflow progress/status and triggers applicable email notification.
+
+EC progress is calculated using the configured quorum and any required CEO/CFO participation.
+
+7.4 Revert and Resubmission
+
+A revert action requires remarks/comments.
+
+An EC-stage revert returns the request to the last Phase-1 approver.
+
+The requester sees the reverted request in My Request and can edit it.
+
+In My Approvals, only the designated revert recipient receives editable access; other approvers receive read-only view.
+
+Selective revert to a chosen previous approver is supported for eligible requests; eligibility criteria remain an open decision.
+
+Workflow resume and Phase-2 resubmission are separate documented operations in the legacy implementation; the exact target state machine must be approved.
+
+8. Detailed Functional Requirements
+
+8.1 Request Creation – Common Requirements
+
+ID
+
+Requirement
+
+Evidence / Note
+
+FR-REQ-001
+
+The system shall generate a unique request reference number.
+
+Source-confirmed; reference-generation algorithm should be redesigned and approved.
+
+FR-REQ-002
+
+The system shall populate requester, department, preparer, location, request date and user identity from authenticated context/master data.
+
+Source-confirmed
+
+FR-REQ-003
+
+The system shall require request type, category, sub-category, vendor and currency.
+
+Source-confirmed for OPEX; CAPEX has its own required classification rules.
+
+FR-REQ-004
+
+The system shall provide charge allocation to branches and Head Office departments.
+
+Source-confirmed
+
+FR-REQ-005
+
+The system shall support invoice/quotation rows and calculate the invoice total.
+
+Source-confirmed
+
+FR-REQ-006
+
+The system shall require invoice total to equal approval amount and be greater than zero.
+
+Source-confirmed
+
+FR-REQ-007
+
+The system shall calculate and display PKR equivalent using the selected currency's configured PKR rate.
+
+Source-confirmed; formula/rounding are open decisions.
+
+FR-REQ-008
+
+The system shall capture GST/WHT flags and values and selected Sales Tax Authorities where applicable.
+
+Source-confirmed; mandatory status differs by form.
+
+FR-REQ-009
+
+The system shall support required-document checklist, uploads and conditional attachment validation.
+
+Source-confirmed
+
+FR-REQ-010
+
+The system shall save request, child rows, selected authorities and workflow initiation consistently.
+
+Target proposal: one transaction boundary.
+
+8.2 OPEX-Specific Requirements
+
+Non-recurring expenses require expenditure justification.
+
+Quotation 1 is always required. Quotations 2 and 3 are required when Three Quotations Attached is selected; otherwise comments are required for missing optional quotations.
+
+Already Approved requires an approved-document attachment.
+
+Tax-exemption and GRN documents are required when their respective options are selected.
+
+OPEX captures accrued amount, amount, last approved amount, YTD and MTD expenses, recurring status, budgeted/unbudgeted flags and term of payment.
+
+OPEX captures previous expense summary rows and branch / Head Office charge allocations.
+
+OPEX supports add-vendor modal through the department vendor capability; the exact OPEX modal field map is not separately supplied.
+
+8.3 CAPEX-Specific Requirements
+
+New CAPEX requests are restricted to Admin, Information Technology and Digital departments in the reference implementation; the target must make this an institution configuration, not a code constant.
+
+Category and sub-category are required; selecting Other requires CategoryOther and/or SubcategoryOther.
+
+Request type and Sales Tax Authority selection are required.
+
+Invoice total, approval amount and total charges must be positive and equal.
+
+Item-wise details are mandatory before proceeding.
+
+Warranty date cannot be in the past.
+
+Unbudgeted or over-budget requests require a reason of at most 500 characters.
+
+CAPEX captures purchase nature, warranty, finance date/comment, budget comments, terms and conditions, asset classification flags and values.
+
+CAPEX item-wise rows include actual and budget rates/units/amounts and system-calculated variances; exact formulas are not documented.
+
+8.4 Register Requirements
+
+Each register shall provide My Request and My Approvals views.
+
+Search/filter by reference, expense/request type, status, date range and Head Office/branch or department.
+
+Default date range is previous 30 days through current date.
+
+Data must be scoped to the authenticated user's permitted visibility.
+
+Returned request edit destination depends on creator or designated revert-recipient identity.
+
+Excel export is supported for filtered results.
+
+Print/PDF is available only for qualifying approved requests in My Request; exact eligibility conditions are open.
+
+8.5 Approval Requirements
+
+Approval pages display request details read-only, allocations, checklist, attachments and milestone/history.
+
+Actions are visible only for a valid pending assignment and current workflow state.
+
+Approve, reject and revert require remarks; forward requires a selected recipient and remarks.
+
+EC users may approve, reject or revert when assigned and pending; an EC user cannot act twice at the same step.
+
+CEO may approve or revert but cannot reject an EC request.
+
+EC revert requires comments and routes back to the last Phase-1 approver.
+
+EC section is hidden when there is no applicable EC workflow, including department-head-limit and superseded workflows.
+
+8.6 Configuration Requirements
+
+Module
+
+Requirements / Validations
+
+FM-07 Category
+
+Add, edit, activate/deactivate, delete, list and audit. Active category names unique. Cannot delete while sub-categories exist.
+
+FM-07 Sub-category
+
+Add, edit, activate/deactivate, delete, list and audit. Sub-category linked to category; active name unique within category.
+
+FM-07 Delegation Matrix
+
+Configure category, sub-category, OPEX/CAPEX nature, recommending authority(ies), approver type(s), EC level(s), CEO/CFO/HOD and amount limits. Require category, nature, at least one recommending authority and at least one approver type. Positive amounts, max two decimals, non-overlapping EC ranges, no duplicate active category/sub-category/nature rule.
+
+FM-08 EC Member Pool
+
+Add/edit/activate/deactivate members/designations. Prevent duplicate member/designation; direct user to reactivate inactive existing record. Only one active CEO, CFO and Head of Admin & GSD.
+
+FM-08 Approval Levels
+
+Configure name, amount lower/upper bounds, selected EC members, required member count, minimum approvals and optional required CEO/CFO. Minimum approvals cannot exceed member count; lower bound < upper bound; at least one approver; required CEO/CFO must be assigned; max 10 selected EC members for new levels; edit selected count must match configured count.
+
+FM-09 Currency
+
+Code, name and PKR rate required. Uppercase and unique code; code locked during edit; rate numeric up to four decimals; status changes require confirmation; deletion may be blocked when currency is in use.
+
+FM-10 Department Head Limit
+
+One General Delegation record only, including inactive record; update/reactivate existing. PKR amount > 0 and max two decimals. Description optional up to 500 characters. At/below threshold routes to Phase 1 only.
+
+FM-11 Recommending Authority
+
+Title, department and user required. Title letters/numbers/spaces, max 200 characters. User list depends on department. Title read-only on edit; referenced authority cannot be deleted; status/delete confirmation.
+
+FM-13 Exceeding Limit
+
+One record per nature (OPEX/CAPEX), amount > 0 and max two decimals, optional description max 255 characters, status confirmation. Whether threshold is enforced in routing is unresolved.
+
+9. Business Rules and Validation Catalogue
+
+Rule Group
+
+Rule Summary
+
+OPEX
+
+Required request type/category/sub-category/vendor/currency; invoice total equals approval amount and > 0; non-recurring requires justification; conditional quotations and attachments.
+
+CAPEX
+
+Required type/category/sub-category/STA; Other values required when selected; invoice/approval/charge totals equal and > 0; item details mandatory; warranty date not past; unbudgeted/over-budget reason required, max 500.
+
+Routing
+
+At/below Department Head limit → Department Head only; above → Phase 1 then configured recommending authority and EC route. Default PKR 20,000 exists in legacy helper when no configured limit.
+
+Delegation matrix
+
+Active category/sub-category/nature combination unique; EC amount ranges cannot overlap; configured amount limits positive, max two decimals.
+
+EC
+
+Minimum approval count <= required member count; lower amount < upper amount; at least one approver; single active CEO/CFO/HOD; member count restrictions.
+
+Currency
+
+Unique uppercase code; rate max four decimals; cannot delete in-use currency.
+
+Registers
+
+Default prior-30-day range; own requests/approval items scoped to user; edit rights for reverted items depend on creator/revert recipient.
+
+Reporting
+
+OPEX/CAPEX/both; date and amount ranges valid; status summary cards filter results; export max 10,000 matching records.
+
+Exceeding limits
+
+One configuration per OPEX/CAPEX nature; enforcement in live routing not verified.
+
+10. Approval and Delegation Framework
+
+10.1 Documented High-Level Route
+
+The documented normal route is: Request Submission → Department Head / Unit Head (Phase 1) → Recommending Authority (where configured) → Expense Committee level(s) (Phase 2), with CEO and/or CFO participation when configured.
+
+10.2 Department Head Limit
+
+Approval amount at or below the configured General Delegation limit routes to the Department Head only (Phase 1).
+
+Approval amount above the limit proceeds through Phase 1 and then the configured later approval route.
+
+Legacy helper default is PKR 20,000 when no configured limit is available.
+
+10.3 EC Levels and Quorum
+
+EC levels have configured amount ranges, selected members, required EC member count and minimum approval count.
+
+The reference narrative describes Levels 1–3 as descending approval intensity; exact amount boundaries and relationship to configurable EC levels are not verified.
+
+Required CEO/CFO participation is configured at EC level; CEO cannot reject. CFO action restrictions need confirmation.
+
+10.4 Standalone Approvals
+
+Standalone CEO and Head of Admin & GST (HOD) routing, and CEO/CFO standalone approval limits, are described in the product narrative. Their precise sequence, limits, interaction with EC levels and action permissions are not sufficiently defined. These must not be implemented by assumption.
+
+10.5 Approval State Machine
+
+The source names Pending, Approve, Reject, Revert and Forward; CAPEX also uses Submitted. The complete state machine, terminal statuses, allowed transitions, cancellation/deletion policy and concurrency behaviour are not supplied. A formally approved state-transition matrix is a release prerequisite.
+
+Action
+
+Documented Permission / Constraint
+
+Approve
+
+Unit Head and assigned EC member; CEO can approve. Remarks required.
+
+Forward
+
+Unit Head; recipient required and remarks required. EC/CEO forward permissions not stated.
+
+Reject
+
+Unit Head and EC member; CEO cannot reject EC request. Remarks required.
+
+Revert
+
+Unit Head, EC member and CEO as described; remarks/comments required. EC revert returns to last Phase-1 approver.
+
+Edit / Resubmit
+
+Creator from My Request or designated revert recipient from My Approvals for returned requests.
+
+11. Data and Information Requirements
+
+11.1 Core Business Entities
+
+Entity
+
+Key Information / Relationships
+
+Client / Institution
+
+Target proposal: client identity, tenant configuration, branding, feature settings and isolated business data.
+
+User / Department / Branch
+
+Reference master data currently sourced from ApplicationPanel; target integration or local master-data strategy is open.
+
+Category / Sub-category
+
+Sub-category belongs to category; classification appears on the relevant OPEX/CAPEX form.
+
+Delegation Matrix Rule
+
+Category, sub-category, expense nature, recommending authority, approver type, EC level and amount constraints.
+
+EC Member / Approval Level
+
+Member designation, amount range, member mapping, quorum, CEO/CFO requirement.
+
+Currency
+
+Currency code, name, PKR rate and active status.
+
+OPEX Request
+
+Header, expense flags, vendor, currency, invoices, summary, charges, attachments, STA and workflow.
+
+CAPEX Request
+
+Header, finance and budget fields, classification, invoices, item details, budget summary, charges, attachments, STA and workflow.
+
+Approval Workflow / Action Log
+
+Step, assigned approver, action, remarks, status, timestamp and history.
+
+Audit Event
+
+Configuration/request event, actor, timestamp, old/new values and client context where available.
+
+11.2 Reference Data and Integration
+
+The legacy implementation uses ApplicationPanel users, departments and branches; a second AppPanelDB department reference is used by vendor insertion. The target product must decide whether client master data is integrated through a defined adapter/API, synchronized into EDM, or maintained locally. No external ERP, GL or core banking business integration is documented.
+
+11.3 Data Integrity
+
+Use relational constraints for mandatory relationships, unique active business keys and delete guards.
+
+Persist request header and child rows atomically.
+
+Use decimal types with explicit precision/scale for money and rates.
+
+Retain historical configuration snapshots or effective-dated references so later configuration changes do not silently alter previously submitted request routing. (Target proposal; business approval required.)
+
+Use optimistic locking or equivalent protection to prevent simultaneous conflicting approval actions. (Target proposal.)
+
+12. Reporting, Notifications and Audit
+
+12.1 Operational Registers
+
+OPEX and CAPEX registers show own requests and assigned approvals.
+
+Search filters include reference, type, status, date range and Head Office/branch/department.
+
+CAPEX list columns include reference, vendor, request date, type, amount and status.
+
+Excel export is supported; eligible approved requests can be printed or output to PDF.
+
+12.2 Management Reporting
+
+Summary totals and status-based counts/PKR amounts: pending, approved, rejected, forwarded and reverted.
+
+Filters: request type (OPEX/CAPEX/both), status, date, department, category, sub-category, currency, amount range, vendor/reference/preparer search.
+
+Sorting, paging, summary-card filtering, request detail links and category/sub-category analytics.
+
+Excel export is limited to 10,000 records and requires matching data.
+
+12.3 Notifications
+
+Email notifications are documented at initial request generation and subsequent approval steps, using role/phase-specific templates. Exact template text, event matrix, retry policy, sender identity, failure handling and notification preferences are not supplied.
+
+12.4 Audit Requirements
+
+Configuration audit history exists for categories, sub-categories, amount ranges, delegation matrix, EC members/levels, currency, Department Head limit, Recommending Authority and exceeding limits.
+
+Request traceability includes Phase-1 workflow actions, EC step progress, EC actions/comments, milestones/timeline and cross-request audit trail.
+
+User identity and IP address are captured on request save; timestamps are system/database generated in the reference.
+
+Target design should record actor, action, entity, entity ID, timestamp, correlation/request ID, before/after values where appropriate, and source IP where legally permitted.
+
+13. Security and Access Control
+
+The reference implementation has authentication/session checks in many pages but does not establish a complete role-based permission model. Some configuration pages have no role check in page source. The reporting module hard-codes every signed-in user as Finance_Admin and disables intended role checks. This is a material control gap.
+
+13.1 Target Requirements
+
+Require authenticated access to all application pages and server endpoints.
+
+Enforce authorization on the server for every operation; hiding a frontend button is not an authorization control.
+
+Define institution-configurable roles and permissions for request creation, viewing, approval, configuration, reporting, audit viewing and export.
+
+Enforce record-level access: requester ownership, current workflow assignment, designated revert recipient, department restrictions and tenant boundary.
+
+Prevent duplicate or replayed approval actions through transactional state checks.
+
+Protect vendor CNIC, NTN, STRN, contact number and address according to the client's security/privacy policy.
+
+Never log passwords, authentication tokens, full sensitive identifiers or document contents.
+
+Define session timeout, password/SSO policy, encryption, retention and backup requirements with the client security team.
+
+These security controls are target proposals and must be approved by the bank/client security stakeholders; the reference document does not provide encryption, masking, retention or certification requirements.
+
+14. Non-Functional Requirements
+
+The source document does not supply measured performance targets, availability SLAs, RPO/RTO, concurrent-user volumes or formal usability/accessibility standards. The following are required NFR categories for business and technical sign-off; numeric targets remain open.
+
+NFR ID
+
+Category
+
+Requirement / Decision Needed
+
+NFR-01
+
+Availability
+
+Agree uptime target, maintenance window and service hours.
+
+NFR-02
+
+Performance
+
+Set page response, search, report and workflow action targets under agreed data volumes.
+
+NFR-03
+
+Scalability
+
+Support multiple client institutions and growth in users, requests, attachments and audit records.
+
+NFR-04
+
+Security
+
+Approve authentication, authorization, encryption, masking, secrets management and security testing.
+
+NFR-05
+
+Audit
+
+Audit events must be queryable, exportable where permitted and protected from unauthorised modification.
+
+NFR-06
+
+Reliability
+
+Use transactional workflow updates, idempotent action handling and recoverable email dispatch.
+
+NFR-07
+
+Maintainability
+
+Layered Spring Boot architecture, documented domain services, automated tests and database migrations.
+
+NFR-08
+
+Compatibility
+
+Support agreed browsers, server OS, Java/Spring Boot and React/browser versions and deployment topology.
+
+NFR-09
+
+Backup / DR
+
+Agree backup frequency, retention, RPO, RTO and restore-test cadence.
+
+NFR-10
+
+Localization
+
+Confirm supported languages, date/number formats, time zones and RTL requirements.
+
+NFR-11
+
+Accessibility
+
+Agree accessibility standard and keyboard/screen-reader expectations.
+
+NFR-12
+
+Observability
+
+Structured logs, correlation IDs, health checks, metrics and operational alerts.
+
+15. Target Solution and Configuration Requirements
+
+15.1 Target Technology
+
+Layer
+
+Target
+
+Web UI
+
+Separate React SPA; responsive, accessible, theme-driven UI consuming versioned REST APIs. Frontend implementation is a later phase; backend contracts and configuration APIs must be completed first.
+
+Application
+
+Java Spring Boot modular monolith initially; controllers, application services, domain services, repositories and integration adapters.
+
+Persistence
+
+PostgreSQL with normalized relational model, foreign keys, unique constraints and database migrations.
+
+Workflow
+
+Application-layer workflow/routing engine; configuration-driven rules; transactional action processing.
+
+Reporting
+
+Dedicated query/service layer with pagination, filters, aggregation and export.
+
+Files
+
+Abstract document-storage service; storage provider is configurable after client decision.
+
+Notifications
+
+Email adapter with templates, outbox/retry mechanism and configurable SMTP/provider settings.
+
+Operations
+
+Externalized environment configuration, secrets management, health/metrics/logging and repeatable deployment.
+
+15.2 Architecture Principles
+
+Keep business rules and workflow decisions in Java domain/application services; use PostgreSQL for persistence, relational integrity, indexes and transactional guarantees.
+
+Do not reproduce the legacy stored-procedure architecture one-for-one. Reimplement the business behaviour, not the old technical coupling.
+
+Use a modular monolith as the initial deployment shape unless scale or organizational boundaries justify service decomposition.
+
+Separate OPEX and CAPEX domain-specific fields while reusing common request lifecycle, attachment, allocation, approval, audit and reporting capabilities where semantics match.
+
+Keep client-specific differences in configuration/strategy/adapter layers, not scattered if/else conditions or hard-coded constants.
+
+Use database migration scripts (e.g. versioned migrations) as the controlled schema change mechanism.
+
+Use DTO validation at request boundaries and domain validation in services; never trust client-side validation alone.
+
+Use transactional boundaries around request submission, route creation, approval action, revert and resubmission.
+
+15.3 Multi-Client / Tenant Configuration
+
+The requester explicitly requires a product that can be sold to multiple clients with minimal code changes. The following are target-product requirements, not confirmed features of the legacy Albaraka application.
+
+Config Area
+
+Required Behaviour
+
+Institution identity
+
+Client/institution name, short name, legal identity and product label.
+
+Branding
+
+Logo, favicon, login branding, header/footer identity and email branding.
+
+Theme
+
+Primary/secondary/accent colours, typography choice and supported light/dark theme where approved.
+
+UI presentation
+
+Configurable labels, date/number/currency formats and optional module visibility.
+
+Business configuration
+
+Allowed departments, currency defaults, department-head threshold, approval levels, limits, approver designations and request-specific rules.
+
+Workflow configuration
+
+OPEX/CAPEX route definitions, standalone approvers, EC quorum and effective dates.
+
+Notification configuration
+
+Sender identity, templates, SMTP/provider configuration and event enablement.
+
+Document configuration
+
+Checklist labels, required document rules, allowed file types and size limits.
+
+Security configuration
+
+Roles, permissions, session policy, password/SSO options and data retention settings.
+
+Tenant isolation
+
+A tenant must only access its own configuration, requests, files, reports and audit data.
+
+Architecture decision required: choose between (A) one PostgreSQL database with tenant_id on tenant-owned records, (B) schema-per-tenant, or (C) database-per-tenant. For banking clients with strict data isolation, schema/database-per-tenant may be preferable, but final selection depends on hosting, regulatory, operational and cost requirements. Do not mix tenant-owned data without a formally approved isolation model.
+
+15.4 Branding and Configuration Administration
+
+Logo/theme changes should be manageable by an authorised client administrator or platform operator without code deployment.
+
+Branding assets and theme tokens should be stored as client configuration with safe defaults.
+
+Configuration changes should be audited and should not retroactively modify submitted request data.
+
+Configuration should be separated into platform-level settings, tenant-level settings and workflow/business settings.
+
+Secrets such as database credentials and SMTP passwords must be managed outside ordinary UI configuration and stored in a secure secret store/environment.
+
+15.5 Suggested Application Modules
+
+Module
+
+Responsibility
+
+identity-access
+
+Authentication integration, users, roles, permissions and tenant context.
+
+tenant-configuration
+
+Institution profile, logo, theme, locale, feature/module settings.
+
+master-data
+
+Departments, branches, employees, vendors, currencies, tax authorities and request types.
+
+expense-configuration
+
+Categories, sub-categories, delegation matrix, limits and recommending authorities.
+
+committee-management
+
+EC member pool, approval levels, quorum and CEO/CFO assignments.
+
+expense-request
+
+OPEX/CAPEX forms, validation, allocations, invoices, budget details and attachments.
+
+workflow-engine
+
+Route evaluation, step assignment, approval actions, revert, resume and resubmission.
+
+notification
+
+Email templates, event dispatch, retry and delivery history.
+
+reporting-audit
+
+Registers, dashboards, exports, request history and configuration audit.
+
+16. Migration and Legacy Replacement
+
+Perform a source-to-target mapping of all OPEX/CAPEX headers, child tables, configuration, workflow history, audit logs, attachments and master references.
+
+Preserve business identifiers/reference numbers where the business requires historical continuity.
+
+Validate legacy data quality, orphan records, duplicate configuration, missing users/departments and inconsistent status values before migration.
+
+Reconcile legacy tables such as tbl_requests, tbl_requests_history, tbl_status, tbl_checklist, tbl_ho_opex_configs and tbl_approval_steps before deciding whether to migrate or retire them.
+
+Reconcile tbl_ExpenseCommittee versus tbl_ECMemberPool and the alternate/shared EC log tables.
+
+Do not migrate stored procedures as the target architecture. Extract and test their business outcomes and implement equivalent Java services.
+
+Define cutover, reconciliation totals, rollback plan, parallel-run strategy (if required) and business sign-off.
+
+Migration is a separate workstream. The source does not provide a complete data dictionary, SQL schema, foreign keys, attachment storage details or production data volume.
+
+17. Acceptance Criteria and Traceability
+
+ID
+
+Acceptance Criteria
+
+AC-01
+
+A configured active OPEX category/sub-category is available only to the OPEX request form; CAPEX configuration is available only to CAPEX, consistent with expense nature.
+
+AC-02
+
+A request cannot be submitted if mandatory fields, amount equality, positive amount or conditional attachment rules fail.
+
+AC-03
+
+A valid request is saved with its child records and a reproducible configured approval route.
+
+AC-04
+
+A request at or below the configured department-head threshold follows the approved Phase-1-only rule.
+
+AC-05
+
+A request above the threshold follows the business-approved configured route, including recommending authority and EC quorum where applicable.
+
+AC-06
+
+Only a currently assigned eligible approver can act; duplicate action attempts are rejected safely.
+
+AC-07
+
+CEO cannot reject an EC request.
+
+AC-08
+
+EC revert requires comments and returns to the last Phase-1 approver.
+
+AC-09
+
+Only the creator or designated revert recipient can edit a returned request in the corresponding register context.
+
+AC-10
+
+Configuration changes are audited with actor and timestamp; old/new values are captured where applicable.
+
+AC-11
+
+Reports support the approved filters, status metrics, category analytics and 10,000-record export limit unless the business formally changes it.
+
+AC-12
+
+Tenant A cannot view or modify Tenant B data, branding, attachments, reports or configuration.
+
+AC-13
+
+Changing a tenant's logo/theme is reflected without rebuilding or redeploying application code.
+
+AC-14
+
+The application has automated tests for request validation, route selection, quorum, action permissions, revert and tenant isolation.
+
+17.1 Requirement Traceability
+
+The source-to-target traceability baseline is FM-01 through FM-13 and the original rule families OPX-BR, MYA-BR, OAP-BR, CPX-BR, CAP-BR, CSC-BR, EXC-BR, CUR-BR, DHL-BR, RCA-BR, RPT-BR and EXL-BR. Each implementation story and test case should retain the applicable source module/rule identifier.
+
+18. Open Decisions, Gaps and Risks
+
+ID
+
+Open Item / Risk
+
+Required Business Decision
+
+OD-01
+
+Relationship between narrative Levels 1–3 and configurable EC approval levels is not verified.
+
+Approve exact mapping, level semantics and amount-band selection.
+
+OD-02
+
+Precise route order/combination for standalone CEO, CFO and HOD relative to EC levels is unclear.
+
+Provide signed routing decision table for all route patterns.
+
+OD-03
+
+Standalone CEO/CFO limits and standalone HOD mechanics are incomplete.
+
+Define trigger, threshold, approver, action set and completion behaviour.
+
+OD-04
+
+CFO action restrictions are not stated.
+
+Confirm approve/reject/revert/forward permissions and remarks rules.
+
+OD-05
+
+Exceeding-limit configuration exists but live enforcement is not verified.
+
+Decide whether FM-13 affects routing, validation, warning only or is retired.
+
+OD-06
+
+Department Head limit is described as General Delegation; category-specific fields appear in some related data/query references.
+
+Confirm whether one global threshold is sufficient or category/department thresholds are required.
+
+OD-07
+
+PKR conversion formula and rounding behaviour are not stated.
+
+Confirm rate direction, multiplication/division, decimal scale and rounding mode.
+
+OD-08
+
+CAPEX item-wise amount/variance formulas are not stated.
+
+Confirm formulas and rounding.
+
+OD-09
+
+Full request status state machine and terminal states are missing.
+
+Approve statuses, transitions, cancellation, deletion and reopen rules.
+
+OD-10
+
+Selective revert eligibility conditions are missing.
+
+Define who can revert, which steps can be selected and restrictions.
+
+OD-11
+
+Authentication mechanism is inherited from Albaraka portal; no reusable identity integration is specified.
+
+Choose local authentication, SSO/AD/OIDC/SAML or client adapter.
+
+OD-12
+
+No verified role-permission matrix exists in the source.
+
+Approve role-to-permission and data-scope matrix.
+
+OD-13
+
+Finance approver role is not defined although CAPEX finance fields exist.
+
+Clarify whether finance fields are entered by requester or a separate finance approver.
+
+OD-14
+
+Physical attachment storage, file limits and retention are not documented.
+
+Choose storage provider, size/type policy, encryption and retention.
+
+OD-15
+
+Email templates, SMTP/provider settings, retries and failure policy are incomplete.
+
+Approve event matrix, template ownership and delivery handling.
+
+OD-16
+
+Legacy master data dependencies and duplicate user/department stores exist.
+
+Approve master-data source and integration contract.
+
+OD-17
+
+EC member-pool and committee tables differ; EC log tables have alternate variants.
+
+Reconcile actual source-of-truth tables and historical records.
+
+OD-18
+
+Legacy object references include unclassified/legacy tables and naming inconsistencies.
+
+Complete SQL schema and code impact analysis before migration.
+
+OD-19
+
+No performance, availability, DR or security numeric targets are supplied.
+
+Obtain NFR/SLA sign-off from client IT/security.
+
+OD-20
+
+Multi-tenancy model and client-specific configuration scope are not in legacy source.
+
+Select tenant isolation model and platform-vs-tenant admin responsibilities.
+
+OD-21
+
+CAPEX allowed departments and PKR 20,000 fallback are hard-coded in legacy implementation.
+
+Externalize as institution configuration and define safe defaults.
+
+OD-22
+
+Print/PDF eligibility conditions and export format details for configuration logs are incomplete.
+
+Confirm print criteria, formats and retention.
+
+The reference specification states that 16 contradictions were identified (C-01 to C-16), but the supplied chapter content does not provide a fully enumerated contradiction register in the visible body. The specific discrepancies that are described in the document are therefore represented above as open decisions only where their substance is available; a full reconciliation requires the original source code/SQL or a separate contradiction register.
+
+19. Delivery Phasing
+
+Phase
+
+Scope
+
+Exit Condition
+
+0 – Discovery & Sign-off
+
+Resolve routing, status, roles, tenant model, data ownership, attachments, NFRs and migration decisions.
+
+Approved BRD and decision log.
+
+1 – Platform Foundation
+
+Spring Boot API foundation, PostgreSQL schema, tenant context, identity/access, institution branding and configuration framework.
+
+Tenant isolation and base configuration tests pass.
+
+2 – Master & Workflow Configuration
+
+Categories, sub-categories, currency, authorities, EC pool/levels, Department Head limit and EDM matrix.
+
+Configuration validation/audit passes; route test matrix approved.
+
+3 – OPEX
+
+OPEX form, checklist, register, approval, revert/resubmit, notifications.
+
+OPEX end-to-end UAT passed.
+
+4 – CAPEX
+
+CAPEX form, asset allocations, budget/item details, register, approval, finance fields and revert/resubmit.
+
+CAPEX end-to-end UAT passed.
+
+5 – Reporting & Audit
+
+Registers, dashboards, analytics, exports, print/PDF and audit screens.
+
+Report reconciliation and access tests passed.
+
+6 – Migration & Cutover
+
+Legacy mapping, migration rehearsal, reconciliation, production deployment and support handover.
+
+Business sign-off and cutover checklist complete.
+
+Appendix A – OPEX and CAPEX Save Parameter Baseline
+
+The legacy OPEX save procedure is documented with 46 parameters; CAPEX with 57 parameters. These are retained here as a source-to-target mapping checklist, not as a recommendation to reproduce a single-procedure save design.
+
+A.1 OPEX – 46 Parameters
+
+#
+
+Parameter
+
+1
+
+ReqID
+
+2
+
+ReqDate
+
+3
+
+ReferenceID
+
+4
+
+ReqDepartment
+
+5
+
+PrepardBy
+
+6
+
+Location
+
+7
+
+Type
+
+8
+
+EXPENSE_CHARGE_TO_BRANCH
+
+9
+
+EXPENSE_CHARGE_TO_HEAD_OFFICE
+
+10
+
+Vendor
+
+11
+
+currency
+
+12
+
+otherCurrency
+
+13
+
+ApprovalAmount
+
+14
+
+GST
+
+15
+
+WHT
+
+16
+
+GSTValue
+
+17
+
+WHTValue
+
+18
+
+STAID
+
+19
+
+@STA_LIST
+
+20
+
+AmountInWords
+
+21
+
+LastApproved
+
+22
+
+Accrued
+
+23
+
+Amount
+
+24
+
+InvoiceAttached
+
+25
+
+INVOICES_QUOTATION
+
+26
+
+PREVIOUS_EXPENSE_SUMMARY
+
+27
+
+YTD_EXPENSE_AMOUNT
+
+28
+
+MTD_EXPENSE_AMOUNT
+
+29
+
+isRecurring
+
+30
+
+comments
+
+31
+
+ATACHMENTS
+
+32
+
+UnitHead
+
+33
+
+TOPayment
+
+34
+
+UID
+
+35
+
+IPAddress
+
+36
+
+ThreeQuotationsAttached
+
+37
+
+AlreadyApproved
+
+38
+
+CategoryID
+
+39
+
+SubcategoryID
+
+40
+
+CategoryOther
+
+41
+
+SubcategoryOther
+
+42
+
+PreserveStatus
+
+43
+
+Budgeted
+
+44
+
+UnBudgeted
+
+45
+
+IsTaxExemption
+
+46
+
+GRN
+
+A.2 CAPEX – 57 Parameters
+
+#
+
+Parameter
+
+1
+
+ReqID
+
+2
+
+ReqDate
+
+3
+
+ReferenceID
+
+4
+
+ReqDepartment
+
+5
+
+PrepardBy
+
+6
+
+Location
+
+7
+
+Type
+
+8
+
+EXPENSE_CHARGE_TO_BRANCH
+
+9
+
+EXPENSE_CHARGE_TO_HEAD_OFFICE
+
+10
+
+Vendor
+
+11
+
+currency
+
+12
+
+otherCurrency
+
+13
+
+ApprovalAmount
+
+14
+
+GST
+
+15
+
+WHT
+
+16
+
+GSTValue
+
+17
+
+WHTValue
+
+18
+
+STAID
+
+19
+
+@STA_LIST
+
+20
+
+AmountInWords
+
+21
+
+INVOICES_QUOTATION
+
+22
+
+PREVIOUS_EXPENSE_SUMMARY
+
+23
+
+comments
+
+24
+
+ATACHMENTS
+
+25
+
+UnitHead
+
+26
+
+UID
+
+27
+
+IPAddress
+
+28
+
+ThreeQuotationsAttached
+
+29
+
+AlreadyApproved
+
+30
+
+Nature
+
+31
+
+Budget
+
+32
+
+Warranty
+
+33
+
+WarrantyDate
+
+34
+
+ReasonBUDGET
+
+35
+
+TermAndCond
+
+36
+
+FinanceDate
+
+37
+
+BudgetComments
+
+38
+
+FinanceComment
+
+39
+
+Classification
+
+40
+
+IsLeaseholdImprovement
+
+41
+
+LeaseholdImprovementValue
+
+42
+
+IsFurnitureAndFixture
+
+43
+
+FurnitureAndFixtureValue
+
+44
+
+IsOfficeEquipment
+
+45
+
+OfficeEquipmentValue
+
+46
+
+IsComputerEquipment
+
+47
+
+ComputerEquipmentValue
+
+48
+
+IsComputerSoftware
+
+49
+
+ComputerSoftwareValue
+
+50
+
+CAPEX_BUDGET_SUMMARY
+
+51
+
+CategoryID
+
+52
+
+SubcategoryID
+
+53
+
+CategoryOther
+
+54
+
+SubcategoryOther
+
+55
+
+PreserveStatus
+
+56
+
+IsTaxExemption
+
+57
+
+GRN
+
+Appendix B – Core Form Field Inventory
+
+The full reference field IDs are to be maintained in the detailed functional specification and UI-to-domain mapping. The following groups preserve the source's field coverage.
+
+Form
+
+Field Group
+
+Key Fields / Controls
+
+OPEX
+
+Header
+
+txtReference, txtDate, lblRequestingDepartment, prepardBYDepartment, txtLocation, ddlType, ddlCategory, ddlSubcategory, txtCategoryOther, txtSubcategoryOther.
+
+OPEX
+
+Allocations
+
+ddl_MECTB_Branch, txt_MECTB_Amount, grd_MECTB, ddl_MECTHO_Branch, txt_MECTHO_Amount, grd_MECTHO, cumulative totals.
+
+OPEX
+
+Vendor / Currency / Tax
+
+ddlVendor, ddlCurrency, txtOtherCurrency, txtApprovalAmount, txtPKRAmount, chkGST/txtGSTValue, chkWHT/txtWHTValue, lst_STA, txtAmountInWords.
+
+OPEX
+
+Business Flags
+
+ThreeQuotationsAttached, AlreadyApproved, TaxExemption, GRN, Accrued, Amount, LastApproved, InvoiceAttached, YTD/MTD, Recurring, Budget, TOPayment, comments, UnitHead.
+
+OPEX
+
+Invoices / Summary / Checklist
+
+Invoice number, amount, date, nature, reason; previous expense summary; grdChecklist and ATACHMENTS.
+
+CAPEX
+
+Header
+
+txtReference, txtDate, department/preparer/location, ddlType, ddlCategory, ddlSubcategory, Other category/sub-category fields.
+
+CAPEX
+
+Asset Book
+
+Branch and Head Office asset allocations, row grids and calculated totals.
+
+CAPEX
+
+Vendor / Currency / Tax
+
+Vendor modal fields including contact, CNIC, NTN, STRN, address; currency, amount, PKR amount, GST/WHT, STA.
+
+CAPEX
+
+Business / Finance
+
+Nature, Budget, Warranty, WarrantyDate, ReasonBUDGET, TermAndCond, FinanceDate, BudgetComments, FinanceComment, UnitHead.
+
+CAPEX
+
+Classification / Item Details
+
+Leasehold, furniture, office equipment, computer equipment, computer software flags/values; actual/budget rates and units; calculated amounts/variances; CAPEX_BUDGET_SUMMARY.
+
+Appendix C – Legacy Database and Procedure Inventory Notes
+
+The source inventories the following major data groups: OPEX request/header, workflow, EC workflow/log, invoice, summary, attachment, Head Office and branch charges, STA; equivalent CAPEX groups plus budget summary; category/sub-category, delegation matrix, approval levels and members, EC committee, recommending authority, Department Head limit, exceeding limit, currency, monthly expense history; configuration audit logs; user/department/branch master data; and legacy request/status/checklist tables.
+
+The source also documents module-specific stored procedures for request insert/view, workflow actions, revert/resume/resubmit/delete, dropdown loaders, configuration CRUD/toggle/delete, audit retrieval and reporting. Exact procedure parameters/result sets are generally not supplied except for the two request-save parameter maps. The target implementation should use these inventories as migration and behaviour-traceability references, not as an instruction to retain stored procedures.
+
+Appendix D – Source Limitations and Sign-off
+
+Source document version 0.1 is a draft for review, dated 30 October 2026.
+
+The source states it was compiled from product narrative/business analysis, stored-procedure/table inventories and OPEX/CAPEX form field reference maps.
+
+The source identifies documentation gaps around schema data types, foreign keys, procedure parameters/result sets, routing algorithm details, status state machine, authentication/authorization, deployment and NFRs.
+
+The source QA record states all 13 modules were covered, business rules were preserved, OPEX 46/CAPEX 57 parameters were preserved, and 16 contradictions were identified.
+
+Sign-off Role
+
+Name
+
+Signature
+
+Date
+
+Business Owner
+
+
+
+
+Finance / Expense Control
+
+
+
+
+IT / Solution Architecture
+
+
+
+
+Information Security
+
+
+
+
+Product Owner
+
+
+
+
+
+EDAM Business Requirements Document v2.0 – Expanded Draft | Confidential
+
+EXPENSE DELEGATION MATRIX (EDM)  |  BUSINESS REQUIREMENTS DOCUMENT
+
+20. Version 2.0 Product Scope Expansion and Change Summary
+
+This revision expands the v1.0 BRD into a commercial, bank-focused EDAM product specification. It preserves the documented legacy OPEX/CAPEX and delegation capabilities while adding target-product requirements for multi-institution operation, configurable administration, API-first backend design, and a separately developed React frontend.
+
+Evidence convention: LEGACY-SOURCE means documented in the supplied EDM reference; TARGET-REQUIREMENT means newly requested product scope in this revision; ARCHITECTURE-RECOMMENDATION means a proposed technical control requiring architecture approval; OPEN DECISION means business/security/operations confirmation is still required.
+
+Change Area
+
+Version 2.0 Decision
+
+Product direction
+
+Commercial, multi-institution EDAM product with banks as the initial target market.
+
+Backend
+
+Java 21 + Spring Boot modular monolith exposing secured, versioned REST APIs.
+
+Frontend
+
+Separate React application; no JSP pages or server-rendered UI in the target architecture.
+
+Delivery order
+
+Backend APIs and configuration capabilities first; React frontend after backend contracts are stable.
+
+Configurable experience
+
+Institution logos, themes, colors, branding, navigation and feature availability are administered as data and delivered through APIs.
+
+Workflow and business rules
+
+Workflow paths, amount bands, approver requirements, conditions and rule versions must be configurable without client-specific code changes.
+
+Authorization
+
+Institution-scoped roles and screen/action/data permissions enforced by backend APIs.
+
+Notifications
+
+Admin-managed email provider configuration, templates, sender/signature, test-send, delivery tracking and retry.
+
+Sensitive credentials
+
+Secrets must be stored using a managed secret vault/KMS where available, or envelope encryption with keys outside the application database; never plaintext.
+
+Audit
+
+Central, searchable, append-oriented audit/activity history with before/after values for authorized changes.
+
+21. Product Vision, Institution Model and Tenant Administration
+
+EDAM shall operate as one reusable product instance or product deployment serving one or more financial institutions, according to the approved tenant-isolation model. Each institution must be configurable without forking the application or introducing institution-specific business logic.
+
+21.1 Institution Management
+
+The platform shall allow an authorized platform administrator to create, view, update, activate, suspend and deactivate institution records.
+
+Each institution shall have a unique immutable institution identifier, institution code, legal/display name, status, time zone, locale, default currency, date/number formats and contact metadata.
+
+Institution onboarding shall support initial administrator assignment, configuration defaults and a controlled activation process.
+
+Institution-specific settings shall be isolated from other institutions and all institution-owned records shall be associated with an institution context.
+
+The platform shall support institution-specific logo, favicon, login branding, product name/label, theme palette, typography tokens where supported, email branding and document/report branding.
+
+Administrators shall be able to configure enabled modules/features per institution; disabled features must be unavailable through both UI configuration and backend authorization.
+
+Institution settings shall support draft/preview/publish where a setting materially changes the user experience; changes shall be audited.
+
+Institution administrators shall only manage their own institution. Cross-institution administration shall be restricted to explicitly authorized platform-level roles.
+
+The system shall prevent cross-tenant record access even if a caller manipulates identifiers or API requests.
+
+21.2 Tenant Isolation and Data Segregation
+
+OPEN DECISION: choose shared database/shared schema with tenant_id, schema-per-tenant, or database-per-tenant after security, regulatory, operations, backup/restore, reporting and cost review. The selected model must be documented in an Architecture Decision Record before tenant-aware business data implementation.
+
+Tenant context shall be derived from a trusted authenticated identity/session/token claim or a validated server-side mapping; never trust a tenant_id supplied only by an arbitrary request body/header.
+
+Tenant context must be applied consistently to reads, writes, exports, background jobs, notifications, file access, caches and audit queries.
+
+Database constraints and/or repository/service safeguards shall prevent tenant ownership mismatches.
+
+Automated negative tests shall prove that users in Institution A cannot read, update, delete, approve, export or download Institution B data.
+
+Platform support access shall be privileged, explicitly granted, time-bound where feasible, and audited.
+
+Backups, retention, restore, data export and deletion must respect the selected tenant isolation strategy.
+
+21.3 Institution Configuration Lifecycle
+
+Configuration State
+
+Expected Behaviour
+
+Draft
+
+Editable by authorized administrators; not active for normal users.
+
+Preview
+
+Allows authorized preview of branding/theme and selected configuration before publishing.
+
+Published
+
+Current active configuration served by configuration APIs.
+
+Archived
+
+Retained for audit/history; not available for new assignment unless explicitly restored.
+
+Published configuration changes shall be versioned. The system shall retain who changed the configuration, when, the previous value, the new value, and the publication event.
+
+22. Configurable Branding, Themes and Frontend Configuration APIs
+
+The backend shall be designed so the future React frontend can render institution-specific experiences without hardcoded institution values or backend code changes. The frontend shall obtain the active configuration through authenticated, tenant-aware APIs.
+
+Provide institution-config APIs for logo, favicon, product title, theme identifier, color tokens, typography tokens, layout preferences, locale, time zone, date format, number format and default currency.
+
+Support light/dark themes and institution-defined primary, secondary, accent, background, surface, text, border, success, warning and error tokens.
+
+Support configurable logo variants for light/dark backgrounds and defined image formats, dimensions and size limits.
+
+Provide a preview mechanism and publish/rollback capability for theme and branding configuration.
+
+Provide a configuration version or ETag so the frontend can cache settings safely and detect changes.
+
+Provide a feature/module configuration API that returns only features enabled for the authenticated institution and user.
+
+Provide navigation metadata or capability metadata only where it does not replace backend authorization; hidden navigation items must never be treated as security controls.
+
+Support default product branding when an institution has not uploaded custom assets.
+
+Validate uploaded files, restrict file types and sizes, scan files where infrastructure supports malware scanning, and store files in approved object/file storage rather than as arbitrary executable content.
+
+The React frontend shall consume design tokens and configuration APIs; it shall not contain institution-specific colors, names or logos as hardcoded business configuration.
+
+API Capability
+
+Illustrative Responsibility
+
+GET /api/v1/platform/branding
+
+Return safe public/platform-level branding only if required for the login shell.
+
+GET /api/v1/me/context
+
+Return authenticated user's institution, roles, permissions and safe UI context.
+
+GET /api/v1/institutions/{id}/configuration
+
+Return authorized institution configuration and configuration version.
+
+GET /api/v1/me/features
+
+Return enabled capabilities for the current user and institution.
+
+The paths above are illustrative contract examples, not frozen endpoint commitments. Final API paths and response schemas shall be defined in OpenAPI before frontend integration.
+
+23. Advanced Role, Permission and Access Management
+
+The product shall provide institution-scoped and platform-scoped authorization. Authorization shall be enforced on the backend for every protected API, action, data record and export. Frontend route guards and hidden buttons are usability controls only.
+
+23.1 Permission Dimensions
+
+Permission Dimension
+
+Requirement
+
+Module / screen
+
+Control access to modules, screens, pages and navigation capabilities.
+
+Action
+
+Control view, create, edit, submit, approve, reject, forward, revert, cancel, export, configure, publish, activate/deactivate and delete actions as applicable.
+
+Data scope
+
+Restrict access to own records, assigned approvals, department, business unit, branch, institution or explicitly granted broader scope.
+
+Field / sensitive data
+
+Where justified, restrict sensitive fields such as vendor identity/tax information, financial details, attachments and credential configuration.
+
+Administration scope
+
+Separate platform administration from institution administration and business administration.
+
+23.2 Role and Permission Administration
+
+Authorized administrators shall create, edit, activate, deactivate and assign custom roles within their permitted institution scope.
+
+Roles shall be composed from granular permissions; permissions shall have stable machine-readable codes independent of display labels.
+
+The product shall provide predefined role templates for common personas (platform administrator, institution administrator, requester, department head, recommending authority, committee member, finance reviewer, auditor and read-only user) while allowing controlled customization.
+
+Users may have multiple roles where permitted; effective permissions shall be calculated deterministically and documented.
+
+The system shall support user-to-institution membership and institution-specific role assignment.
+
+Permission changes, role changes, user assignments and privileged access grants shall be audited.
+
+The system shall support authorization checks at both service/use-case and data-query boundaries where necessary.
+
+Access-denied responses shall not reveal whether another institution's record exists.
+
+The system shall support permission review/export for audit and periodic access recertification as a proposed bank-control capability.
+
+Segregation-of-duties conflicts (for example, requester approving their own request or maker-checker conflicts) shall be configurable or enforced according to approved bank policy.
+
+23.3 Authorization Evaluation
+
+The backend shall evaluate: authenticated identity + active institution membership + assigned role permissions + record ownership/scope + workflow assignment/current step + resource status. A valid role alone shall not grant approval authority for a request unless the workflow assigns or permits that user to act.
+
+OPEN DECISION: define the exact precedence of deny/allow rules, role inheritance (if any), emergency access, administrator impersonation, cross-department access and maker-checker exceptions.
+
+24. Configurable Workflow Engine and Workflow Designer
+
+The target product shall provide a backend workflow capability that supports the existing OPEX/CAPEX approval behavior and future institution-specific approval paths. A future React-based workflow designer shall configure the engine through APIs; the workflow engine must not depend on UI implementation details.
+
+24.1 Workflow Definition Capabilities
+
+Configure workflows by institution, expense nature (OPEX/CAPEX), category, subcategory, amount range, department, budget status and other approved business dimensions.
+
+Support sequential and parallel approval stages, configurable approver roles/users/designations, required participants, minimum approval counts/quorum and optional participants.
+
+Support amount bands with non-overlapping range validation, inclusive/exclusive boundary definition and explicit currency basis.
+
+Support routing to department head, recommending authority, Expense Committee, CEO, CFO and other institution-configured approver groups.
+
+Support conditions, branching, fallback approvers and explicit handling when no eligible approver is found.
+
+Support approve, reject, forward, revert, return for correction, resubmit and cancellation only where approved by the workflow policy.
+
+Support escalation rules and reminders based on configured business calendars and SLA timers as a configurable enhancement.
+
+Support effective-from/effective-to dates, draft/published status, workflow versioning and retirement of old versions.
+
+A request shall retain the exact workflow version and resolved approval path used at submission; later configuration changes shall not silently rewrite an in-flight request.
+
+Support workflow validation and simulation using sample request attributes before publication.
+
+Prevent publishing invalid workflows, including unreachable steps, missing approvers, conflicting ranges, circular routes and impossible quorum requirements.
+
+Support controlled workflow cloning from a template to another institution, with explicit review and publish in the target institution.
+
+24.2 Workflow Designer Contract
+
+The React workflow designer is a later frontend deliverable. Backend APIs shall support retrieval, draft creation, update, validation, simulation, publish, version history, compare and rollback/restore of eligible prior definitions.
+
+Workflow API Capability
+
+Purpose
+
+List / get definition
+
+Retrieve workflows and their versions, status and institution scope.
+
+Create / update draft
+
+Save workflow graph/steps/conditions without affecting live requests.
+
+Validate
+
+Return structured validation errors and warnings.
+
+Simulate
+
+Evaluate sample request facts and show expected route without creating a real request.
+
+Publish
+
+Activate a validated version with effective date and actor audit.
+
+Version history / compare
+
+Inspect previous versions and differences.
+
+Retire / restore
+
+Stop new assignments to an old workflow or restore an eligible version under controlled approval.
+
+24.3 Workflow Execution and Resilience
+
+Workflow execution shall be transactional with the request state and approval task creation.
+
+Duplicate submissions/actions shall be protected through idempotency or equivalent duplicate-action controls.
+
+Concurrent approvals shall be handled safely; the same pending task must not be completed twice.
+
+Every transition shall record actor, action, timestamp, remarks where required, previous state, new state, workflow version and correlation ID.
+
+Background reminders/escalations shall be idempotent and observable.
+
+Workflow failures shall not leave a request in an ambiguous partially-updated state.
+
+25. Configurable Business Rules and Policy Administration
+
+Business rules shall be externalized from client-specific source code where they are intended to vary by institution. Core invariant rules and security controls remain enforced in application code and database constraints.
+
+Provide institution-scoped rule sets for request validation, amount thresholds, category eligibility, CAPEX department eligibility, budget policy, required documents and approval routing conditions.
+
+Support rule name, description, priority, condition, outcome/action, effective dates, status, version, creator, reviewer and publication history.
+
+Provide a constrained, documented rule expression model or decision-table model; do not execute arbitrary Java, JavaScript, SQL or uploaded code from administrators.
+
+Validate rule syntax, types, references and conflicting priorities before publication.
+
+Support test/simulation with sample input and explain which rules matched and why.
+
+Define deterministic rule precedence and conflict handling.
+
+Maintain backward compatibility for in-flight requests by recording the rule-set version used at submission.
+
+Provide safe default behavior when no rule matches; high-risk cases should fail closed or route to a configured exception queue rather than silently bypass approval.
+
+OPEN DECISION: identify which current OPEX/CAPEX validation rules are institution-configurable versus mandatory product invariants. No bank-specific policy may override tenant isolation, authorization, audit integrity or other platform security controls.
+
+26. Advanced Audit, Activity History and Compliance Evidence
+
+The product shall provide centralized audit and activity history suitable for bank control review. Audit records must be protected from ordinary application-user modification and deletion.
+
+26.1 Audit Event Content
+
+Field
+
+Requirement
+
+Event ID
+
+Unique immutable audit event identifier.
+
+Institution / tenant
+
+Institution context for the event; platform events identified separately.
+
+Actor
+
+User/service identity, role context and actor type.
+
+Action
+
+Create, update, submit, approve, reject, forward, revert, publish, assign, login/security event or other defined event.
+
+Resource
+
+Entity type and record identifier, with safe display reference.
+
+Before / after
+
+Field-level old/new values or a structured diff for auditable changes; sensitive values redacted or masked.
+
+Context
+
+UTC timestamp, correlation ID, request ID, source IP where lawful/available, user agent/client, channel and reason/remarks.
+
+Outcome
+
+Success/failure and relevant result code.
+
+Version
+
+Configuration/workflow/rule version affected or used.
+
+26.2 Audit Functions
+
+Provide searchable audit history with filters for institution, actor, date range, module, action, entity/reference and outcome.
+
+Provide a record-level activity timeline for OPEX/CAPEX requests and configuration entities.
+
+Capture before/after changes for institution settings, themes, permissions, workflows, business rules, email settings metadata and master data.
+
+Never store raw passwords, access tokens, private keys, SMTP passwords, encryption keys or complete sensitive documents in audit payloads.
+
+Provide controlled export for authorized auditors, with export events themselves audited.
+
+Define retention, archival, legal hold and purge policies per bank/regulatory requirement.
+
+Use append-only application behavior and consider database/object-storage immutability or external SIEM/WORM forwarding where required by bank policy.
+
+Audit events shall be correlated with application logs using correlation/trace identifiers, but logs and audit records remain distinct controls.
+
+OPEN DECISION: each target bank must confirm audit retention, immutable storage requirements, time synchronization, SIEM integration and export approval policy.
+
+27. Advanced Management Dashboard and Analytics
+
+The product shall provide institution-scoped dashboards for operational and management oversight. Dashboard metrics shall be calculated from authorized data and must respect role/data-scope restrictions.
+
+Dashboard Area
+
+Candidate Metrics / Views
+
+Executive overview
+
+Total OPEX/CAPEX submitted, approved, rejected, pending, reverted and amount totals by reporting currency.
+
+Approval operations
+
+Pending approvals by stage/approver/department, ageing buckets, overdue tasks and approval turnaround time.
+
+Expense analysis
+
+Spend by category, subcategory, department, branch/charge allocation, vendor, expense nature and period.
+
+Budget visibility
+
+Budgeted vs actual/committed spend and over-budget/unbudgeted requests, only where source data supports reliable calculation.
+
+Workflow health
+
+Requests by workflow stage, bottlenecks, average time per stage, returned/reverted frequency and escalation counts.
+
+Currency view
+
+Original currency and PKR equivalent with rate/date context; do not aggregate incomparable currencies without conversion basis.
+
+Configuration/compliance
+
+Inactive or expiring configurations, unpublished drafts, missing approver mappings and recent privileged changes.
+
+Support date range, expense nature, department, category, status, workflow stage and other authorized filters.
+
+Allow drill-down from a metric to the underlying authorized request list.
+
+Clearly label metric definitions, time zone, currency and data freshness.
+
+Provide export only where the user's permissions allow it.
+
+Avoid exposing cross-institution aggregates to institution users; platform-wide aggregates require explicit platform permission and approved anonymization/aggregation policy.
+
+Define dashboard refresh and performance expectations after expected volume and data size are known.
+
+28. Notification Center, Email Template Designer and Delivery Administration
+
+Email notifications are documented in the legacy requirements. Version 2.0 expands this into institution-configurable notification administration, including provider settings, templates, sender identity, signature, preview, test delivery and operational tracking.
+
+28.1 Notification Center
+
+Provide in-app notification inbox for relevant request, approval, return, assignment, escalation and system-configuration events.
+
+Support read/unread state, read timestamp, deep link to authorized record, filtering and retention policy.
+
+Provide email notifications for configured workflow events and administrative events.
+
+Support user notification preferences only where bank policy permits; mandatory compliance/workflow notifications cannot be disabled by an individual user.
+
+Support reminder and escalation schedules with business calendar/time zone configuration.
+
+Record notification event, recipient, channel, template/version, attempt count, delivery status, provider response reference and timestamps.
+
+28.2 Email Template Designer
+
+Authorized administrators shall create, edit, clone, activate, deactivate and version institution-specific email templates.
+
+Provide both a visual/template-builder experience and an advanced HTML/source editor for authorized users.
+
+Support reusable header, body, footer, logo, signature block, colors, typography and institution contact details.
+
+Support safe placeholders for request reference, expense type, amount, requester, department, current approver, action URL, due date and other approved data fields.
+
+Provide a placeholder catalogue with data type, description, availability by event and example value.
+
+Provide preview with sample data, responsive email preview and test-send before activation.
+
+Sanitize and validate HTML; block scripts, unsafe embedded content and untrusted remote resources according to email security policy.
+
+Support plain-text alternative, subject, preheader, reply-to, sender display name and configurable signature.
+
+Maintain template version history and ensure an already queued notification uses the intended template version.
+
+Prevent arbitrary template code execution, unsafe server-side expressions and unauthorized access to template data.
+
+28.3 Email Provider / SMTP Administration
+
+Provide institution-scoped email delivery configuration through an administration UI, subject to platform security policy.
+
+Support approved provider types such as SMTP or institution-approved email delivery service adapters; exact providers are deployment decisions.
+
+Configure host, port, transport security, authentication mode, sender address, sender name, reply-to and connection timeout without changing application code.
+
+Provide a test-connection and test-email function that does not expose credentials.
+
+Display masked credential presence/status and last successful test; never return the stored secret to the browser after saving.
+
+Support credential rotation and disabling/replacing credentials without displaying the previous secret.
+
+Support provider-level enable/disable and a safe fallback/queueing policy.
+
+Store delivery attempts and sanitized provider error details; do not log message secrets or authentication payloads.
+
+28.4 Secret and Credential Protection
+
+BANK-GRADE SECURITY REQUIREMENT: SMTP/API credentials, signing secrets, OAuth client secrets, storage keys and integration credentials are sensitive secrets, not ordinary configuration values.
+
+Preferred approach: store secrets in a managed secrets vault or cloud KMS-backed secret manager, with the application database holding only a secret reference and non-sensitive metadata.
+
+If a managed vault is unavailable, use envelope encryption with a strong data-encryption key protected by a key-encryption key held outside the database and outside source control (for example, a KMS/HSM or controlled deployment secret).
+
+Never store secrets in plaintext in PostgreSQL, application properties committed to Git, frontend code, browser storage, logs, audit diffs, exception messages or exported configuration.
+
+The application must never provide an API to retrieve a saved secret in plaintext. UI should show only configured/not configured, masked metadata and rotation status.
+
+Restrict secret create/rotate/delete operations to narrowly authorized administrators; apply maker-checker approval where the bank requires it.
+
+Audit who changed secret metadata or rotated a credential without recording the secret value.
+
+Support key rotation, secret rotation, revocation, least-privilege access and emergency disable procedures.
+
+Separate development, test, staging and production secrets and prevent cross-environment reuse.
+
+Document backup/restore implications: encrypted secret recovery requires the approved key-management recovery procedure.
+
+OPEN DECISION: each deployment/bank must approve the secret manager, KMS/HSM, key ownership, rotation interval, recovery process and whether email credentials are institution-managed or centrally managed.
+
+29. API-First Backend and Separate React Frontend Requirements
+
+The backend shall be developed and completed before the React frontend. The backend must be frontend-independent and expose all business capabilities through documented REST APIs. No JSP, Thymeleaf or server-rendered application pages are part of the target product UI.
+
+29.1 API Contract Requirements
+
+Use versioned REST API paths and JSON request/response contracts; versioning policy and compatibility rules shall be documented.
+
+Publish an OpenAPI specification for every released API and keep it aligned with implementation.
+
+Use consistent response envelopes or a consistent problem-details/error model, including stable error codes and correlation IDs.
+
+Support pagination, sorting, filtering and bounded page sizes for list endpoints.
+
+Use explicit DTOs; do not expose persistence entities or internal database structure.
+
+Define validation rules, field formats, nullability, enum values, date/time zones and decimal precision in API contracts.
+
+Use idempotency keys or equivalent controls for operations where duplicate requests could create duplicate submissions, payments/financial side effects or workflow actions.
+
+Define concurrency handling for updates and approvals, such as version fields/ETags or equivalent optimistic locking.
+
+Use secure CORS allowlists for the separately hosted React application; never use permissive wildcard CORS with credentials.
+
+Provide consistent file upload/download APIs with authorization, content-type validation, size limits and secure storage references.
+
+Expose configuration APIs for themes, branding, feature flags, workflow definitions, business rules, permissions and notification templates.
+
+Avoid UI-specific response coupling; API contracts must serve React and approved future clients.
+
+29.2 Authentication and Frontend Integration
+
+OPEN DECISION: approve the identity model (bank SSO/OIDC/SAML, OAuth2/OIDC authorization server, or other enterprise identity provider), token/session handling, MFA, logout, refresh, service-to-service authentication and identity federation. Do not invent a production identity provider.
+
+The React frontend shall not contain database credentials, SMTP credentials, encryption keys or privileged service secrets.
+
+Backend authorization remains authoritative even when the frontend receives permission metadata for rendering.
+
+The API shall provide the authenticated user's safe profile, institution context, effective permissions and feature capabilities.
+
+Document browser security controls including CSP, secure cookies/token storage approach, CSRF protection where cookie-based authentication is used, XSS prevention and secure file handling.
+
+Support separate frontend and backend deployment origins with controlled CORS and environment configuration.
+
+29.3 Backend-First Delivery Gate
+
+Gate
+
+Required Deliverable Before React Starts
+
+API design
+
+Approved OpenAPI contracts for authentication/context, institution configuration, identity/permissions, OPEX/CAPEX, workflow, reporting, audit and notifications.
+
+Configuration
+
+Theme/branding/feature configuration APIs implemented with sample institution data and versioning.
+
+Security
+
+Tenant isolation, authorization tests, secret handling, upload/download authorization and security review.
+
+Workflow
+
+Workflow/rule APIs, validation/simulation/publish semantics and in-flight version snapshot behavior documented.
+
+Quality
+
+Automated tests, integration tests, API contract tests, migration scripts and stable test environment.
+
+Documentation
+
+API guide, error catalogue, auth integration guide, configuration guide and sample payloads.
+
+The frontend may begin after the backend contract and configuration APIs are stable. UI design must use the published API contracts and design tokens. Backend changes should be additive and version-compatible wherever possible.
+
+30. Security, Privacy and Banking Control Requirements
+
+The product is intended for banks. Security controls must be treated as release requirements, not optional enhancements. Final controls and assurance evidence must be agreed with each target bank's security, risk and compliance teams.
+
+Enforce TLS for all network traffic and approved encryption at rest for databases, backups, object/file storage and secrets.
+
+Use strong authentication, MFA and enterprise SSO integration where required by the bank.
+
+Enforce least privilege, institution isolation, server-side authorization and segregation of duties.
+
+Protect against common web/API risks including injection, broken access control, insecure direct object references, SSRF, XSS, CSRF where applicable, insecure file upload, mass assignment and excessive data exposure.
+
+Apply secure password handling only if local passwords are supported; use a modern adaptive password hashing algorithm and policy approved by security owners.
+
+Apply rate limiting, account/session controls, secure headers, secure cookie settings and brute-force protections as appropriate.
+
+Mask sensitive personal, vendor and financial data in logs, error responses and audit payloads.
+
+Support configurable data retention and secure deletion subject to legal hold and banking policy.
+
+Maintain dependency vulnerability scanning, secure build pipeline, code review, secrets scanning and software composition analysis.
+
+Define backup, disaster recovery, RPO/RTO, incident response and security monitoring requirements with the bank.
+
+Support integration with bank SIEM/log management where required.
+
+Conduct threat modelling and penetration testing before production deployment.
+
+No certification (for example ISO 27001, PCI DSS or other regulatory compliance) shall be claimed unless independently achieved and applicable to the deployment. Applicable jurisdictional banking, privacy and data-residency requirements must be confirmed with each bank.
+
+31. Document Management and Attachment Security
+
+Support controlled upload, download, preview where safe, metadata management and association of documents with OPEX/CAPEX requests and approval events.
+
+Store file metadata separately from file bytes; use approved private object storage or secured file storage rather than public web directories.
+
+Use opaque storage keys and authorized download endpoints; never expose predictable public file paths.
+
+Validate extension, MIME type, file signature, size and filename; scan uploaded files for malware where available.
+
+Apply tenant isolation and record-level authorization to every document operation.
+
+Support retention, archive, replacement/version history and deletion policy according to bank requirements.
+
+Encrypt stored documents and transfer them over TLS.
+
+Audit uploads, downloads, replacements and deletion attempts without logging document contents.
+
+32. Integration and Master Data Administration
+
+The legacy product depends on shared ApplicationPanel user, department and branch master data. The target product shall not hardwire itself to that legacy database.
+
+Define canonical internal master-data models for institutions, users, departments, branches/business units, designations, vendors and currencies as applicable.
+
+Support controlled manual administration and/or integration adapters for bank-approved HR, directory, ERP, vendor and finance master sources.
+
+External integration must be configurable per institution and isolated behind adapter interfaces.
+
+Support secure credential references, endpoint configuration, connection testing, timeout/retry policies, error monitoring and integration audit.
+
+Define source-of-truth and conflict-resolution rules for each synchronized master-data domain.
+
+No live ERP, core banking, GL or HR integration is included as a confirmed legacy feature; each integration requires a separate interface specification and approval.
+
+33. Reporting, Export and Data Governance Expansion
+
+Retain the documented OPEX/CAPEX operational and management reports, Excel export and audit reporting.
+
+Provide institution-scoped report access and field-level masking where required.
+
+Use asynchronous report generation for large exports, with expiry, secure download and audit.
+
+Apply export row limits, pagination or asynchronous jobs according to approved operational thresholds.
+
+Ensure exported files inherit the user's data scope and cannot expose cross-institution records.
+
+Define report definitions, KPI formulas, currency conversion basis, time zone and treatment of cancelled/rejected/reverted requests.
+
+Provide an export audit record including requester, filters, row count, file identifier, timestamp and completion status.
+
+34. Expanded Non-Functional Requirements
+
+ID
+
+Quality Attribute
+
+Target Requirement / Decision
+
+NFR-API-01
+
+Interoperability
+
+Documented, versioned REST APIs and OpenAPI contracts; no dependency on React implementation details.
+
+NFR-SEC-01
+
+Tenant isolation
+
+Automated cross-tenant negative tests for API, database, cache, files, reports, audit and jobs.
+
+NFR-SEC-02
+
+Secrets
+
+No plaintext secrets in DB, code, logs, frontend or API responses; use approved vault/KMS or envelope encryption.
+
+NFR-SEC-03
+
+Authorization
+
+Backend authorization on every protected operation and data scope.
+
+NFR-AUD-01
+
+Auditability
+
+Traceable actor/action/time/resource and before/after diffs for configuration and business actions.
+
+NFR-UX-01
+
+Frontend compatibility
+
+React frontend must support responsive layouts and institution-configurable themes; backend provides design/configuration tokens.
+
+NFR-REL-01
+
+Reliability
+
+Transactional workflow changes, idempotent background work and safe retry semantics.
+
+NFR-OBS-01
+
+Observability
+
+Structured logs, correlation IDs, metrics, health checks and traceability without sensitive-data leakage.
+
+NFR-PERF-01
+
+Performance
+
+Response-time, throughput, concurrent-user and data-volume targets to be agreed with target banks.
+
+NFR-BCP-01
+
+Continuity
+
+RPO, RTO, backup frequency, restore testing and disaster recovery topology to be agreed.
+
+NFR-RET-01
+
+Retention
+
+Configurable retention and archive rules for business records, audit, notifications and documents, subject to law/policy.
+
+NFR-COMP-01
+
+Compatibility
+
+Supported browsers, React/browser versions, Java runtime, database version and deployment topology to be documented.
+
+No numeric performance, availability, RPO/RTO or retention values are invented in this revision. These remain bank-specific non-functional decisions.
+
+35. Updated Target Architecture and Technology Direction
+
+Layer
+
+Target Direction
+
+Frontend (later phase)
+
+Separate React SPA; responsive and accessible; consumes REST APIs; theme/design tokens from backend; no institution-specific hardcoding.
+
+API layer
+
+Spring Boot REST controllers, versioned routes, DTO validation, OpenAPI and consistent errors.
+
+Application layer
+
+Use cases, transaction boundaries, orchestration and authorization checks.
+
+Domain layer
+
+Expense, delegation, workflow, policy/rules and institution domain behavior.
+
+Infrastructure layer
+
+PostgreSQL repositories, Flyway, file/object storage, email adapters, secrets manager, cache, observability and external integrations.
+
+Configuration plane
+
+Institution, branding, feature, permission, workflow, business-rule and notification-template administration.
+
+Data layer
+
+PostgreSQL with approved tenant isolation, relational constraints, indexes and migration-controlled schema.
+
+Recommended implementation style: modular monolith initially, with explicit module boundaries and adapter interfaces. Avoid premature microservices. The product must remain API-first and frontend-independent.
+
+Technology version note: choose a supported stable Spring Boot release compatible with the approved Java LTS version at implementation time; pin and document dependency versions. This BRD does not freeze a specific minor framework release.
+
+36. Revised Delivery Roadmap and Release Gates
+
+Phase
+
+Scope
+
+Exit Criteria
+
+0 – Requirements and architecture decisions
+
+Resolve tenant model, identity, authorization, workflow semantics, secret manager, email provider model, retention and bank NFRs.
+
+Approved decision log, threat model, architecture diagrams and API standards.
+
+1 – Backend platform foundation
+
+Spring Boot modular monolith, PostgreSQL, Flyway, tenant context, auth integration foundation, logging, exception model, audit, secrets adapter, OpenAPI and CI.
+
+Build/test/security checks pass; tenant isolation baseline proven.
+
+2 – Backend administration APIs
+
+Institution management, branding/theme configuration, feature flags, user/department master data, roles/permissions and configuration audit.
+
+APIs and tests complete; sample institution configuration can be administered without code changes.
+
+3 – Backend workflow and policy services
+
+Workflow definitions, rules, validation/simulation/publish/versioning, delegation matrix, EC, limits and recommending authorities.
+
+Configured workflows can route representative test requests deterministically.
+
+4 – Backend expense capabilities
+
+OPEX/CAPEX requests, registers, approval actions, attachments, resubmission, currency and exceeding-limit behavior.
+
+All mapped BRD requirements have passing tests and traceability.
+
+5 – Backend supporting services
+
+Notifications, email provider administration, template management, audit search/export, reports and dashboards APIs.
+
+End-to-end notification, audit and reporting scenarios pass.
+
+6 – Backend hardening and API sign-off
+
+Performance/security tests, API compatibility review, operational documentation and deployment readiness.
+
+Backend API contract is approved and stable for React integration.
+
+7 – React frontend
+
+Responsive React application, design system, dynamic theme rendering, admin designers, OPEX/CAPEX screens and dashboards.
+
+UI consumes approved APIs; no backend contract redesign required for documented features.
+
+8 – Bank pilot and production readiness
+
+Institution onboarding, migration, UAT, security testing, operational runbooks, training and go-live.
+
+Bank acceptance and operational/security sign-offs obtained.
+
+The user has stated that backend development is the first delivery priority and frontend work follows successful backend completion. The backend must nevertheless implement all required configuration APIs and theme data contracts before the frontend phase.
+
+37. New Functional Requirement Register (Version 2.0)
+
+Requirement ID
+
+Capability
+
+Requirement Statement
+
+INS-01
+
+Institution administration
+
+Create, update, activate, suspend and deactivate institutions with unique identifiers and audited lifecycle.
+
+INS-02
+
+Tenant isolation
+
+Enforce institution data isolation across APIs, persistence, jobs, cache, files, reports and audit.
+
+INS-03
+
+Institution settings
+
+Configure locale, timezone, currency, date/number formats and institution metadata.
+
+INS-04
+
+Institution features
+
+Enable/disable modules and features per institution, enforced by backend authorization.
+
+BRD-UI-01
+
+Branding configuration
+
+Configure logo, favicon, product labels, brand palette and safe design tokens per institution.
+
+BRD-UI-02
+
+Theme lifecycle
+
+Preview, publish, version and rollback theme/branding settings.
+
+BRD-UI-03
+
+Theme API
+
+Expose current tenant theme and configuration version through authenticated APIs.
+
+IAM-01
+
+Custom roles
+
+Create and manage institution-scoped custom roles.
+
+IAM-02
+
+Granular permissions
+
+Support module/screen, action, data-scope and selected field-level permissions.
+
+IAM-03
+
+Effective authorization
+
+Enforce authorization server-side for every API and record operation.
+
+IAM-04
+
+User membership
+
+Support users associated with one or more institutions subject to approved identity policy.
+
+IAM-05
+
+Access audit
+
+Audit role, permission, membership and privileged-access changes.
+
+WF-01
+
+Workflow configuration
+
+Configure institution-specific workflows by expense nature and approved business attributes.
+
+WF-02
+
+Workflow patterns
+
+Support sequential/parallel steps, quorum, required approvers and optional participants.
+
+WF-03
+
+Workflow conditions
+
+Support safe conditional routing and deterministic rule precedence.
+
+WF-04
+
+Workflow versioning
+
+Version and publish workflow definitions; preserve version on in-flight requests.
+
+WF-05
+
+Workflow validation
+
+Validate and simulate workflows before publication.
+
+WF-06
+
+Workflow execution integrity
+
+Handle duplicate/concurrent actions safely and transactionally.
+
+RULE-01
+
+Business rule administration
+
+Configure approved validation/routing policies without client-specific code changes.
+
+RULE-02
+
+Safe rule execution
+
+Use constrained expressions/decision tables; prohibit arbitrary code and SQL execution.
+
+AUD-01
+
+Central activity history
+
+Search audit events by actor, institution, action, resource and date.
+
+AUD-02
+
+Before/after diff
+
+Record authorized configuration changes with old/new values and sensitive-value redaction.
+
+AUD-03
+
+Audit export
+
+Provide permission-controlled audit exports and audit the export itself.
+
+DASH-01
+
+Management dashboard
+
+Provide institution-scoped expense, approval, budget and workflow metrics.
+
+DASH-02
+
+Dashboard drill-down
+
+Allow authorized drill-down from metrics to underlying records.
+
+NOT-01
+
+In-app notification center
+
+Provide notification inbox, read/unread status and authorized deep links.
+
+MAIL-01
+
+Email provider administration
+
+Configure institution email provider/sender settings through administration.
+
+MAIL-02
+
+Secret-safe credential handling
+
+Store mail credentials using approved vault/KMS or envelope encryption; never expose plaintext.
+
+MAIL-03
+
+Email template designer
+
+Support visual and HTML/source editing with safe placeholders, preview, test-send and versioning.
+
+MAIL-04
+
+Email delivery tracking
+
+Track attempts, delivery states, sanitized errors and retry behavior.
+
+API-01
+
+REST API-first backend
+
+Expose all product capabilities through versioned JSON REST APIs.
+
+API-02
+
+OpenAPI contracts
+
+Publish and maintain OpenAPI specs and API examples for React integration.
+
+API-03
+
+Stable contracts
+
+Use DTOs, consistent errors, pagination, validation, idempotency and concurrency controls.
+
+SEC-01
+
+Bank security controls
+
+Support TLS, encryption at rest, least privilege, MFA/SSO integration, security monitoring and testing.
+
+DOC-01
+
+Secure document storage
+
+Use private storage, tenant-aware access, file validation, malware scanning where available and retention controls.
+
+INT-01
+
+Master data adapters
+
+Provide institution-specific adapters for approved HR/directory/ERP/vendor sources without hardcoded legacy DB dependencies.
+
+38. Open Decisions Added or Reaffirmed for Version 2.0
+
+Decision ID
+
+Topic
+
+Decision Required
+
+OD-23
+
+Tenant isolation model
+
+Shared schema, schema-per-tenant or database-per-tenant; requires bank security and operations approval.
+
+OD-24
+
+Identity and SSO
+
+Identity provider, OIDC/SAML support, MFA, token/session model and provisioning.
+
+OD-25
+
+Platform vs institution administration
+
+Define global platform operator roles, institution admin boundaries and support-access controls.
+
+OD-26
+
+Role permission semantics
+
+Permission inheritance, allow/deny precedence, data scopes and maker-checker conflicts.
+
+OD-27
+
+Workflow configuration model
+
+Approve workflow graph/decision-table representation, condition language and supported step types.
+
+OD-28
+
+Workflow change behavior
+
+Confirm treatment of in-flight requests when a workflow/rule version changes.
+
+OD-29
+
+Theme customization limits
+
+Confirm allowed theme tokens, fonts, logo formats, image constraints and accessibility standards.
+
+OD-30
+
+Email provider and secret manager
+
+Select SMTP/API provider support, vault/KMS/HSM, key ownership, rotation and recovery.
+
+OD-31
+
+Email template capabilities
+
+Approve template syntax/placeholders, HTML sanitization, visual builder scope and template approval process.
+
+OD-32
+
+Notification policy
+
+Confirm mandatory vs optional notifications, escalation cadence, business calendars and retry limits.
+
+OD-33
+
+Audit integrity and retention
+
+Confirm immutability, retention, legal hold, SIEM integration and export controls.
+
+OD-34
+
+Dashboard KPI definitions
+
+Approve formulas for committed spend, budget utilization, turnaround time and currency aggregation.
+
+OD-35
+
+Document storage
+
+Select object/file storage, malware scanning, encryption, retention and regional/data-residency requirements.
+
+OD-36
+
+Master-data integration
+
+Define source of truth and integration protocols for users, departments, branches, vendors and designations.
+
+OD-37
+
+Bank NFR targets
+
+Agree expected users, volume, peak concurrency, response times, availability, RPO/RTO and maintenance windows.
+
+OD-38
+
+Deployment model
+
+Decide bank-hosted, private cloud, vendor-hosted or hybrid deployment and tenant placement.
+
+OD-39
+
+API authentication and compatibility
+
+Approve API version policy, deprecation windows, CORS origins and service-to-service security.
+
+OD-40
+
+React frontend standards
+
+Approve design system, accessibility level, supported browsers and frontend hosting/deployment model.
+
+OD-41
+
+Data residency and privacy
+
+Confirm applicable jurisdictions, data classification, residency and cross-border restrictions.
+
+OD-42
+
+Existing backend status
+
+Inventory current implemented modules and map them to v2.0 requirements; no implementation status is assumed by this BRD.
+
+39. Requirements Traceability and Change Control
+
+Every functional requirement shall map to one or more backend modules, API operations, data entities, automated tests and acceptance criteria.
+
+Every new v2.0 requirement shall be tagged as target requirement and must not be misrepresented as a feature already present in the legacy Albaraka implementation.
+
+Maintain a requirements traceability matrix with requirement ID, source/evidence, priority, owner, implementation PR, API reference, test case and status.
+
+Changes to workflow, business rules, permissions, institution settings and notification templates shall be versioned and audited.
+
+Any change that affects a published API contract must include compatibility impact analysis and update OpenAPI documentation.
+
+No requirement may be marked complete solely because a screen exists; backend authorization, data isolation, validation, audit and automated tests must also pass.
+
+40. Version 2.0 Acceptance Criteria
+
+Acceptance ID
+
+Acceptance Statement
+
+AC-01
+
+An administrator can onboard two test institutions with different branding, settings and enabled features without deploying institution-specific code.
+
+AC-02
+
+Users of one institution cannot access another institution's records through direct API calls, exports, files, reports, audit queries or background jobs.
+
+AC-03
+
+An institution administrator can manage permitted users, roles and granular permissions; backend APIs enforce those permissions.
+
+AC-04
+
+A workflow administrator can create, validate, simulate and publish a workflow version; a request records the version used.
+
+AC-05
+
+A theme can be changed and published in backend administration; the configuration API returns the new version and theme tokens for React.
+
+AC-06
+
+A notification administrator can configure an approved email provider, test it and rotate credentials without retrieving the old secret.
+
+AC-07
+
+Email templates can be edited through visual and HTML/source modes, previewed with sample data and test-sent; unsafe markup is rejected/sanitized.
+
+AC-08
+
+Audit history records actor, action, time, resource and before/after changes for supported configuration and workflow events.
+
+AC-09
+
+Dashboard APIs return institution-scoped metrics and enforce data permissions for drill-down.
+
+AC-10
+
+All product capabilities required by the BRD are exposed through documented REST APIs before React frontend integration.
+
+AC-11
+
+OpenAPI specifications, API error catalogue, configuration guide and security integration guide are maintained.
+
+AC-12
+
+The legacy OPEX/CAPEX requirements remain traceable and are not lost during the v2.0 expansion.
+
+AC-13
+
+Security tests demonstrate secret masking, tenant isolation, authorization enforcement and safe file access.
+
+AC-14
+
+Backend release passes agreed functional, integration, regression, security and performance gates.
+
+41. Important Implementation Guardrails
+
+Do not implement the React frontend as JSP or embed frontend pages inside the Spring Boot application. The target frontend is a separate React application.
+
+Do not hardcode institution names, logos, colors, roles, approval limits, workflow routes, email content or institution-specific business rules.
+
+Do not store mail credentials or other secrets in plaintext, source control, browser storage, application logs or audit payloads.
+
+Do not execute arbitrary scripts or SQL entered by administrators as workflow/business rules or email templates.
+
+Do not let configuration changes rewrite the approval path of an already submitted request without an explicit approved migration/reassignment process.
+
+Do not rely on frontend visibility for security; every API and resource access must be authorized on the backend.
+
+Do not assume that all banks have the same organizational hierarchy, departments, currencies, approval roles or email infrastructure.
+
+Do not claim compliance certifications or bank regulatory approval without evidence and formal sign-off.
+
+Do not mark existing functionality as implemented or verified without reviewing the actual repository, tests and deployment evidence.
+
+42. Version 2.0 Sign-Off
+
+This expanded BRD is the proposed target requirements baseline for the commercial EDAM product. It preserves the v1.0 documented OPEX/CAPEX and delegation scope and adds target requirements for institution management, configurable themes, advanced authorization, configurable workflows/business rules, audit/activity history, dashboards, notification/email administration, secure secret management and a separate React frontend.
+
+Approval of this document confirms the intended product scope; it does not by itself resolve every OPEN DECISION. Tenant isolation, identity/SSO, secret management, workflow semantics, data residency and bank-specific NFRs must be approved before the affected production capabilities are finalized.
+
+Role
+Name
+Decision / Signature
+Date
+Product Owner
+Business Owner / Bank Representative
+Solution Architect
+Security / Risk Representative
+Engineering Lead
+EDAM Business Requirements Document v2.0 – Expanded Draft | Confidential

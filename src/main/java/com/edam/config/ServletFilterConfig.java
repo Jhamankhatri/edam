@@ -1,5 +1,9 @@
 package com.edam.config;
 
+import com.edam.common.security.InstitutionContext;
+import com.edam.common.tenant.TenantContextFilter;
+import com.edam.institution.InstitutionRepository;
+
 import jakarta.servlet.DispatcherType;
 
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -54,6 +58,29 @@ public class ServletFilterConfig {
 		registration.setDispatcherTypes(DispatcherType.ERROR);
 		// After the (REQUEST-only) security chain, before the container renders /error.
 		registration.setOrder(Ordered.LOWEST_PRECEDENCE - 100);
+		return registration;
+	}
+
+	/**
+	 * Resolves the request's institution after authentication and before any controller runs.
+	 *
+	 * <p>Ordered after the Spring Security chain (which populates the authentication) and before
+	 * request handling. The filter itself performs no authorization; it re-checks the
+	 * {@code X-Institution} header against the principal's verified memberships and binds the id
+	 * services need. Running it here rather than in a controller argument means a service can never
+	 * be invoked with an unresolved tenant in a web request.
+	 */
+	@Bean
+	FilterRegistrationBean<TenantContextFilter> tenantContextFilter(InstitutionContext institutionContext,
+			InstitutionRepository institutions) {
+		FilterRegistrationBean<TenantContextFilter> registration = new FilterRegistrationBean<>(
+				new TenantContextFilter(institutionContext, institutions));
+		registration.setName("tenantContextFilter");
+		registration.addUrlPatterns("/api/*");
+		registration.setDispatcherTypes(DispatcherType.REQUEST);
+		// Immediately after the security chain: -100 would put it before authorization, which is
+		// correct here because this filter only reads the already-authenticated principal.
+		registration.setOrder(Ordered.LOWEST_PRECEDENCE - 200);
 		return registration;
 	}
 

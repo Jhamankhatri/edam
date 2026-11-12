@@ -48,6 +48,12 @@ def report_log(log: str) -> None:
     patterns = [
         ("caused-by", r"Caused by: ([\w.$]+)(?::\s*(.{0,220}))?"),
         ("compile", r"\[ERROR\] /home/runner/\S+\.java:\[[^\]]+\] .{0,300}"),
+        # Dependency resolution failures never contain a .java path, so they need their own
+        # patterns; without these the report is empty and the failure looks unexplained.
+        ("deps", r"(?:Could not resolve dependencies|Could not find artifact|Failed to read artifact descriptor"
+                r"|Non-resolvable import POM|Could not transfer artifact|Unresolveable build extension"
+                r"|The following artifacts could not be resolved)"),
+        ("plugin", r"(?:Failed to execute goal [\w.:-]+|Plugin .* or one of its dependencies could not be resolved)"),
         ("ctx", r"(?:UnsatisfiedDependencyException|BeanCreationException|NoSuchBeanDefinitionException"
                 r"|No qualifying bean|Failed to instantiate|Migration .* failed|Schema-validation"
                 r"|JasperException|Unable to compile class for JSP|NoClassDefFoundError"
@@ -59,6 +65,21 @@ def report_log(log: str) -> None:
             end = log.find("\n", match.end())
             line = log[start:end if end != -1 else None]
             emit("error", title, line)
+
+
+def report_error_lines(log: str) -> None:
+    """Final safety net: surface any [ERROR] line not already covered.
+
+    A silent CI report is worse than a noisy one, because it turns a build failure into an
+    unexplained build failure.
+    """
+    seen: set[str] = set()
+    for match in list(re.finditer(r"\[ERROR\][^\n]{0,400}", log))[:15]:
+        line = " ".join(match.group(0).split())
+        if line in seen:
+            continue
+        seen.add(line)
+        emit("error", "build", line)
 
 
 def report_summaries() -> None:
@@ -79,6 +100,7 @@ def main() -> int:
         emit("warning", "ci-report", f"{path} not found")
         return 0
     report_log(log)
+    report_error_lines(log)
     report_test_results()
     report_summaries()
     return 0

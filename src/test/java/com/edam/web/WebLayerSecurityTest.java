@@ -45,7 +45,7 @@ class WebLayerSecurityTest extends AbstractPostgreSqlIntegrationTest {
 
 	private static EdamPrincipal principalWith(String... permissions) {
 		return new EdamPrincipal("emp-1", "admin", "Administrator", Map.of("demo-bank", Set.of("ADMINISTRATOR")),
-				Set.of(permissions));
+				Map.of("demo-bank", Set.of(permissions)), Set.of("demo-bank"));
 	}
 
 	@Test
@@ -96,7 +96,8 @@ class WebLayerSecurityTest extends AbstractPostgreSqlIntegrationTest {
 	@DisplayName("the identity endpoint exposes institution membership as a set")
 	void identityExposesInstitutionSet() throws Exception {
 		EdamPrincipal multiTenant = new EdamPrincipal("emp-1", "admin", "Administrator",
-				Map.of("demo-bank", Set.of("ADMINISTRATOR"), "albaraka", Set.of("ADMINISTRATOR")), Set.of());
+				Map.of("demo-bank", Set.of("ADMINISTRATOR"), "albaraka", Set.of("ADMINISTRATOR")),
+				Map.of(), Set.of("demo-bank", "albaraka"));
 
 		this.mockMvc.perform(get("/api/v1/dev/me").with(user(multiTenant)).accept(MediaType.APPLICATION_JSON))
 			.andExpect(status().isOk())

@@ -1,7 +1,5 @@
 package com.edam.institution;
 
-import java.math.BigDecimal;
-
 import com.edam.common.audit.AuditableEntity;
 
 import jakarta.persistence.Column;
@@ -71,22 +69,53 @@ public class Institution extends AuditableEntity {
 	@Column(name = "time_zone", nullable = false, length = 40)
 	private String timeZone = "Asia/Karachi";
 
-	/**
-	 * Department Head approval threshold in the base currency, or {@code null} to fall back
-	 * to the platform-configured default (BRD 10.2, OD-06). Nullable on purpose: "not
-	 * configured" is a business state, not zero.
+	/*
+	 * The department-head limit moved to the configuration plane (table department_head_limit,
+	 * FM-10) because the BRD describes it as a configuration record with its own audit trail, and
+	 * V3 created that table. The column was migrated and dropped in V4 so there is exactly one
+	 * writable source: an administrator editing "the limit" must not have to guess which screen
+	 * the system honours.
 	 */
-	@Column(name = "department_head_limit", precision = 19, scale = 2)
-	private BigDecimal departmentHeadLimit;
 
-	/** Whether only configured departments may raise CAPEX requests (replaces OD-21 hard-coding). */
-	@NotNull
-	@Column(name = "capex_department_restriction_enabled", nullable = false)
-	private boolean capexDepartmentRestrictionEnabled = true;
+	/*
+	 * The CAPEX department restriction moved to the per-institution feature flag
+	 * (FeatureKey.CAPEX_DEPARTMENT_RESTRICTION, table institution_feature_flag). The column was
+	 * dropped in V4 after its value was migrated, because two writable sources for one policy
+	 * switch is how a setting silently stops being honoured.
+	 */
 
 	@NotNull
 	@Column(name = "active", nullable = false)
 	private boolean active = true;
+
+	/** Optional longer name used on documents and reports. */
+	@Size(max = 200)
+	@Column(name = "display_name", length = 200)
+	private String displayName;
+
+	/** Address shown to users when they need help; not a credential or a secret. */
+	@Size(max = 200)
+	@Column(name = "support_email", length = 200)
+	private String supportEmail;
+
+	/** Date pattern used when presenting and exporting dates (BRD CFG). */
+	@NotBlank
+	@Column(name = "date_format", nullable = false, length = 40)
+	private String dateFormat = "dd MMM yyyy";
+
+	/** Number pattern used when presenting and exporting amounts. */
+	@NotBlank
+	@Column(name = "number_format", nullable = false, length = 40)
+	private String numberFormat = "#,##0.00";
+
+	/**
+	 * Lifecycle state (INS-01). Distinct from {@link #active}: {@code active} is a soft delete for
+	 * the institution record, while {@code status} is the governed lifecycle (a suspended
+	 * institution keeps its data and its audit trail but cannot be entered).
+	 */
+	@NotBlank
+	@Column(name = "status", nullable = false, length = 16)
+	private String status = "ACTIVE";
 
 	public String getCode() {
 		return this.code;
@@ -160,28 +189,58 @@ public class Institution extends AuditableEntity {
 		this.timeZone = timeZone;
 	}
 
-	public BigDecimal getDepartmentHeadLimit() {
-		return this.departmentHeadLimit;
-	}
-
-	public void setDepartmentHeadLimit(BigDecimal departmentHeadLimit) {
-		this.departmentHeadLimit = departmentHeadLimit;
-	}
-
-	public boolean isCapexDepartmentRestrictionEnabled() {
-		return this.capexDepartmentRestrictionEnabled;
-	}
-
-	public void setCapexDepartmentRestrictionEnabled(boolean capexDepartmentRestrictionEnabled) {
-		this.capexDepartmentRestrictionEnabled = capexDepartmentRestrictionEnabled;
-	}
-
 	public boolean isActive() {
 		return this.active;
 	}
 
 	public void setActive(boolean active) {
 		this.active = active;
+	}
+
+
+	public String getDisplayName() {
+		return this.displayName;
+	}
+
+	public void setDisplayName(String displayName) {
+		this.displayName = displayName;
+	}
+
+	public String getSupportEmail() {
+		return this.supportEmail;
+	}
+
+	public void setSupportEmail(String supportEmail) {
+		this.supportEmail = supportEmail;
+	}
+
+	public String getDateFormat() {
+		return this.dateFormat;
+	}
+
+	public void setDateFormat(String dateFormat) {
+		this.dateFormat = dateFormat;
+	}
+
+	public String getNumberFormat() {
+		return this.numberFormat;
+	}
+
+	public void setNumberFormat(String numberFormat) {
+		this.numberFormat = numberFormat;
+	}
+
+	public String getStatus() {
+		return this.status;
+	}
+
+	public void setStatus(String status) {
+		this.status = status;
+	}
+
+	/** True when the institution may be entered by its users. */
+	public boolean isOperational() {
+		return this.active && "ACTIVE".equals(this.status);
 	}
 
 }
