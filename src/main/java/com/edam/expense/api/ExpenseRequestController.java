@@ -187,7 +187,13 @@ public class ExpenseRequestController {
 		}
 	}
 
-	static ExpenseRequestResponse toResponse(ExpenseRequest expenseRequest) {
+	/**
+	 * Map a request entity to its API representation.
+	 *
+	 * <p>Public because the approval inbox embeds a request in each row and duplicating the mapper
+	 * would let the two representations drift, which is how a field silently disappears from one screen.
+	 */
+	public static ExpenseRequestResponse toResponse(ExpenseRequest expenseRequest) {
 		return new ExpenseRequestResponse(expenseRequest.getId(), expenseRequest.getRequestNumber(),
 				expenseRequest.getTitle(), expenseRequest.getDescription(), expenseRequest.getAmount(),
 				expenseRequest.getCurrencyCode(), expenseRequest.getAmountInBase(),
@@ -211,7 +217,7 @@ public class ExpenseRequestController {
 				expenseRequest.getUpdatedAt(), expenseRequest.getVersion());
 	}
 
-	static RequestHistoryResponse toResponse(RequestHistoryEntry entry) {
+	public static RequestHistoryResponse toResponse(RequestHistoryEntry entry) {
 		return new RequestHistoryResponse(entry.getSequenceNumber(), entry.getAction(), entry.getFromState(),
 				entry.getToState(), entry.getActorEmployeeId(), entry.getActorUsername(), entry.getComment(),
 				entry.getOccurredAt(), entry.getCorrelationId());

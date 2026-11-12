@@ -13,7 +13,7 @@ import com.edam.common.audit.AuditAction;
 import com.edam.common.audit.AuditRecorder;
 import com.edam.common.exception.BusinessException;
 import com.edam.common.exception.ResourceNotFoundException;
-import com.edam.common.security.Auditor;
+import com.edam.common.audit.Auditor;
 import com.edam.common.security.InstitutionContext;
 
 import org.springframework.stereotype.Service;
