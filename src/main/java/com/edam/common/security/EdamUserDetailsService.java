@@ -1,8 +1,6 @@
 package com.edam.common.security;
 
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 
 /**
  * Authentication seam for EDAM.
@@ -13,13 +11,12 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
  * supplies a local, LDAP, OIDC or SAML implementation without changing the authorization
  * model or any controller.
  *
- * <p>Implementations must return an {@link EdamPrincipal} as the
- * {@link UserDetailsService#loadUserByUsername(String)} subject so that
- * {@code InstitutionContext} can resolve tenant membership.
+ * <p>Implementations <strong>must</strong> return an {@link EdamPrincipal} as the
+ * {@link org.springframework.security.core.Authentication#getPrincipal() principal}, so
+ * that {@code InstitutionContext} can resolve tenant membership. This contract is verified
+ * in {@code EdamPrincipalContractTest} rather than expressed as a static type, because
+ * {@link UserDetailsService} fixes the return type.
  */
 public interface EdamUserDetailsService extends UserDetailsService {
-
-	@Override
-	EdamPrincipal loadUserByUsername(String username) throws UsernameNotFoundException;
 
 }

@@ -33,7 +33,7 @@ public class InMemoryEdamUserDetailsService {
 
 	@Bean
 	@ConditionalOnMissingBean(EdamUserDetailsService.class)
-	EdamUserDetailsService devEdamUserDetailsService() {
+	EdamUserDetailsService devEdamUserDetailsService(org.springframework.security.crypto.password.PasswordEncoder passwordEncoder) {
 		Map<String, DemoUser> users = new HashMap<>();
 		users.put("admin", new DemoUser("admin", "Administrator", "admin-change-me",
 				Map.of("albaraka", Set.of("ADMINISTRATOR"), "demo-bank", Set.of("ADMINISTRATOR")),
@@ -49,7 +49,7 @@ public class InMemoryEdamUserDetailsService {
 			if (user == null) {
 				throw new org.springframework.security.core.userdetails.UsernameNotFoundException("Unknown user");
 			}
-			return user.toPrincipal();
+			return user.toPrincipal(this.passwordEncoder);
 		};
 	}
 
@@ -57,9 +57,16 @@ public class InMemoryEdamUserDetailsService {
 	private record DemoUser(String username, String displayName, String rawPassword,
 			Map<String, Set<String>> institutionRoles, Set<String> permissions) {
 
-		EdamPrincipal toPrincipal() {
-			return new EdamPrincipal(this.username, this.username, this.displayName, this.institutionRoles,
-					this.permissions);
+		/**
+		 * Wraps the application principal with the encoded credential required by
+		 * {@code DaoAuthenticationProvider}. The password is hashed on first use with the
+		 * configured encoder and never leaves this object.
+		 */
+		DevUserDetails toPrincipal(org.springframework.security.crypto.password.PasswordEncoder passwordEncoder) {
+			return new DevUserDetails(
+					new EdamPrincipal(this.username, this.username, this.displayName, this.institutionRoles,
+							this.permissions),
+					passwordEncoder.encode(this.rawPassword));
 		}
 
 	}

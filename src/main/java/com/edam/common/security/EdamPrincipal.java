@@ -7,6 +7,7 @@ import java.util.Set;
 
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
 
 /**
  * Authenticated EDAM user as seen by the application layer.
@@ -17,7 +18,8 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
  * checks can never be satisfied by a role name alone.
  *
  * <p>This type is a projection of the identity store, not a JPA entity; it is safe to hold
- * in the security context.
+ * in the security context. It implements {@link UserDetails} so that Spring Security's
+ * standard authentication machinery can use it directly.
  *
  * @param employeeId stable business identifier of the employee
  * @param username login name captured at authentication time
@@ -26,7 +28,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
  * @param permissions institution-independent operational permissions
  */
 public record EdamPrincipal(String employeeId, String username, String displayName,
-		Map<String, Set<String>> institutionRoles, Set<String> permissions) {
+		Map<String, Set<String>> institutionRoles, Set<String> permissions) implements UserDetails {
 
 	public EdamPrincipal {
 		institutionRoles = (institutionRoles == null) ? Map.of() : Map.copyOf(institutionRoles);
@@ -47,8 +49,8 @@ public record EdamPrincipal(String employeeId, String username, String displayNa
 	}
 
 	/**
-	 * Granted authorities: one {@code ROLE_*} entry per institution/role pair plus one
-	 * {@code PERM_*} entry per operational permission. Institution scoping of a role is
+	 * Granted authorities: one {@code ROLE_<institution>:<role>} entry per
+	 * institution/role pair plus one {@code PERM_*} entry per operational permission. Institution scoping of a role is
 	 * encoded in the authority so that cross-tenant use cannot be accidental.
 	 */
 	public Set<GrantedAuthority> authorities() {
@@ -57,6 +59,49 @@ public record EdamPrincipal(String employeeId, String username, String displayNa
 			.forEach(role -> authorities.add(new SimpleGrantedAuthority("ROLE_" + institution + ":" + role))));
 		this.permissions.forEach(permission -> authorities.add(new SimpleGrantedAuthority("PERM_" + permission)));
 		return Set.copyOf(authorities);
+	}
+
+	// ------------------------------------------------------------------
+	// UserDetails contract
+	// ------------------------------------------------------------------
+
+	@Override
+	public Set<GrantedAuthority> getAuthorities() {
+		return authorities();
+	}
+
+	/**
+	 * EDAM never stores or exposes credential material on the principal. Authentication is
+	 * performed against the identity provider, which returns a fully authenticated token.
+	 */
+	@Override
+	public String getPassword() {
+		return null;
+	}
+
+	@Override
+	public String getUsername() {
+		return this.username;
+	}
+
+	@Override
+	public boolean isAccountNonExpired() {
+		return true;
+	}
+
+	@Override
+	public boolean isAccountNonLocked() {
+		return true;
+	}
+
+	@Override
+	public boolean isCredentialsNonExpired() {
+		return true;
+	}
+
+	@Override
+	public boolean isEnabled() {
+		return true;
 	}
 
 }

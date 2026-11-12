@@ -87,10 +87,13 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(HandlerMethodValidationException.class)
 	public ResponseEntity<ApiResponse<Void>> handleHandlerMethodValidation(HandlerMethodValidationException ex,
 			HttpServletRequest request) {
-		List<FieldErrorDetail> fieldErrors = ex.getAllErrors()
+		// Spring 7 exposes per-parameter results; the parameter name is the field path.
+		List<FieldErrorDetail> fieldErrors = ex.getParameterValidationResults()
 			.stream()
-			.map(error -> new FieldErrorDetail(error.getObjectName() != null ? error.getObjectName() : "request",
-					error.getDefaultMessage() != null ? error.getDefaultMessage() : "is invalid"))
+			.flatMap(result -> result.getResolvableErrors()
+				.stream()
+				.map(error -> new FieldErrorDetail(parameterName(result.getMethodParameter()),
+						error.getDefaultMessage() != null ? error.getDefaultMessage() : "is invalid")))
 			.toList();
 		log.warn("request.handler_validation_failed errors={}", fieldErrors.size());
 		return respond(HttpStatus.BAD_REQUEST, ApiResponse.validationFailure(fieldErrors, correlationId(request),
@@ -174,8 +177,8 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(OptimisticLockingFailureException.class)
 	public ResponseEntity<ApiResponse<Void>> handleOptimisticLock(OptimisticLockingFailureException ex,
 			HttpServletRequest request) {
-		log.warn("persistence.optimistic_lock_conflict entity={}",
-				ex.getPersistentClassName() != null ? ex.getPersistentClassName() : "unknown");
+		// The entity name is internal detail for the log only; the caller sees a safe code.
+		log.warn("persistence.optimistic_lock_conflict type={}", ex.getClass().getSimpleName());
 		return respond(HttpStatus.CONFLICT, ApiResponse.failure(ErrorCode.CONCURRENT_MODIFICATION,
 				ErrorCode.CONCURRENT_MODIFICATION.safeMessage(), correlationId(request),
 				ApiPaths.applicationPath(request)));
@@ -215,6 +218,11 @@ public class GlobalExceptionHandler {
 	// ------------------------------------------------------------------------
 	// Helpers
 	// ------------------------------------------------------------------------
+
+	private static String parameterName(org.springframework.core.MethodParameter parameter) {
+		String name = parameter.getParameterName();
+		return (name != null && !name.isBlank()) ? name : "request";
+	}
 
 	private static FieldErrorDetail toFieldError(ConstraintViolation<?> violation) {
 		String path = violation.getPropertyPath() != null ? violation.getPropertyPath().toString() : "request";

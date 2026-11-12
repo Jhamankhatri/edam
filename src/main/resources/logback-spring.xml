@@ -2,45 +2,27 @@
 <!--
   EDAM logging configuration.
 
-  * One format for all environments, with correlationId always present.
-  * Structured JSON output is supported through Spring Boot's StructuredLogEncoder; it is
-    enabled by setting LOG_CONSOLE_LOG_STRUCTURED_FORMAT=ecs|logstash|gelf (see application-prod.yml).
-  * Levels come from configuration properties (logging.level.*), never from this file, so
-    an operator can change verbosity without a rebuild.
-  * No logger may write request/response bodies; redaction is a code-level responsibility
-    documented in LOGGING_GUIDELINES.md.
+  * Correlation ID is present on every line, at every level.
+  * A single console appender keeps container logs authoritative; side files are a
+    deployment concern (volume mounts / log shippers), not an application concern.
+  * Levels are configured via logging.level.* properties, never hard-coded here, so an
+    operator can change verbosity without a rebuild.
+  * Optional JSON output: Spring Boot replaces this appender's encoder when
+    LOG_CONSOLE_LOG_STRUCTURED_FORMAT is set (see application-prod.yml and the Boot
+    structured-logging documentation). The pattern below is the fallback.
+  * Redaction is a code-level responsibility; see LOGGING_GUIDELINES.md.
 -->
 <configuration>
-
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
-
-    <springProperty scope="context" name="EDAM_CONSOLE_PATTERN" source="logging.pattern.console"
-                    defaultValue="%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%thread] [%X{correlationId:-no-correlation-id}] %logger{36} - %msg%n"/>
 
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
-            <pattern>${EDAM_CONSOLE_PATTERN}</pattern>
+            <pattern>${CONSOLE_LOG_PATTERN:-%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%thread] [%X{correlationId:-no-correlation-id}] %logger{36} - %msg%n}</pattern>
             <charset>${CONSOLE_LOG_CHARSET:-UTF-8}</charset>
         </encoder>
     </appender>
 
-    <!--
-      Structured console encoder. Activated only when a structured format is requested, so
-      local development keeps readable line logs.
-    -->
-    <if condition='"${CONSOLE_LOG_STRUCTURED_FORMAT:-}".equals("") == false'>
-        <then>
-            <appender name="STRUCTURED_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-                <encoder class="org.springframework.boot.logging.logback.StructuredLogEncoder">
-                    <format>${CONSOLE_LOG_STRUCTURED_FORMAT}</format>
-                    <charset>${CONSOLE_LOG_CHARSET:-UTF-8}</charset>
-                </encoder>
-            </appender>
-        </then>
-    </if>
-
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>
     </root>
-
 </configuration>

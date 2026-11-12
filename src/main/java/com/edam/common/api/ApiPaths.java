@@ -12,27 +12,24 @@ public final class ApiPaths {
 	}
 
 	/**
-	 * True when the response should be a JSON envelope rather than an HTML error page.
+	 * True when the response should be a JSON envelope rather than an HTML page.
 	 *
-	 * <p>API requests are identified by their URI prefix (after removing the context
-	 * path) and by an explicit {@code Accept: application/json} header. JSP pages and
-	 * form posts are deliberately excluded even when a browser sends a JSON-friendly
-	 * {@code Accept} header chain.
+	 * <p>API requests are identified by URI prefix (after removing the context path), by a
+	 * JSON content type, or by an explicit {@code Accept: application/json}. Classic JSP
+	 * form posts send {@code application/x-www-form-urlencoded} and are routed to the HTML
+	 * flow even though the browser's {@code Accept} header prefers HTML with a JSON fallback.
 	 */
 	public static boolean wantsApiResponse(HttpServletRequest request) {
 		String path = applicationPath(request);
-		if (path.startsWith("/api/") || path.equals("/api")) {
+		if (path.equals("/api") || path.startsWith("/api/")) {
+			return true;
+		}
+		String contentType = request.getContentType();
+		if (contentType != null && contentType.contains("application/json")) {
 			return true;
 		}
 		String accept = request.getHeader("Accept");
-		if (accept != null && accept.contains("application/json")) {
-			String contentType = request.getContentType();
-			// Form submissions from JSP pages must keep the HTML flow.
-			if (contentType == null || !contentType.contains("application/x-www-form-urlencoded")) {
-				return true;
-			}
-		}
-		return false;
+		return accept != null && accept.contains("application/json") && !accept.contains("text/html");
 	}
 
 	/** Request URI with the context path removed; safe for logging and error envelopes. */
