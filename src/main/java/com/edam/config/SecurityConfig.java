@@ -61,6 +61,9 @@ public class SecurityConfig {
 	SecurityFilterChain securityFilterChain(HttpSecurity http, JsonMapper jsonMapper) throws Exception {
 		RequestMatcher[] publicMatchers = { PathRequest.toStaticResources().atCommonLocations(),
 				PathPatternRequestMatcher.pathPattern("/login"),
+				// Rendered by a view controller. A 403 must explain itself, not redirect to
+				// the login page, which would suggest an authentication problem.
+				PathPatternRequestMatcher.pathPattern("/access-denied"),
 				// The container's error dispatch re-enters the filter chain. Without this,
 				// an authenticated 500 would turn into a 302 to /login.
 				PathPatternRequestMatcher.pathPattern("/error"),
