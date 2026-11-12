@@ -1,6 +1,6 @@
 package com.edam.web;
 
-import java.net.URI;
+
 import java.util.Arrays;
 
 import com.edam.testsupport.AbstractPostgreSqlIntegrationTest;
@@ -53,7 +53,7 @@ class InterceptorDiagnosticsTest extends AbstractPostgreSqlIntegrationTest {
 			.append(" | ");
 
 		try {
-			MockHttpServletRequest request = new MockHttpServletRequest("GET", URI.create("/login"));
+			MockHttpServletRequest request = new MockHttpServletRequest("GET", "/login");
 			for (var entry : context.getBeansOfType(HandlerMapping.class).entrySet()) {
 				HandlerExecutionChain chain = entry.getValue().getHandler(request);
 				if (chain != null) {
