@@ -35,7 +35,7 @@ class InterceptorDiagnosticsTest extends AbstractPostgreSqlIntegrationTest {
 	void dumpDispatcherState() throws Exception {
 		StringBuilder report = new StringBuilder();
 		report.append("interceptors=").append(Arrays.toString(this.handlerMapping.getInterceptors())).append(" | ");
-		Object chain = this.handlerMapping.getHandler(new org.springframework.mock.web.MockHttpServletRequest("GET", "/login"));
+		Object chain = this.handlerMapping.getHandler(new org.springframework.mock.web.MockHttpServletRequest("GET", java.net.URI.create("/login")));
 		report.append("loginChain=").append(chain);
 		if (chain instanceof HandlerExecutionChain executionChain) {
 			report.append(" chainInterceptors=").append(Arrays.toString(executionChain.getInterceptors()));
