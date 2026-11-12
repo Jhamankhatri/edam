@@ -29,7 +29,7 @@ class SecurityConfigurationTest extends AbstractPostgreSqlIntegrationTest {
 		// Disable redirect following so the assertion sees the 302 to the login page.
 		return RestClient.builder()
 			.baseUrl("http://localhost:" + this.port)
-			.defaultStatusHandler(status -> true, (request, response) -> {
+			.defaultStatusHandler(status -> true, (httpRequest, httpResponse) -> {
 			})
 			.build();
 	}

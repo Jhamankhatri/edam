@@ -116,7 +116,7 @@ class ResponseContractTest extends AbstractPostgreSqlIntegrationTest {
 	void unknownApiPath() {
 		ResponseEntity<String> response = RestClient.builder()
 			.baseUrl("http://localhost:" + this.port)
-			.defaultStatusHandler(status -> true, (request, response) -> {
+			.defaultStatusHandler(status -> true, (httpRequest, httpResponse) -> {
 			})
 			.build()
 			.get()
