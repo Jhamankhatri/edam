@@ -77,7 +77,7 @@ jobs:
           export EDAM_DB_URL=jdbc:postgresql://localhost:5432/edam
           export EDAM_DB_USERNAME=edam
           export EDAM_DB_PASSWORD=edam-ci-only
-          nohup java -jar target/edam.war --spring.profiles.active=local --server.port=18080 > war.log 2>&1 &
+          nohup java -jar target/edam.war --spring.profiles.active=local --server.port=18080 --logging.level.org.springframework.security.web=TRACE --logging.level.org.springframework.web.servlet=DEBUG > war.log 2>&1 &
           for i in $(seq 1 90); do
             if grep -q "Started EdamApplication" war.log; then echo "STARTED after ${i}s"; break; fi
             if grep -qE "APPLICATION FAILED TO START|BeanCreationException" war.log; then echo "STARTUP FAILED"; fi
@@ -136,6 +136,8 @@ jobs:
           echo "--- correlation id on every response ---"
           cid=$(curl -sSI http://localhost:18080/login | tr -d '\r' | grep -i '^X-Correlation-Id:' | head -1)
           check CORRELATION "correlation id header present" "$cid" "X-Correlation-Id"
+          echo "--- security decision trail for /login ---"
+          grep -nE "Securing GET /login|Failed to authorize|authorization|AuthorizationFilter" war.log | tail -12 | while IFS= read -r l; do printf '::notice title=SECLOG::%s\n' "$(printf '%s' "$l" | head -c 500)"; done
           echo "--- startup log excerpt ---"
           grep -E "Flyway|Successfully applied|Started EdamApplication" war.log | head -10 || true
           exit $fail
