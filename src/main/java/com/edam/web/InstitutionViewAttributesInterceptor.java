@@ -61,7 +61,6 @@ public class InstitutionViewAttributesInterceptor implements HandlerInterceptor 
 		this.institutionContext = institutionContext;
 	}
 
-	@Override
 	public void postHandle(HttpServletRequest request, HttpServletResponse response, Object handler,
 			ModelAndView modelAndView) {
 		if (modelAndView == null || modelAndView.hasObject(ViewConstants.INSTITUTION_THEME)) {
