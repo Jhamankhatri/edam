@@ -130,11 +130,8 @@
 			<artifactId>thymeleaf</artifactId>
 			<version>${thymeleaf.version}</version>
 		</dependency>
-		<dependency>
-			<groupId>org.thymeleaf</groupId>
-			<artifactId>thymeleaf-extras-java8time</artifactId>
-			<version>3.0.4.RELEASE</version>
-		</dependency>
+		<!-- No thymeleaf-extras-java8time: Thymeleaf 3.1 ships the #temporals object natively,
+			 and the extras artifact for that generation is not published to Maven Central. -->
 
 		<!-- HTML sanitisation for e-mail templates and any rendered rich text. Prevents an
 			 administrator-supplied template from injecting scripts (BRD MAIL-03 / §41). -->
