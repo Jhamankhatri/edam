@@ -5,11 +5,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: |
-          echo "== java =="; which java; java -version 2>&1
-          echo "== javac =="; javac -version 2>&1
-          echo "== mvn =="; mvn -v 2>&1 | head -5
-          echo "== psql =="; which psql; psql --version 2>&1
-          echo "== postgres bin =="; ls /usr/lib/postgresql/ 2>&1
-          echo "== docker =="; docker --version 2>&1
-          echo "== runner os =="; cat /etc/os-release | head -3
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Probe
+        run: |
+          set +e
+          emit() { printf '::notice title=PROBE_%s::%s\n' "$1" "$(printf '%s' "$2" | head -c 300)"; }
+          emit JAVA "$(java -version 2>&1 | tr '\n' ' ')"
+          emit JAVAC "$(javac -version 2>&1)"
+          emit MVN "$(mvn -v 2>&1 | head -3 | tr '\n' ' ')"
+          emit PSQL "$(psql --version 2>&1)"
+          emit PGBIN "$(ls /usr/lib/postgresql/ 2>&1 | tr '\n' ' ')"
+          emit DOCKER "$(docker --version 2>&1)"
+          emit CPUS "$(nproc)"
+          emit MEM "$(free -m | head -2 | tr '\n' ' ')"
