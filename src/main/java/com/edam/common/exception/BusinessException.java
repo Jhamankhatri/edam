@@ -17,4 +17,13 @@ public class BusinessException extends EdamException {
 		super(errorCode, safeMessage);
 	}
 
+	/**
+	 * Failure identified only by its catalogue entry: the catalogue's safe message is used verbatim.
+	 * Preferred when the catalogue text already says exactly what the caller needs to know,
+	 * because it keeps one wording in one place.
+	 */
+	public BusinessException(ErrorCode errorCode) {
+		super(errorCode, errorCode.safeMessage());
+	}
+
 }

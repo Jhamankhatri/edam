@@ -54,6 +54,29 @@ WHERE i.capex_department_restriction_enabled IS NOT NULL
 ALTER TABLE institution DROP COLUMN capex_department_restriction_enabled;
 
 -- -------------------------------------------------------------------------------------
+-- Consolidate the department-head limit onto the configuration plane.
+--
+-- V1 put a department_head_limit column on institution; the BRD (FM-10) describes it as a
+-- single configuration record with its own lifecycle and audit trail, and V3 created
+-- department_head_limit for exactly that. Two writable copies is a correctness hazard: the
+-- value an administrator edits would depend on which screen they used. The configured value
+-- is migrated and the column dropped; the table is now the only source of truth.
+--
+-- A NULL column meant "never configured", and that state is preserved: no row is created for
+-- it, so the routing fallback (OD-06) still applies.
+-- -------------------------------------------------------------------------------------
+
+INSERT INTO department_head_limit (institution_id, amount, description, active, created_at, created_by,
+                                   updated_at, updated_by, version)
+SELECT i.id, i.department_head_limit, 'Migrated from institution settings', TRUE,
+       CURRENT_TIMESTAMP, 'system', CURRENT_TIMESTAMP, 'system', 0
+FROM institution i
+WHERE i.department_head_limit IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM department_head_limit d WHERE d.institution_id = i.id);
+
+ALTER TABLE institution DROP COLUMN department_head_limit;
+
+-- -------------------------------------------------------------------------------------
 -- Idempotency keys (BRD API-04)
 --
 -- Durable, not cached: a retried submit must not create a second request, and an evicted

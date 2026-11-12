@@ -1,6 +1,5 @@
 package com.edam.institution;
 
-import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -84,19 +83,6 @@ public class InstitutionSettingsService {
 		this.audit.recordChange(AuditAction.UPDATE, "Institution", institution.getId(), "Institution settings updated",
 				before, snapshot(institution));
 		return institution;
-	}
-
-	/**
-	 * Set the institution-level department-head limit mirror.
-	 *
-	 * <p>Kept in sync with the configuration plane's General Delegation so that reports and the
-	 * theme layer can read one column rather than joining the configuration table. The
-	 * configuration plane remains the authority; this method is called by
-	 * {@code DepartmentHeadLimitService} and is not exposed as a separate API.
-	 */
-	@Transactional
-	void mirrorDepartmentHeadLimit(Long institutionId, BigDecimal amount) {
-		this.institutions.findById(institutionId).ifPresent(institution -> institution.setDepartmentHeadLimit(amount));
 	}
 
 	private static Map<String, Object> snapshot(Institution institution) {

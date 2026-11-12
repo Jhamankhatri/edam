@@ -1,7 +1,5 @@
 package com.edam.institution;
 
-import java.math.BigDecimal;
-
 import com.edam.common.audit.AuditableEntity;
 
 import jakarta.persistence.Column;
@@ -71,13 +69,13 @@ public class Institution extends AuditableEntity {
 	@Column(name = "time_zone", nullable = false, length = 40)
 	private String timeZone = "Asia/Karachi";
 
-	/**
-	 * Department Head approval threshold in the base currency, or {@code null} to fall back
-	 * to the platform-configured default (BRD 10.2, OD-06). Nullable on purpose: "not
-	 * configured" is a business state, not zero.
+	/*
+	 * The department-head limit moved to the configuration plane (table department_head_limit,
+	 * FM-10) because the BRD describes it as a configuration record with its own audit trail, and
+	 * V3 created that table. The column was migrated and dropped in V4 so there is exactly one
+	 * writable source: an administrator editing "the limit" must not have to guess which screen
+	 * the system honours.
 	 */
-	@Column(name = "department_head_limit", precision = 19, scale = 2)
-	private BigDecimal departmentHeadLimit;
 
 	/*
 	 * The CAPEX department restriction moved to the per-institution feature flag
@@ -189,14 +187,6 @@ public class Institution extends AuditableEntity {
 
 	public void setTimeZone(String timeZone) {
 		this.timeZone = timeZone;
-	}
-
-	public BigDecimal getDepartmentHeadLimit() {
-		return this.departmentHeadLimit;
-	}
-
-	public void setDepartmentHeadLimit(BigDecimal departmentHeadLimit) {
-		this.departmentHeadLimit = departmentHeadLimit;
 	}
 
 	public boolean isActive() {

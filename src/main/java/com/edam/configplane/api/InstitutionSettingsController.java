@@ -97,7 +97,7 @@ public class InstitutionSettingsController {
 		return new InstitutionSettingsResponse(institution.getId(), institution.getCode(), institution.getName(),
 				institution.getShortName(), institution.getBaseCurrency(), institution.getPrimaryColor(),
 				institution.getSecondaryColor(), institution.getAccentColor(), institution.getLanguageTag(),
-				institution.getTimeZone(), institution.getDepartmentHeadLimit(), institution.isActive(),
+				institution.getTimeZone(), institution.isActive(),
 				institution.getDisplayName(), institution.getSupportEmail(), institution.getDateFormat(),
 				institution.getNumberFormat(), institution.getStatus());
 	}

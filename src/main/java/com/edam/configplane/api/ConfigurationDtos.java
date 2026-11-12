@@ -181,9 +181,13 @@ public final class ConfigurationDtos {
 			@Size(max = 200) String employeeDisplayName) {
 	}
 
-	public record UpdateRecommendingAuthorityRequest(@NotBlank @Size(max = 200) @Pattern(regexp = "[A-Za-z0-9 ]+",
-			message = "only letters, digits and spaces are permitted") String title,
-			@NotBlank @Size(max = 64) String departmentCode, @Size(max = 200) String employeeDisplayName) {
+	/**
+	 * Re-assignment of an existing authority. There is deliberately no {@code title}: the title is
+	 * the stable identity that delegation rules and audit records reference, so changing it would
+	 * rewrite the meaning of history. What changes is <em>who</em> holds the authority.
+	 */
+	public record UpdateRecommendingAuthorityRequest(@NotBlank @Size(max = 64) String departmentCode,
+			@NotBlank @Size(max = 64) String employeeId, @Size(max = 200) String employeeDisplayName) {
 	}
 
 	// ------------------------------------------------------------------
@@ -230,7 +234,7 @@ public final class ConfigurationDtos {
 
 	public record InstitutionSettingsResponse(Long id, String code, String name, String shortName,
 			String baseCurrency, String primaryColor, String secondaryColor, String accentColor, String languageTag,
-			String timeZone, BigDecimal departmentHeadLimit, boolean active, String displayName,
+			String timeZone, boolean active, String displayName,
 			String supportEmail, String dateFormat, String numberFormat, String status) {
 	}
 

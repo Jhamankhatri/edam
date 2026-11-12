@@ -237,7 +237,7 @@ public class CommitteeService {
 			return;
 		}
 		java.util.Optional<CommitteeMember> existing = this.members
-			.findByInstitutionIdAndDesignationAndActiveTrue(institutionId, designation)
+			.findFirstByInstitutionIdAndDesignationAndActiveTrue(institutionId, designation)
 			.filter(member -> excludedId == null || !member.getId().equals(excludedId));
 		existing.ifPresent(member -> {
 			throw new BusinessException(ErrorCode.BUSINESS_RULE_VIOLATION,
