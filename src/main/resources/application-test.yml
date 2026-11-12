@@ -1,0 +1,24 @@
+# =====================================================================================
+# Automated-test environment.
+#
+# Datasource values are supplied by the test harness (Testcontainers PostgreSQL) so that
+# Flyway validates the real PostgreSQL dialect instead of an in-memory approximation.
+# =====================================================================================
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  flyway:
+    enabled: true
+
+logging:
+  level:
+    root: WARN
+    com.edam: INFO
+    org.springframework.web: INFO
+
+edam:
+  security:
+    dev-users:
+      enabled: true

@@ -1,0 +1,214 @@
+/*
+ * EDAM base stylesheet.
+ * Colours come from the institution theme tokens (--edam-primary/secondary/accent)
+ * injected by the layout; this file contains structure only, no tenant colours.
+ */
+:root {
+    --edam-primary: #0f5132;
+    --edam-secondary: #14532d;
+    --edam-accent: #d1a055;
+    --edam-surface: #f6f7f9;
+    --edam-surface-raised: #ffffff;
+    --edam-border: #dfe3e8;
+    --edam-text: #1b2430;
+    --edam-muted: #62707f;
+    --edam-danger: #a1252b;
+    --edam-radius: 10px;
+    --edam-shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 8px 24px rgba(16, 24, 40, .06);
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--edam-text);
+    background: var(--edam-surface);
+    font-size: 15px;
+    line-height: 1.5;
+}
+
+a { color: var(--edam-primary); }
+
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .85em; }
+
+.edam-skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    background: var(--edam-primary);
+    color: #fff;
+    padding: .5rem 1rem;
+    z-index: 100;
+}
+.edam-skip-link:focus { left: 0; }
+
+.edam-shell { display: flex; min-height: 100vh; }
+
+.edam-sidebar {
+    width: 250px;
+    flex: 0 0 250px;
+    background: var(--edam-primary);
+    color: #eef3f0;
+    padding: 1.25rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.edam-sidebar__brand { display: flex; flex-direction: column; gap: .25rem; }
+.edam-sidebar__mark { font-size: 1.35rem; font-weight: 700; letter-spacing: .04em; color: #fff; }
+.edam-sidebar__name { font-size: .8rem; color: #cfe0d7; }
+
+.edam-nav { display: flex; flex-direction: column; gap: .15rem; }
+.edam-nav__section {
+    margin-top: .9rem;
+    font-size: .7rem;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: #9db9ab;
+}
+.edam-nav__item {
+    display: block;
+    padding: .5rem .6rem;
+    border-radius: 6px;
+    color: #eef3f0;
+    text-decoration: none;
+    font-size: .92rem;
+}
+.edam-nav__item:hover, .edam-nav__item:focus { background: rgba(255,255,255,.10); }
+.edam-nav__item.is-active { background: var(--edam-accent); color: #1b2430; font-weight: 600; }
+.edam-nav__item.is-disabled { opacity: .55; cursor: not-allowed; }
+
+.edam-sidebar__note { margin-top: auto; font-size: .72rem; color: #9db9ab; }
+
+.edam-main-column { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
+
+.edam-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: .9rem 1.75rem;
+    background: var(--edam-surface-raised);
+    border-bottom: 1px solid var(--edam-border);
+}
+.edam-topbar__title { font-weight: 600; }
+.edam-topbar__actions { display: flex; align-items: center; gap: .75rem; }
+.edam-topbar__user { color: var(--edam-muted); font-size: .9rem; }
+.edam-inline-form { margin: 0; }
+
+.edam-chip {
+    background: #eef4f1;
+    border: 1px solid var(--edam-border);
+    border-radius: 999px;
+    padding: .15rem .65rem;
+    font-size: .78rem;
+    color: var(--edam-secondary);
+}
+
+.edam-content { padding: 1.75rem; flex: 1 1 auto; }
+
+.edam-hero h1 { margin: 0 0 .35rem; font-size: 1.5rem; }
+.edam-hero p { margin: 0 0 1.5rem; color: var(--edam-muted); max-width: 70ch; }
+
+.edam-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+.edam-card {
+    background: var(--edam-surface-raised);
+    border: 1px solid var(--edam-border);
+    border-radius: var(--edam-radius);
+    box-shadow: var(--edam-shadow);
+    padding: 1.1rem 1.25rem;
+}
+.edam-card h2 { margin: 0 0 .75rem; font-size: 1rem; color: var(--edam-secondary); }
+
+.edam-facts { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: .35rem 1rem; }
+.edam-facts dt { color: var(--edam-muted); font-size: .85rem; }
+.edam-facts dd { margin: 0; font-size: .92rem; word-break: break-word; }
+
+.edam-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.edam-table th, .edam-table td { text-align: left; padding: .45rem .5rem; border-bottom: 1px solid var(--edam-border); }
+.edam-table th { color: var(--edam-muted); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+
+.edam-list { margin: 0; padding-left: 1.1rem; }
+.edam-list li { margin-bottom: .3rem; }
+
+.edam-tag-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .35rem; }
+.edam-tag { background: #eef4f1; border-radius: 999px; padding: .15rem .6rem; font-size: .78rem; }
+
+.edam-notice {
+    background: #fff8e6;
+    border: 1px solid #ecd9a0;
+    border-left: 4px solid var(--edam-accent);
+    padding: .85rem 1rem;
+    border-radius: 8px;
+    margin-bottom: 1.25rem;
+}
+
+.edam-muted { color: var(--edam-muted); font-size: .85rem; }
+
+.edam-alert { padding: .7rem .9rem; border-radius: 8px; margin-bottom: 1rem; font-size: .9rem; background: #eef4f1; }
+.edam-alert--error { background: #fdecec; color: var(--edam-danger); }
+
+.edam-button {
+    display: inline-block;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: .5rem 1rem;
+    font-size: .9rem;
+    cursor: pointer;
+    text-decoration: none;
+    background: transparent;
+}
+.edam-button--primary { background: var(--edam-primary); color: #fff; }
+.edam-button--primary:hover { background: var(--edam-secondary); }
+.edam-button--ghost { border-color: var(--edam-border); color: var(--edam-text); background: #fff; }
+.edam-button--ghost:hover { border-color: var(--edam-primary); }
+
+.edam-auth-body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 1.5rem; }
+.edam-auth {
+    background: var(--edam-surface-raised);
+    border: 1px solid var(--edam-border);
+    border-radius: var(--edam-radius);
+    box-shadow: var(--edam-shadow);
+    padding: 2rem;
+    width: 100%;
+    max-width: 380px;
+}
+.edam-auth--message { text-align: center; }
+.edam-auth__brand { margin: 0 0 .15rem; color: var(--edam-primary); font-size: 1.6rem; letter-spacing: .04em; }
+.edam-auth__institution { margin: 0 0 1.25rem; color: var(--edam-muted); font-size: .9rem; }
+.edam-auth__code { margin: 0; font-size: 2.5rem; font-weight: 700; color: var(--edam-accent); }
+
+.edam-form { display: flex; flex-direction: column; gap: .4rem; }
+.edam-form label { font-size: .85rem; color: var(--edam-muted); }
+.edam-form input {
+    padding: .55rem .65rem;
+    border: 1px solid var(--edam-border);
+    border-radius: 6px;
+    font-size: .95rem;
+}
+.edam-form input:focus { outline: 2px solid var(--edam-primary); outline-offset: 1px; }
+.edam-form button { margin-top: .75rem; }
+
+.edam-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: .75rem 1.75rem;
+    border-top: 1px solid var(--edam-border);
+    color: var(--edam-muted);
+    font-size: .78rem;
+    background: var(--edam-surface-raised);
+}
+
+@media (max-width: 800px) {
+    .edam-shell { flex-direction: column; }
+    .edam-sidebar { width: auto; flex: 0 0 auto; }
+    .edam-content { padding: 1rem; }
+}

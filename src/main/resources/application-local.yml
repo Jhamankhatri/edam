@@ -1,0 +1,25 @@
+# =====================================================================================
+# Local developer environment.
+#
+# Starts a real PostgreSQL, applies Flyway and enables fixture identities so the JSP UI
+# can be exercised without an institutional identity provider.
+# =====================================================================================
+spring:
+  datasource:
+    url: ${EDAM_DB_URL:jdbc:postgresql://localhost:5432/edam}
+    username: ${EDAM_DB_USERNAME:edam}
+    password: ${EDAM_DB_PASSWORD:edam-local-only}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      pool-name: edam-local-pool
+
+logging:
+  level:
+    com.edam: DEBUG
+    org.springframework.web: INFO
+
+edam:
+  security:
+    dev-users:
+      enabled: ${EDAM_DEV_USERS_ENABLED:true}

@@ -1,0 +1,108 @@
+# =====================================================================================
+# EDAM — base configuration (shared by every environment)
+#
+# Precedence: environment variables > profile file > this file.
+# No secret belongs in this file; credentials arrive from the environment or a secret
+# manager (see SECURITY_GUIDELINES.md).
+# =====================================================================================
+spring:
+  application:
+    name: edam
+  profiles:
+    # Fail fast and loudly when nobody declares an environment. Every deployment must set
+    # SPRING_PROFILES_ACTIVE explicitly.
+    default: local
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate          # Flyway owns the schema; Hibernate only verifies it.
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC          # Store instants in UTC; render in the institution zone.
+        order_inserts: true
+        order_updates: true
+    show-sql: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false    # An unexpected non-empty schema must stop the deploy.
+    validate-on-migrate: true
+    out-of-order: false
+  mvc:
+    view:
+      prefix: /WEB-INF/jsp/
+      suffix: .jsp
+    problemdetails:
+      enabled: false              # EDAM defines its own error envelope.
+  web:
+    error:
+      include-message: never      # Never leak exception messages to clients.
+      include-stacktrace: never
+      include-exception: false
+      include-binding-errors: never
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        http-only: true
+        same-site: lax
+        secure: false             # Overridden per environment; must be true in production.
+
+server:
+  port: 8080
+  servlet:
+    context-path: /
+    session:
+      tracking-modes: cookie      # Do not expose the session id in URLs.
+  error:
+    path: /error
+  compression:
+    enabled: true
+    mime-types: text/html,text/css,application/javascript,application/json
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true             # liveness/readiness groups for orchestration.
+      show-details: never         # Never expose database or infrastructure detail.
+  info:
+    env:
+      enabled: false
+
+logging:
+  level:
+    root: INFO
+    com.edam: INFO
+    org.springframework.security: INFO
+    org.hibernate.SQL: WARN
+  pattern:
+    # correlationId is bound to the MDC by CorrelationIdFilter.
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%thread] [%X{correlationId:-no-correlation-id}] %logger{36} - %msg%n"
+
+edam:
+  application:
+    version: '@project.version@'
+  institution:
+    code: demo-bank
+    name: Demo Bank Limited
+    short-name: DemoBank
+    base-currency: PKR
+    branding:
+      primary-color: '#0f5132'
+      secondary-color: '#14532d'
+      accent-color: '#d1a055'
+    locale:
+      language-tag: en-PK
+      time-zone: Asia/Karachi
+      date-pattern: dd MMM yyyy
+    features:
+      capex-department-restriction-enabled: true
+      department-head-limit-fallback: 20000.00
+      exceeding-limit-enforced-in-routing: false
+      require-institution-context: false

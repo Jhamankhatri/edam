@@ -1,0 +1,43 @@
+# =====================================================================================
+# Production posture.
+#
+# Everything environment-specific is injected: EDAM_DB_URL / EDAM_DB_USERNAME /
+# EDAM_DB_PASSWORD and the institution profile overrides. No default credentials exist,
+# so a misconfigured deployment fails at startup rather than silently connecting to a
+# developer database.
+# =====================================================================================
+spring:
+  datasource:
+    url: ${EDAM_DB_URL}
+    username: ${EDAM_DB_USERNAME}
+    password: ${EDAM_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: ${EDAM_DB_POOL_SIZE:20}
+      minimum-idle: 5
+      pool-name: edam-pool
+  servlet:
+    session:
+      cookie:
+        secure: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  # Structured (JSON) console output is production-ready and enabled here. Set
+  # LOG_CONSOLE_LOG_STRUCTURED_FORMAT= to revert to line logs for a specific deployment.
+  level:
+    root: INFO
+    com.edam: INFO
+  structured:
+    format:
+      console: ecs
+
+server:
+  forward-headers-strategy: framework   # Honour reverse-proxy headers for redirects.
