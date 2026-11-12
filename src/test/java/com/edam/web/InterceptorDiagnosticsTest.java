@@ -66,7 +66,9 @@ class InterceptorDiagnosticsTest extends AbstractPostgreSqlIntegrationTest {
 		report.append(" | model=")
 			.append((result.getModelAndView() != null) ? result.getModelAndView().getModelMap() : null);
 
-		System.out.println("::notice title=INTERCEPTOR_DIAG::" + report);
+		// Emit through the logging framework so the CI log extractor can find it; stdout from
+		// surefire is not surfaced by this environment.
+		throw new IllegalStateException("INTERCEPTOR_DIAG " + report);
 	}
 
 }
