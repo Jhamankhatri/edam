@@ -137,7 +137,7 @@ jobs:
           cid=$(curl -sSI http://localhost:18080/login | tr -d '\r' | grep -i '^X-Correlation-Id:' | head -1)
           check CORRELATION "correlation id header present" "$cid" "X-Correlation-Id"
           echo "--- security decision trail for /login ---"
-          grep -nE "Securing GET /login|Failed to authorize|authorization|AuthorizationFilter" war.log | tail -12 | while IFS= read -r l; do printf '::notice title=SECLOG::%s\n' "$(printf '%s' "$l" | head -c 500)"; done
+          tail -n 250 war.log | while IFS= read -r l; do printf '::notice title=WARLOG::%s\n' "$(printf '%s' "$l" | head -c 480)"; done
           echo "--- startup log excerpt ---"
           grep -E "Flyway|Successfully applied|Started EdamApplication" war.log | head -10 || true
           exit $fail
