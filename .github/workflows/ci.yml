@@ -264,6 +264,9 @@ jobs:
 
           # The prod profile must be ready to serve; health is public there too.
           health=$(curl -sS -o /tmp/prod-health.json -w '%{http_code}' http://localhost:18081/actuator/health)
+          printf '::notice title=PROD_HEALTH_DIAG::body=%s | indicators=%s\n' \
+            "$(head -c 300 /tmp/prod-health.json)" \
+            "$(grep -oE '\b(db|redis|diskSpace|ping|livenessState|readinessState|dataSource)\b' prod.log | sort -u | tr '\n' ',')"
           if [ "$health" = "200" ] && grep -q '"status":"UP"' /tmp/prod-health.json; then
             printf '::notice title=OK PROD_HEALTH::health reports UP under the production profile\n'
           else
