@@ -17,8 +17,13 @@ import xml.etree.ElementTree as ET
 
 
 def emit(kind: str, title: str, message: str) -> None:
-    message = " ".join(str(message).split())
-    print(f"::{kind} title={title}::{message[:1400]}")
+    text = " ".join(str(message).split())
+    # GitHub accepts up to 64000 chars per annotation but the runner truncates much earlier in
+    # practice; chunk long messages so diagnostics are never silently lost.
+    for index in range(0, max(len(text), 1), 1200):
+        chunk = text[index:index + 1200]
+        suffix = f" [{index // 1200 + 1}]" if len(text) > 1200 else ""
+        print(f"::{kind} title={title}{suffix}::{chunk}")
 
 
 def report_test_results() -> None:
