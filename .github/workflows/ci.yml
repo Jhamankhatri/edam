@@ -25,7 +25,6 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
-
       - name: Build and test
         run: |
           set +e
@@ -33,3 +32,104 @@ jobs:
           rc=$?
           python3 tools/ci-report.py build.log
           exit $rc
+      - name: Upload WAR
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: edam-war
+          path: target/edam.war
+          retention-days: 7
+
+  # Renders the JSP views from the packaged executable WAR, which is the artifact that is
+  # actually deployed. Spring Boot cannot render JSPs inside an embedded test container, so
+  # this is the only faithful end-to-end view check.
+  war-smoke:
+    name: war-package-smoke-test
+    runs-on: ubuntu-latest
+    needs: build
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: edam
+          POSTGRES_USER: edam
+          POSTGRES_PASSWORD: edam-ci-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U edam -d edam"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Download WAR
+        uses: actions/download-artifact@v4
+        with:
+          name: edam-war
+          path: target
+      - name: Start the executable WAR
+        run: |
+          set -euo pipefail
+          export EDAM_DB_URL=jdbc:postgresql://localhost:5432/edam
+          export EDAM_DB_USERNAME=edam
+          export EDAM_DB_PASSWORD=edam-ci-only
+          nohup java -jar target/edam.war --spring.profiles.active=local --server.port=18080 > war.log 2>&1 &
+          for i in $(seq 1 90); do
+            if grep -q "Started EdamApplication" war.log; then echo "STARTED after ${i}s"; break; fi
+            if grep -qE "APPLICATION FAILED TO START|BeanCreationException" war.log; then echo "STARTUP FAILED"; fi
+            sleep 2
+          done
+          grep -q "Started EdamApplication" war.log || { echo "::error title=NO_START::application did not start"; tail -c 4000 war.log; exit 1; }
+      - name: Verify JSP pages, security and health
+        run: |
+          set -uo pipefail
+          fail=0
+          check() { # name, description, actual, expected-substring
+            if printf '%s' "$3" | grep -q "$4"; then
+              printf '::notice title=OK %s::%s\n' "$1" "$2"
+            else
+              printf '::error title=FAIL %s::%s (expected to contain: %s)\n' "$1" "$2" "$4"
+              printf '::error title=FAIL %s body::%s\n' "$1" "$(printf '%s' "$3" | head -c 700)"
+              fail=1
+            fi
+          }
+          jar tf target/edam.war > war-contents.txt
+          check WAR_JSP "JSPs packaged under WEB-INF/jsp" "$(grep -c 'WEB-INF/jsp/' war-contents.txt)" "^[1-9]"
+          check WAR_LIB "libraries in WEB-INF/lib" "$(grep -c 'WEB-INF/lib/' war-contents.txt)" "^[1-9]"
+          check WAR_LIBPROVIDED "embedded container in WEB-INF/lib-provided" "$(grep -c 'WEB-INF/lib-provided/' war-contents.txt)" "^[1-9]"
+          check WAR_JASPER "Jasper present" "$(grep -c 'jasper' war-contents.txt)" "^[1-9]"
+
+          health=$(curl -sS -o /tmp/health.json -w '%{http_code}' http://localhost:18080/actuator/health)
+          check HEALTH_CODE "health endpoint status" "$health" "200"
+          check HEALTH_BODY "health body reports UP" "$(cat /tmp/health.json)" '"status":"UP"'
+          check HEALTH_NODETAIL "health hides infrastructure detail" "$(cat /tmp/health.json)" '^[^d]*$'
+
+          login=$(curl -sS -w '\n%{http_code}' http://localhost:18080/login)
+          check LOGIN_CODE "login page renders via JSP" "$login" "200$"
+          check LOGIN_FORM "login form present" "$login" 'name="username"'
+          check LOGIN_CSRF "csrf token present" "$login" 'name="_csrf"'
+          check LOGIN_BRAND "institution branding rendered from configuration" "$login" 'DemoBank'
+
+          dash=$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' http://localhost:18080/dashboard)
+          check DASH_REDIRECT "dashboard requires authentication" "$dash" "/login"
+
+          api=$(curl -sS -w '\n%{http_code}' -H 'Accept: application/json' http://localhost:18080/api/v1/system/info)
+          check API_401 "api rejects anonymous access" "$api" "401$"
+          check API_ENVELOPE "api error envelope present" "$api" '"code":"EDAM-2001"'
+
+          err=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:18080/no-such-page-here)
+          check ERROR_PAGE "unknown page yields an error status, not a stack trace" "$err" "^40[0-9]$"
+
+          echo "--- correlation id on every response ---"
+          cid=$(curl -sSI http://localhost:18080/login | tr -d '\r' | grep -i '^X-Correlation-Id:' | head -1)
+          check CORRELATION "correlation id header present" "$cid" "X-Correlation-Id"
+          echo "--- startup log excerpt ---"
+          grep -E "Flyway|Successfully applied|Started EdamApplication" war.log | head -10 || true
+          exit $fail
+      - name: Application log on failure
+        if: failure()
+        run: tail -c 6000 war.log || true
