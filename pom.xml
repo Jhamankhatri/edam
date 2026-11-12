@@ -23,6 +23,7 @@
 
 	<properties>
 		<java.version>21</java.version>
+		<start-class>com.edam.EdamApplication</start-class>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
@@ -153,6 +154,11 @@
 				<version>${maven-war-plugin.version}</version>
 				<configuration>
 					<failOnMissingWebXml>false</failOnMissingWebXml>
+					<archive>
+						<manifest>
+							<mainClass>${start-class}</mainClass>
+						</manifest>
+					</archive>
 				</configuration>
 			</plugin>
 

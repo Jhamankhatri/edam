@@ -106,9 +106,18 @@ jobs:
           health=$(curl -sS -o /tmp/health.json -w '%{http_code}' http://localhost:18080/actuator/health)
           check HEALTH_CODE "health endpoint status" "$health" "200"
           check HEALTH_BODY "health body reports UP" "$(cat /tmp/health.json)" '"status":"UP"'
-          check HEALTH_NODETAIL "health hides infrastructure detail" "$(cat /tmp/health.json)" '^[^d]*$'
+          health_json=$(cat /tmp/health.json)
+          if printf '%s' "$health_json" | grep -qiE '"(db|diskSpace|ping|database|dataSource)"|postgres|jdbc'; then
+            printf '::error title=FAIL HEALTH_NODETAIL::%s\n' "$health_json"; fail=1
+          else
+            printf '::notice title=OK HEALTH_NODETAIL::no component detail exposed\n'
+          fi
 
-          login=$(curl -sS -w '\n%{http_code}' http://localhost:18080/login)
+          login_body=$(curl -sS http://localhost:18080/login || true)
+          login_code=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:18080/login || true)
+          login="$login_body $login_code"
+          printf '::notice title=LOGIN_DIAG::status=%s headers=%s\n' "$login_code" "$(curl -sSI http://localhost:18080/login | tr -d '\r' | tr '\n' ' ' | head -c 500)"
+          printf '::notice title=LOGIN_BODY::%s\n' "$(printf '%s' "$login_body" | head -c 700)"
           check LOGIN_CODE "login page renders via JSP" "$login" "200$"
           check LOGIN_FORM "login form present" "$login" 'name="username"'
           check LOGIN_CSRF "csrf token present" "$login" 'name="_csrf"'
