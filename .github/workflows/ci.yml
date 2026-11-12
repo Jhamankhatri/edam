@@ -136,19 +136,15 @@ jobs:
           echo "--- correlation id on every response ---"
           cid=$(curl -sSI http://localhost:18080/login | tr -d '\r' | grep -i '^X-Correlation-Id:' | head -1)
           check CORRELATION "correlation id header present" "$cid" "X-Correlation-Id"
-          echo "--- diagnostic sweep (single annotation) ---"
+          echo "--- diagnostics (one consolidated annotation; GitHub caps 10 notices per step) ---"
           sweep=""
-          for path in /login /access-denied /css/edam.css /favicon.ico /actuator/info; do
+          for path in /login /access-denied /css/edam.css /favicon.ico; do
             code=$(curl -sS -o /dev/null -w "%{http_code}" "http://localhost:18080$path" || echo ERR)
             sweep="$sweep $path=$code"
           done
-          printf '::notice title=SWEEP::%s\n' "$sweep"
-          jasper=$(grep -iE "JasperException|Unable to compile|org.apache.jasper" war.log | head -3 | tr '\n' '|' | head -c 900)
-          printf '::notice title=JASPER_LOG::%s\n' "${jasper:-none}"
-          denied=$(grep -iE "Access is denied|AccessDeniedException|AnonymousAuthenticationToken" war.log | head -3 | tr '\n' '|' | head -c 700)
-          printf '::notice title=DENIED_LOG::%s\n' "${denied:-none}"
-          errlog=$(grep -iE "Exception|ERROR" war.log | head -4 | tr '\n' '|' | head -c 1000)
-          printf '::notice title=ERR_LOG::%s\n' "${errlog:-none}"
+          jasper=$(grep -iE "JasperException|Unable to compile|org.apache.jasper" war.log | head -2 | tr '\n' '|' | head -c 500)
+          errlog=$(grep -E "ERROR|Exception" war.log | head -3 | tr '\n' '|' | head -c 600)
+          printf '::error title=DIAGNOSTICS::sweep:%s || jasper:%s || errors:%s\n' "$sweep" "${jasper:-none}" "${errlog:-none}"
           echo "--- startup log excerpt ---"
           grep -E "Flyway|Successfully applied|Started EdamApplication" war.log | head -10 || true
           exit $fail
