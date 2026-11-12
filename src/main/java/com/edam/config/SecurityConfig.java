@@ -40,8 +40,14 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
  * membership is a set, never a single assumed tenant.</li>
  * </ul>
  *
- * <p>Every request requires authentication except the login page, static assets and the
- * health probes, which are read-only and expose no business data.
+ * <p>Every request requires authentication except the login page, the denial page, static
+ * assets and the health probes, which are read-only and expose no business data.
+ *
+ * <p>JSP rendering happens on a servlet FORWARD dispatch (view controller → JSP). The chain
+ * is restricted to REQUEST and ERROR dispatches through
+ * {@code spring.security.filter.dispatcher-types} (application.yml); otherwise the internal
+ * forward to {@code /WEB-INF/jsp/login.jsp} would be re-authorized as a URL, denied for an
+ * anonymous visitor and answered with a redirect to the login page — an infinite loop.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableWebSecurity

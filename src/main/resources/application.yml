@@ -29,6 +29,12 @@ spring:
     baseline-on-migrate: false    # An unexpected non-empty schema must stop the deploy.
     validate-on-migrate: true
     out-of-order: false
+  security:
+    filter:
+      # REQUEST and ERROR only. FORWARD excludes JSP rendering (view controller → JSP) from
+      # URL re-authorization; without it an anonymous visitor to /login would be redirected
+      # to /login forever. See SecurityConfig.
+      dispatcher-types: request, error
   mvc:
     view:
       prefix: /WEB-INF/jsp/
