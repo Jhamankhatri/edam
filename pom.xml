@@ -35,16 +35,20 @@
 	<dependencies>
 		<!-- ============================ Application ============================ -->
 
-		<!-- Spring MVC + embedded Tomcat + Jackson. 'classic' keeps the Boot 3.x
-			 auto-configuration style (the 4.x default drops several auto-configurations
-			 into opt-in modules) so that the foundation behaves predictably. -->
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-classic</artifactId>
-		</dependency>
+		<!-- Spring MVC + embedded Tomcat. Deliberately NOT spring-boot-starter-classic:
+			 that starter pulls every optional feature module's auto-configuration (gRPC,
+			 Cassandra, Kafka, ...) whose optional runtime libraries are absent, which
+			 aborts bean creation with NoClassDefFoundError. EDAM declares only the
+			 capabilities it actually uses. -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc</artifactId>
+		</dependency>
+		<!-- Jackson is a separate starter in Boot 4 (JSON message conversion and the
+			 JsonMapper bean used by the error envelope writers). -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-jackson</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
