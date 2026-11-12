@@ -33,7 +33,7 @@ public class InMemoryEdamUserDetailsService {
 
 	@Bean
 	@ConditionalOnMissingBean(EdamUserDetailsService.class)
-	EdamUserDetailsService devEdamUserDetailsService(org.springframework.security.crypto.password.PasswordEncoder passwordEncoder) {
+	EdamUserDetailsService devEdamUserDetailsService(org.springframework.security.crypto.password.PasswordEncoder encoder) {
 		Map<String, DemoUser> users = new HashMap<>();
 		users.put("admin", new DemoUser("admin", "Administrator", "admin-change-me",
 				Map.of("albaraka", Set.of("ADMINISTRATOR"), "demo-bank", Set.of("ADMINISTRATOR")),
@@ -62,11 +62,11 @@ public class InMemoryEdamUserDetailsService {
 		 * {@code DaoAuthenticationProvider}. The password is hashed on first use with the
 		 * configured encoder and never leaves this object.
 		 */
-		DevUserDetails toPrincipal(org.springframework.security.crypto.password.PasswordEncoder passwordEncoder) {
+		DevUserDetails toPrincipal(org.springframework.security.crypto.password.PasswordEncoder encoder) {
 			return new DevUserDetails(
 					new EdamPrincipal(this.username, this.username, this.displayName, this.institutionRoles,
 							this.permissions),
-					passwordEncoder.encode(this.rawPassword));
+					encoder.encode(this.rawPassword));
 		}
 
 	}
