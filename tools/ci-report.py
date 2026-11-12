@@ -42,6 +42,7 @@ def report_test_results() -> None:
 def report_log(log: str) -> None:
     patterns = [
         ("caused-by", r"Caused by: ([\w.$]+)(?::\s*(.{0,220}))?"),
+        ("diag", r"INTERCEPTOR_DIAG[^\n]*"),
         ("compile", r"\[ERROR\] /home/runner/\S+\.java:\[[^\]]+\] .{0,300}"),
         ("ctx", r"(?:UnsatisfiedDependencyException|BeanCreationException|NoSuchBeanDefinitionException"
                 r"|No qualifying bean|Failed to instantiate|Migration .* failed|Schema-validation"

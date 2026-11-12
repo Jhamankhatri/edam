@@ -1,5 +1,6 @@
 package com.edam.web;
 
+import java.net.URI;
 import java.util.Arrays;
 
 import com.edam.testsupport.AbstractPostgreSqlIntegrationTest;
@@ -8,17 +9,20 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.servlet.HandlerExecutionChain;
+import org.springframework.web.servlet.HandlerMapping;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 /**
  * Temporary diagnostic: reports which interceptors the MVC infrastructure actually applies and
- * what a view-controller dispatch produces. Deleted once the interceptor contract is green.
+ * what a view-controller dispatch produces. Emits its findings as a notice annotation so the CI
+ * build stays green while the information is collected.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -29,25 +33,48 @@ class InterceptorDiagnosticsTest extends AbstractPostgreSqlIntegrationTest {
 	private MockMvc mockMvc;
 
 	@Autowired
-	private RequestMappingHandlerMapping handlerMapping;
+	private RequestMappingHandlerMapping requestMappingHandlerMapping;
+
+	@Autowired
+	private org.springframework.context.ApplicationContext context;
 
 	@Test
-	void dumpDispatcherState() throws Exception {
+	void dumpDispatcherState() {
 		StringBuilder report = new StringBuilder();
-		report.append("interceptors=").append(Arrays.toString(this.handlerMapping.getInterceptors())).append(" | ");
-		Object chain = this.handlerMapping.getHandler(new org.springframework.mock.web.MockHttpServletRequest("GET", java.net.URI.create("/login")));
-		report.append("loginChain=").append(chain);
-		if (chain instanceof HandlerExecutionChain executionChain) {
-			report.append(" chainInterceptors=").append(Arrays.toString(executionChain.getInterceptors()));
+
+		report.append("requestMappingInterceptors=")
+			.append(Arrays.toString(this.requestMappingHandlerMapping.getInterceptors()))
+			.append(" | ");
+
+		report.append("allMappings=")
+			.append(context.getBeansOfType(HandlerMapping.class).entrySet().stream()
+				.map(entry -> entry.getKey() + ":" + entry.getValue().getClass().getSimpleName())
+				.toList())
+			.append(" | ");
+
+		try {
+			MockHttpServletRequest request = new MockHttpServletRequest("GET", URI.create("/login"));
+			for (var entry : context.getBeansOfType(HandlerMapping.class).entrySet()) {
+				HandlerExecutionChain chain = entry.getValue().getHandler(request);
+				if (chain != null) {
+					Object handler = chain.getHandler();
+					report.append(entry.getKey()).append("=>handler=").append(handler.getClass().getSimpleName())
+						.append(", interceptors=").append(Arrays.toString(chain.getInterceptors())).append("; ");
+				}
+			}
 		}
-		report.append(" | ");
+		catch (Exception ex) {
+			report.append("lookupFailed=").append(ex.getClass().getSimpleName()).append("; ");
+		}
+
 		MvcResult result = this.mockMvc.perform(get("/login")).andReturn();
-		Object handler = result.getHandler();
-		report.append("resultHandler=").append(handler);
-		report.append(" | view=").append((result.getModelAndView() != null) ? result.getModelAndView().getViewName() : null);
-		report.append(" | model=").append((result.getModelAndView() != null) ? result.getModelAndView().getModelMap() : null);
-		report.append(" | flash=").append(result.getFlashMap());
-		throw new AssertionError(report.toString());
+		report.append("resultHandler=").append(result.getHandler());
+		report.append(" | view=")
+			.append((result.getModelAndView() != null) ? result.getModelAndView().getViewName() : null);
+		report.append(" | model=")
+			.append((result.getModelAndView() != null) ? result.getModelAndView().getModelMap() : null);
+
+		System.out.println("::notice title=INTERCEPTOR_DIAG::" + report);
 	}
 
 }
