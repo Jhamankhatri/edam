@@ -48,7 +48,7 @@ class GlobalExceptionHandlerTest {
 	@DisplayName("not-found exceptions map to 404 without revealing existence of other tenants' data")
 	void notFound() {
 		ResponseEntity<ApiResponse<Void>> response = this.handler
-			.handleEdamException(new ResourceNotFoundException("Expense request '123'"), apiRequest());
+			.handleEdamException(new ResourceNotFoundException("Expense request", 123L), apiRequest());
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 		assertThat(response.getBody().error().code()).isEqualTo("EDAM-4001");

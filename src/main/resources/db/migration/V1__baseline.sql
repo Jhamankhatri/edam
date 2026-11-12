@@ -18,7 +18,7 @@ CREATE TABLE institution (
     code                                VARCHAR(32)  NOT NULL,
     name                                VARCHAR(200) NOT NULL,
     short_name                          VARCHAR(40)  NOT NULL,
-    base_currency                       CHAR(3)      NOT NULL,
+    base_currency                       VARCHAR(3)   NOT NULL,
     primary_color                       VARCHAR(7),
     secondary_color                     VARCHAR(7),
     accent_color                        VARCHAR(7),
