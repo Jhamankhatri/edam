@@ -49,7 +49,7 @@ public class InMemoryEdamUserDetailsService {
 			if (user == null) {
 				throw new org.springframework.security.core.userdetails.UsernameNotFoundException("Unknown user");
 			}
-			return user.toPrincipal(this.passwordEncoder);
+			return user.toPrincipal(encoder);
 		};
 	}
 
