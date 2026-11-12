@@ -27,31 +27,24 @@ jobs:
           java-version: '21'
           cache: maven
 
-      - name: Compile
+      - name: Build and test
         run: |
           set +e
-          mvn -DskipTests compile > build.log 2>&1
+          mvn verify > build.log 2>&1
           rc=$?
-          if [ $rc -ne 0 ]; then
-            grep -E "\[ERROR\]|\[WARNING\].*deprecat" build.log | head -25 | while IFS= read -r line; do
-              printf '::error title=compile::%s\n' "$(printf '%s' "$line" | head -c 900)"
-            done
-          fi
-          exit $rc
-
-      - name: Test
-        run: |
-          set +e
-          mvn test > test.log 2>&1
-          rc=$?
-          grep -E "\[ERROR\]" test.log | head -25 | while IFS= read -r line; do
-            printf '::error title=test::%s\n' "$(printf '%s' "$line" | head -c 900)"
-          done
+          emit() { printf '::%s title=%s::%s\n' "$1" "$2" "$(printf '%s' "$3" | head -c 1200)"; }
+          # Compiler errors
+          grep -E "^\[ERROR\] /home" build.log | head -15 | while IFS= read -r l; do emit error compile "$l"; done
+          # Test failures with messages, in the order Maven prints them
+          grep -E "^\[ERROR\]   [A-Za-z].*Test\." build.log | head -20 | while IFS= read -r l; do emit error failure "$l"; done
+          # Root causes
+          grep -E "^Caused by:|^\s+Caused by:" build.log | sort -u | head -12 | while IFS= read -r l; do emit error causedby "$l"; done
+          # Application-bean / context startup failures
+          grep -E "UnsatisfiedDependency|NoSuchBean|BeanCreationException|Failed to (load|instantiate)|Error creating bean" build.log | sort -u | head -8 | while IFS= read -r l; do emit error context "$l"; done
+          # JSP / Jasper problems
+          grep -iE "jasper|jsp" build.log | grep -iE "error|exception" | sort -u | head -8 | while IFS= read -r l; do emit error jsp "$l"; done
           for f in target/surefire-reports/*.txt; do
             [ -f "$f" ] || continue
-            printf '::notice title=TEST %s::%s\n' "$(basename "$f" .txt)" "$(grep -E 'Tests run' "$f" | head -2 | tr '\n' ' ')"
+            emit notice "TEST $(basename "$f" .txt)" "$(grep -E 'Tests run' "$f" | head -1)"
           done
           exit $rc
-
-      - name: Package executable WAR
-        run: mvn -DskipTests package
