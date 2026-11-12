@@ -169,6 +169,17 @@ public class CategoryService {
 		return saved;
 	}
 
+	/**
+	 * Update a sub-category without moving it, which is the only operation the API exposes: the
+	 * parent category is part of the sub-category's identity for active-name uniqueness, so moving
+	 * one between categories is a delete-and-create, not an edit.
+	 */
+	@Transactional
+	public ExpenseSubcategory updateSubcategory(Long id, String name, String description, Integer displayOrder) {
+		ExpenseSubcategory existing = getSubcategory(id);
+		return updateSubcategory(id, existing.getCategory().getId(), name, description, displayOrder);
+	}
+
 	@Transactional
 	public ExpenseSubcategory updateSubcategory(Long id, Long categoryId, String name, String description,
 			Integer displayOrder) {

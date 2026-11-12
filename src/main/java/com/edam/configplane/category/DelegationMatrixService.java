@@ -163,6 +163,60 @@ public class DelegationMatrixService {
 			.or(() -> java.util.Optional.of(pool.get(pool.size() - 1)));
 	}
 
+	/**
+	 * Explain the routing decision for an amount, without creating anything.
+	 *
+	 * <p>Distinguishes the three outcomes the BRD cares about:
+	 * <ul>
+	 *   <li>a rule whose <em>band</em> covers the amount;</li>
+	 *   <li>a rule selected as the <em>highest band</em> because the amount is above every upper
+	 *       bound — reported as such rather than presented as a clean match, because "we used the
+	 *       top route" is a policy the administrator should be able to see;</li>
+	 *   <li>no rule at all, which is a refusal and must fail closed at request creation.</li>
+	 * </ul>
+	 */
+	@Transactional(readOnly = true)
+	public com.edam.configplane.api.ConfigurationDtos.RoutingResolutionResponse resolve(ExpenseNature nature,
+			Long categoryId, Long subcategoryId, BigDecimal amount) {
+		Long institutionId = this.institutionContext.requireInstitutionId();
+		if (amount == null || amount.signum() <= 0) {
+			throw new BusinessException(ErrorCode.VALIDATION_FAILED, "The amount must be greater than zero.");
+		}
+		requireCategory(institutionId, categoryId);
+		requireSubcategory(institutionId, subcategoryId, categoryId);
+		List<DelegationRule> candidates = this.rules.findCandidateRules(institutionId, nature, categoryId,
+				subcategoryId);
+		if (candidates.isEmpty()) {
+			return new com.edam.configplane.api.ConfigurationDtos.RoutingResolutionResponse(false, null, categoryId,
+					subcategoryId, nature.name(), amount, null, Set.of(), List.of(), null,
+					"No delegation rule is configured for this category, sub-category and nature. "
+							+ "A request cannot be routed until one is published.");
+		}
+		List<DelegationRule> specific = candidates.stream().filter(rule -> rule.getSubcategory() != null).toList();
+		List<DelegationRule> pool = specific.isEmpty() ? candidates : specific;
+		List<DelegationRule> matching = pool.stream().filter(rule -> rule.covers(amount)).toList();
+		boolean exactBandMatch = !matching.isEmpty();
+		DelegationRule selected = exactBandMatch ? matching.get(0) : pool.get(pool.size() - 1);
+		String bandDescription = exactBandMatch
+				? "Amount falls within " + describeBand(selected)
+				: "Amount is above every configured band; the highest band " + describeBand(selected)
+						+ " applies by policy. Confirm this is intended.";
+		return new com.edam.configplane.api.ConfigurationDtos.RoutingResolutionResponse(true, selected.getId(),
+				categoryId, subcategoryId, nature.name(), amount, bandDescription,
+				selected.getApproverTypes().stream().map(Enum::name).collect(java.util.stream.Collectors.toSet()),
+				selected.getRecommendingAuthorities()
+					.stream()
+					.map(RecommendingAuthority::getId)
+					.sorted()
+					.toList(),
+				selected.getCommitteeLevel() == null ? null : selected.getCommitteeLevel().getId(), null);
+	}
+
+	private static String describeBand(DelegationRule rule) {
+		return rule.getAmountFrom().toPlainString() + " to "
+				+ (rule.getAmountTo() == null ? "unbounded" : rule.getAmountTo().toPlainString());
+	}
+
 	// ------------------------------------------------------------------
 	// Validation helpers
 	// ------------------------------------------------------------------

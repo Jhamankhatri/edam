@@ -79,10 +79,12 @@ public class Institution extends AuditableEntity {
 	@Column(name = "department_head_limit", precision = 19, scale = 2)
 	private BigDecimal departmentHeadLimit;
 
-	/** Whether only configured departments may raise CAPEX requests (replaces OD-21 hard-coding). */
-	@NotNull
-	@Column(name = "capex_department_restriction_enabled", nullable = false)
-	private boolean capexDepartmentRestrictionEnabled = true;
+	/*
+	 * The CAPEX department restriction moved to the per-institution feature flag
+	 * (FeatureKey.CAPEX_DEPARTMENT_RESTRICTION, table institution_feature_flag). The column was
+	 * dropped in V4 after its value was migrated, because two writable sources for one policy
+	 * switch is how a setting silently stops being honoured.
+	 */
 
 	@NotNull
 	@Column(name = "active", nullable = false)
@@ -195,14 +197,6 @@ public class Institution extends AuditableEntity {
 
 	public void setDepartmentHeadLimit(BigDecimal departmentHeadLimit) {
 		this.departmentHeadLimit = departmentHeadLimit;
-	}
-
-	public boolean isCapexDepartmentRestrictionEnabled() {
-		return this.capexDepartmentRestrictionEnabled;
-	}
-
-	public void setCapexDepartmentRestrictionEnabled(boolean capexDepartmentRestrictionEnabled) {
-		this.capexDepartmentRestrictionEnabled = capexDepartmentRestrictionEnabled;
 	}
 
 	public boolean isActive() {

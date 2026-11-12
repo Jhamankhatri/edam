@@ -114,7 +114,10 @@ edam:
       time-zone: Asia/Karachi
       date-pattern: dd MMM yyyy
     features:
-      capex-department-restriction-enabled: true
+      # Feature flags are per-institution DATA (institution_feature_flag), not configuration.
+      # The global switch that previously lived here asserted a business decision the BRD has
+      # not made (FM-13/OD-27) and has been removed; see FeatureKey for the runtime catalogue.
+      #
+      # The department-head fallback is configuration on purpose: it applies only when an
+      # institution has not created a General Delegation record (BRD OD-06, provisional P-6).
       department-head-limit-fallback: 20000.00
-      exceeding-limit-enforced-in-routing: false
-      require-institution-context: false

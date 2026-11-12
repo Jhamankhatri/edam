@@ -230,9 +230,8 @@ public final class ConfigurationDtos {
 
 	public record InstitutionSettingsResponse(Long id, String code, String name, String shortName,
 			String baseCurrency, String primaryColor, String secondaryColor, String accentColor, String languageTag,
-			String timeZone, BigDecimal departmentHeadLimit, boolean capexDepartmentRestrictionEnabled,
-			boolean active, String displayName, String supportEmail, String dateFormat, String numberFormat,
-			String status) {
+			String timeZone, BigDecimal departmentHeadLimit, boolean active, String displayName,
+			String supportEmail, String dateFormat, String numberFormat, String status) {
 	}
 
 	public record UpdateInstitutionSettingsRequest(@NotBlank @Size(max = 200) String name,
