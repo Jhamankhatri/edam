@@ -1,8 +1,10 @@
 package com.edam.common.security;
 
 import java.util.Collections;
-import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import org.springframework.security.core.GrantedAuthority;
@@ -12,63 +14,115 @@ import org.springframework.security.core.userdetails.UserDetails;
 /**
  * Authenticated EDAM user as seen by the application layer.
  *
- * <p>Institution membership is a <strong>set</strong>: the BRD explicitly states that a
- * user must not be assumed to belong to a single institution. Permissions are carried as
- * institution-scoped authorities in the form {@code PERM_<CODE>} so that authorization
- * checks can never be satisfied by a role name alone.
+ * <h2>Institution membership is a set</h2>
+ * The BRD states explicitly that a user must not be assumed to belong to a single institution
+ * (IAM-04). {@link #institutionRoles} maps institution code to the role codes held <em>there</em>;
+ * {@link #permissionsByInstitution} maps institution code to permissions granted <em>there</em>.
  *
- * <p>This type is a projection of the identity store, not a JPA entity; it is safe to hold
- * in the security context. It implements {@link UserDetails} so that Spring Security's
- * standard authentication machinery can use it directly.
+ * <h2>Why permissions are per institution (fixes audit defect D-1)</h2>
+ * The previous model carried one flat permission set for the whole principal, so a permission
+ * granted in institution A was silently effective in institution B — a cross-tenant privilege
+ * escalation. Every authorization decision now has to name the institution it applies to:
+ * {@link #hasPermissionIn(String, String)}. A permission held "globally" does not exist as a
+ * concept in EDAM.
+ *
+ * <h2>Authority encoding</h2>
+ * Spring Security needs flat authorities, so institution-scoped permissions are encoded as
+ * {@code PERM_<institution>:<permission>}. Encoding the tenant into the authority means a
+ * {@code hasAuthority} expression cannot accidentally match across tenants.
  *
  * @param employeeId stable business identifier of the employee
  * @param username login name captured at authentication time
  * @param displayName presentational name
  * @param institutionRoles institution code to role codes the user holds there
- * @param permissions institution-independent operational permissions
+ * @param permissionsByInstitution institution code to permissions granted there
+ * @param allInstitutions the institution codes known to the identity store for membership checks
  */
 public record EdamPrincipal(String employeeId, String username, String displayName,
-		Map<String, Set<String>> institutionRoles, Set<String> permissions) implements UserDetails {
+		Map<String, Set<String>> institutionRoles, Map<String, Set<String>> permissionsByInstitution,
+		Set<String> allInstitutions) implements UserDetails {
 
 	public EdamPrincipal {
-		institutionRoles = (institutionRoles == null) ? Map.of() : Map.copyOf(institutionRoles);
-		permissions = (permissions == null) ? Set.of() : Set.copyOf(permissions);
+		institutionRoles = immutableNested(institutionRoles);
+		permissionsByInstitution = immutableNested(permissionsByInstitution);
+		allInstitutions = (allInstitutions == null) ? Set.copyOf(institutionRoles.keySet())
+				: Set.copyOf(allInstitutions);
+	}
+
+	private static Map<String, Set<String>> immutableNested(Map<String, Set<String>> source) {
+		if (source == null || source.isEmpty()) {
+			return Map.of();
+		}
+		Map<String, Set<String>> copy = new LinkedHashMap<>();
+		source.forEach((key, value) -> copy.put(key, value == null ? Set.of() : Set.copyOf(value)));
+		return Collections.unmodifiableMap(copy);
+	}
+
+	/**
+	 * Backwards-compatible view of the union of all permissions. Intended for diagnostics and
+	 * for the {@code /me/context} read model only — <strong>never</strong> for an authorization
+	 * decision, because it has lost the tenant dimension.
+	 */
+	public Set<String> permissions() {
+		Set<String> union = new LinkedHashSet<>();
+		this.permissionsByInstitution.values().forEach(union::addAll);
+		return Set.copyOf(union);
 	}
 
 	/** Institutions this user may act for. Never exactly-one by assumption. */
 	public Set<String> institutionCodes() {
-		return Collections.unmodifiableSet(new HashSet<>(this.institutionRoles.keySet()));
+		return Set.copyOf(this.allInstitutions);
 	}
 
 	public boolean belongsTo(String institutionCode) {
-		return institutionCode != null && this.institutionRoles.containsKey(institutionCode);
+		return institutionCode != null && this.allInstitutions.contains(institutionCode);
 	}
 
 	public Set<String> rolesIn(String institutionCode) {
 		return this.institutionRoles.getOrDefault(institutionCode, Set.of());
 	}
 
+	public Set<String> permissionsIn(String institutionCode) {
+		return this.permissionsByInstitution.getOrDefault(institutionCode, Set.of());
+	}
+
 	/**
-	 * Granted authorities: one {@code ROLE_<institution>:<role>} entry per
-	 * institution/role pair plus one {@code PERM_*} entry per operational permission. Institution scoping of a role is
-	 * encoded in the authority so that cross-tenant use cannot be accidental.
+	 * The only sanctioned permission check. Both arguments are mandatory: an unknown institution
+	 * yields {@code false} rather than "all permissions".
 	 */
-	public Set<GrantedAuthority> authorities() {
-		Set<GrantedAuthority> authorities = new HashSet<>();
-		this.institutionRoles.forEach((institution, roles) -> roles
-			.forEach(role -> authorities.add(new SimpleGrantedAuthority("ROLE_" + institution + ":" + role))));
-		this.permissions.forEach(permission -> authorities.add(new SimpleGrantedAuthority("PERM_" + permission)));
+	public boolean hasPermissionIn(String institutionCode, String permission) {
+		if (institutionCode == null || permission == null) {
+			return false;
+		}
+		return permissionsIn(institutionCode).contains(permission);
+	}
+
+	public boolean hasRoleIn(String institutionCode, String role) {
+		return role != null && rolesIn(institutionCode).contains(role);
+	}
+
+	/**
+	 * One {@code ROLE_<institution>:<role>} authority per institution/role pair plus one
+	 * {@code PERM_<institution>:<permission>} authority per institution/permission pair.
+	 */
+	@Override
+	public Set<GrantedAuthority> getAuthorities() {
+		Set<GrantedAuthority> authorities = new LinkedHashSet<>();
+		this.institutionRoles.forEach((institution, roles) -> roles.forEach(
+				role -> authorities.add(new SimpleGrantedAuthority("ROLE_" + institution + ":" + role))));
+		this.permissionsByInstitution.forEach((institution, permissions) -> permissions.forEach(
+				permission -> authorities.add(new SimpleGrantedAuthority("PERM_" + institution + ":" + permission))));
 		return Set.copyOf(authorities);
+	}
+
+	/** Convenience: the encoded authority string for an institution-scoped permission. */
+	public static String permissionAuthority(String institutionCode, String permission) {
+		return "PERM_" + Objects.requireNonNull(institutionCode) + ":" + Objects.requireNonNull(permission);
 	}
 
 	// ------------------------------------------------------------------
 	// UserDetails contract
 	// ------------------------------------------------------------------
-
-	@Override
-	public Set<GrantedAuthority> getAuthorities() {
-		return authorities();
-	}
 
 	/**
 	 * EDAM never stores or exposes credential material on the principal. Authentication is

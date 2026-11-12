@@ -10,66 +10,104 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 /**
- * Resolves the institution ("tenant") the current request operates on.
+ * Resolves which institution ("tenant") the current request is acting for.
  *
- * <p>Tenant isolation is the single most consequential architectural decision in EDAM and
- * is still an open decision (OD-20). This class is the <em>seam</em> that all later
- * tenant-scoped data access must go through, so the isolation mechanism can be chosen
- * without touching business code.
+ * <h2>Security rule (BRD §8)</h2>
+ * A tenant identifier supplied by the client is <strong>never</strong> an authorization
+ * decision. It may <em>select</em> among institutions the authenticated principal is a verified
+ * member of; anything else fails closed. There is no code path that reads a tenant id from a
+ * request body and trusts it.
  *
- * <p>Current foundation behaviour:
- * <ul>
- * <li>A user who belongs to exactly one institution resolves implicitly.</li>
- * <li>A user with several institutions must supply an explicit selection; the foundation
- * refuses to guess (fails closed with {@link BusinessException}).</li>
- * <li>Anonymous requests have no tenant.</li>
- * </ul>
+ * <h2>Resolution order</h2>
+ * <ol>
+ *   <li>An explicit binding for this request (set by the API layer from the {@code X-Institution}
+ *       header or an institution path segment, after the membership check below).</li>
+ *   <li>Otherwise, if the principal belongs to exactly one institution, that institution.</li>
+ *   <li>Otherwise fail closed. EDAM refuses to guess when a user belongs to several
+ *       institutions — the previous behaviour silently returned "no tenant", which would have
+ *       become a silent cross-tenant read as soon as business tables arrived.</li>
+ * </ol>
  *
- * <p>Nothing here is persisted: the resolved institution is a request-scoped value. A
- * later phase will bind it to the Hibernate tenant filter once the isolation model is
- * approved.
+ * <p>The resolved value is request-scoped and cleared by
+ * {@link com.edam.common.logging.TenantContextFilter}; it is never stored in the session, because
+ * a session-wide tenant would leak across concurrent tabs and across logins.
  */
 @Component
 public class InstitutionContext {
 
-	private static final ThreadLocal<String> CURRENT = new ThreadLocal<>();
+	private static final ThreadLocal<InstitutionSelection> CURRENT = new ThreadLocal<>();
 
-	/** Explicitly bind an institution for the current request (login selection, admin tools). */
+	/** Explicitly bind an institution for the current request. */
 	public void bind(String institutionCode) {
-		CURRENT.set(institutionCode);
+		if (institutionCode == null || institutionCode.isBlank()) {
+			CURRENT.remove();
+			return;
+		}
+		CURRENT.set(new InstitutionSelection(institutionCode.trim().toLowerCase(java.util.Locale.ROOT), null));
+	}
+
+	/**
+	 * Bind a resolved institution together with its numeric id. The id is what tenant-owned rows
+	 * store, so resolving it once per request keeps services from re-querying by code.
+	 */
+	public void bind(String institutionCode, Long institutionId) {
+		if (institutionCode == null || institutionCode.isBlank() || institutionId == null) {
+			CURRENT.remove();
+			return;
+		}
+		CURRENT.set(new InstitutionSelection(institutionCode.trim().toLowerCase(java.util.Locale.ROOT),
+				institutionId));
 	}
 
 	public void clear() {
 		CURRENT.remove();
 	}
 
-	/**
-	 * The institution for the current request, or empty when there is none. Does not throw:
-	 * callers rendering generic pages (login, error) must still work.
-	 */
-	public Optional<String> currentInstitution() {
-		String explicit = CURRENT.get();
-		if (explicit != null) {
-			return Optional.of(explicit);
-		}
-		EdamPrincipal principal = currentPrincipal().orElse(null);
-		if (principal == null) {
-			return Optional.empty();
-		}
-		var institutions = principal.institutionCodes();
-		if (institutions.size() == 1) {
-			return Optional.of(institutions.iterator().next());
-		}
-		return Optional.empty();
+	/** The explicitly bound selection, if the API layer resolved one. */
+	public Optional<InstitutionSelection> selection() {
+		return Optional.ofNullable(CURRENT.get());
 	}
 
 	/**
-	 * The institution the caller is acting for. Fails closed when the caller belongs to
-	 * several institutions and has not selected one; never silently picks the first.
+	 * The institution code for the current request, or empty when the caller is anonymous.
+	 * Does not throw: generic pages (login, error, health) must still work.
+	 */
+	public Optional<String> currentInstitution() {
+		InstitutionSelection explicit = CURRENT.get();
+		if (explicit != null) {
+			return Optional.of(explicit.code());
+		}
+		return currentPrincipal().flatMap(principal -> {
+			var institutions = principal.institutionCodes();
+			return institutions.size() == 1 ? Optional.of(institutions.iterator().next()) : Optional.empty();
+		});
+	}
+
+	/**
+	 * The institution the caller is acting for. Fails closed when the caller belongs to several
+	 * institutions and has not selected one, and when the caller is anonymous.
 	 */
 	public String requireInstitution() {
-		return currentInstitution().orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED,
+		return currentInstitution().orElseThrow(() -> new BusinessException(ErrorCode.INSTITUTION_REQUIRED,
 				"Select the institution you are acting for before continuing."));
+	}
+
+	/**
+	 * The numeric institution id the caller is acting for. Tenant-owned rows store this, so it is
+	 * the value every service must use when reading or writing business data.
+	 */
+	public Long requireInstitutionId() {
+		InstitutionSelection explicit = CURRENT.get();
+		if (explicit != null && explicit.id() != null) {
+			return explicit.id();
+		}
+		throw new BusinessException(ErrorCode.INSTITUTION_REQUIRED,
+				"The institution context for this request could not be resolved.");
+	}
+
+	public Optional<Long> currentInstitutionId() {
+		InstitutionSelection explicit = CURRENT.get();
+		return (explicit == null) ? Optional.empty() : Optional.ofNullable(explicit.id());
 	}
 
 	public Optional<EdamPrincipal> currentPrincipal() {
@@ -80,12 +118,29 @@ public class InstitutionContext {
 		if (authentication.getPrincipal() instanceof EdamPrincipal principal) {
 			return Optional.of(principal);
 		}
+		// The development adapter wraps the principal with a credential holder.
+		Object details = authentication.getPrincipal();
+		if (details != null && details.getClass().getName().endsWith("DevUserDetails")) {
+			try {
+				Object inner = details.getClass().getMethod("principal").invoke(details);
+				if (inner instanceof EdamPrincipal principal) {
+					return Optional.of(principal);
+				}
+			}
+			catch (ReflectiveOperationException ignored) {
+				// Fall through: no principal means no tenant, which fails closed.
+			}
+		}
 		return Optional.empty();
 	}
 
 	/** True when the principal may act for the given institution. */
 	public boolean isMemberOf(String institutionCode) {
 		return currentPrincipal().map(principal -> principal.belongsTo(institutionCode)).orElse(false);
+	}
+
+	/** A resolved tenant selection: stable code plus the surrogate id rows store. */
+	public record InstitutionSelection(String code, Long id) {
 	}
 
 }
