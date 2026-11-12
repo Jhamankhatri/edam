@@ -8,7 +8,17 @@ on:
 jobs:
   dump:
     runs-on: ubuntu-latest
-    needs: []
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: edam
+          POSTGRES_USER: edam
+          POSTGRES_PASSWORD: edam-ci-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U edam -d edam"
+          --health-interval 5s --health-timeout 5s --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK 21
@@ -19,33 +29,29 @@ jobs:
           cache: maven
       - name: Build
         run: mvn -B -ntp -q -DskipTests package
-      - name: Start
+      - name: Start and dump
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          export EDAM_DB_URL=jdbc:postgresql://localhost:5432/edam
+          export EDAM_DB_USERNAME=edam
+          export EDAM_DB_PASSWORD=edam-ci-only
           java -jar target/edam.war --spring.profiles.active=local --server.port=18080 > app.log 2>&1 &
-          for i in $(seq 1 60); do
-            curl -sf -o /dev/null http://localhost:18080/login && break
+          for i in $(seq 1 90); do
+            grep -q "Started EdamApplication" app.log && break
             sleep 2
           done
-          curl -s http://localhost:18080/login -o login.html || true
-          wc -c login.html
-      - name: Dump
-        run: |
+          code=$(curl -sS -o login.html -w '%{http_code}' http://localhost:18080/login) || true
+          echo "::error title=DEBUG_STATUS::http=$code bytes=$(wc -c < login.html 2>/dev/null || echo 0)"
           python3 - <<'PY'
-          import json, urllib.request, os
+          import re
           body = open('login.html', encoding='utf-8', errors='replace').read()
-          token = os.environ['GH_TOKEN']
-          repo = os.environ['GITHUB_REPOSITORY']
-          run_id = os.environ['GITHUB_RUN_ID']
-          chunks = [body[i:i+900] for i in range(0, len(body), 900)] or ['<empty>']
-          for index, chunk in enumerate(chunks[:60]):
-              text = "CHUNK %d/%d :: %s" % (index + 1, len(chunks), chunk.replace("\n", ""))
-              req = urllib.request.Request(
-                  f"https://api.github.com/repos/{repo}/check-runs/{run_id}/annotations",
-                  method="GET")
-          print("body-length", len(body))
-          # annotations are created by the runner; print instead, GitHub shows step logs for this job
-          print(body)
+          print("LEN", len(body))
+          # home in on the theme block and the brand heading
+          for match in re.finditer(r'(--edam-[a-z]+:[^;\n]*;?)|(<h1[^>]*>.*?</h1>)|(<style>.*?</style>)', body, re.S):
+              print("::error title=DEBUG_PART::", match.group(0)[:300].replace("\n", " "))
+          print("::error title=DEBUG_HEAD::", body[:300].replace("\n", " "))
+          print("::error title=DEBUG_TAIL::", body[-300:].replace("\n", " "))
           PY
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Application log
+        if: always()
+        run: grep -E " ERROR |Started EdamApplication|Tomcat started" app.log | tail -20 || true
