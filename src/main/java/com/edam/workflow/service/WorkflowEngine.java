@@ -12,12 +12,12 @@ import com.edam.workflow.model.WorkflowState;
 import com.edam.workflow.model.WorkflowStep;
 import com.edam.workflow.model.WorkflowTask;
 import com.edam.workflow.model.WorkflowVersion;
-import com.edam.workflow.repository.WorkflowRepositories.Actions;
-import com.edam.workflow.repository.WorkflowRepositories.Instances;
-import com.edam.workflow.repository.WorkflowRepositories.States;
-import com.edam.workflow.repository.WorkflowRepositories.Steps;
-import com.edam.workflow.repository.WorkflowRepositories.Tasks;
-import com.edam.workflow.repository.WorkflowRepositories.Versions;
+import com.edam.workflow.repository.ActionsRepository;
+import com.edam.workflow.repository.InstancesRepository;
+import com.edam.workflow.repository.StatesRepository;
+import com.edam.workflow.repository.StepsRepository;
+import com.edam.workflow.repository.TasksRepository;
+import com.edam.workflow.repository.VersionsRepository;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,22 +58,22 @@ public class WorkflowEngine {
 
 	private static final Logger log = LoggerFactory.getLogger(WorkflowEngine.class);
 
-	private final Instances instances;
+	private final InstancesRepository instances;
 
-	private final Versions versions;
+	private final VersionsRepository versions;
 
-	private final States states;
+	private final StatesRepository states;
 
-	private final Steps steps;
+	private final StepsRepository steps;
 
-	private final Tasks tasks;
+	private final TasksRepository tasks;
 
-	private final Actions actions;
+	private final ActionsRepository actions;
 
 	private final WorkflowAssignmentResolver assignmentResolver;
 
-	public WorkflowEngine(Instances instances, Versions versions, States states, Steps steps, Tasks tasks,
-			Actions actions, WorkflowAssignmentResolver assignmentResolver) {
+	public WorkflowEngine(InstancesRepository instances, VersionsRepository versions, StatesRepository states, StepsRepository steps, TasksRepository tasks,
+			ActionsRepository actions, WorkflowAssignmentResolver assignmentResolver) {
 		this.instances = instances;
 		this.versions = versions;
 		this.states = states;
