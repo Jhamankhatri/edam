@@ -371,12 +371,13 @@ class WorkflowConfigurationApiTest extends AbstractPostgreSqlIntegrationTest {
 			assertThat(nextDraft.id()).isNotEqualTo(published.id());
 			assertThat(nextDraft.versionNumber()).isEqualTo(2);
 
-			// v1 is exactly what it was: still published, still holding two approvers.
-			WorkflowVersion reloaded = WorkflowConfigurationApiTest.this.versions.findById(published.id())
-				.orElseThrow();
-			assertThat(reloaded.getStatus()).isEqualTo(WorkflowVersion.Status.PUBLISHED);
-			assertThat(reloaded.getSteps()).hasSize(1);
-			assertThat(reloaded.getSteps().get(0).getApprovers()).hasSize(2);
+			// v1 is exactly what it was: still published, still holding two approvers. Read through the
+			// service, which assembles the graph inside its transaction; the repository returns an entity
+			// whose step collection is lazy and closed by the time a test inspects it.
+			var reloaded = WorkflowConfigurationApiTest.this.configuration.getVersion(published.id());
+			assertThat(reloaded.status()).isEqualTo(WorkflowVersion.Status.PUBLISHED.name());
+			assertThat(reloaded.steps()).hasSize(1);
+			assertThat(reloaded.steps().get(0).approvers()).hasSize(2);
 		}
 
 		@Test
