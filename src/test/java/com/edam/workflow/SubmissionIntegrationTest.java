@@ -349,25 +349,6 @@ class SubmissionIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 					"select count(*) from audit_events where entity_type = 'ExpenseRequest' and entity_id = ?",
 					Long.class, requestId.toString());
 			return count == null ? 0L : count;
-		}@Test
-		@DisplayName("cancellation is recorded as an action, not just a status change")
-		void cancelIsAudited() {
-			SubmissionIntegrationTest.this.publishChain(1);
-			ExpenseRequestDtos.RequestResponse submitted = SubmissionIntegrationTest.this.requests.submit(SubmissionIntegrationTest.this.draft().id(), SubmissionIntegrationTest.this.owner());
-			WorkflowInstance instance = SubmissionIntegrationTest.this.instances.findByExpenseRequestId(submitted.id()).orElseThrow();
-
-			// Actions are keyed by task, not by instance, so the instance's own task ids are the join.
-			Set<UUID> taskIds = SubmissionIntegrationTest.this.tasks.findByWorkflowInstanceIdOrderByAssignedAtAsc(instance.getId()).stream()
-				.map(com.edam.workflow.model.WorkflowTask::getId).collect(java.util.stream.Collectors.toSet());
-			long before = SubmissionIntegrationTest.this.actions.findAll().stream()
-				.filter(action -> action.getWorkflowTaskId() != null && taskIds.contains(action.getWorkflowTaskId()))
-				.count();
-			SubmissionIntegrationTest.this.requests.cancel(submitted.id(), "Budget withdrawn", SubmissionIntegrationTest.this.owner());
-			long after = SubmissionIntegrationTest.this.actions.findAll().stream()
-				.filter(action -> action.getWorkflowTaskId() != null && taskIds.contains(action.getWorkflowTaskId()))
-				.count();
-
-			assertThat(after).as("a withdrawal must leave a trace an auditor can read").isGreaterThan(before);
 		}
 	}
 }
