@@ -24,10 +24,11 @@ import org.hibernate.type.SqlTypes;
  * under load, when clients retry. The key is therefore durable.
  *
  * <h2>What is stored</h2>
- * A SHA-256 of the caller's key and a fingerprint of the request body, plus the recorded status. The key
- * itself is hashed so that a stolen backup cannot be used to replay a client's requests, and the response
- * body is not stored at all: a replay returns the recorded status and the caller re-reads current state,
- * which is also correct when the resource has changed legitimately since.
+ * A SHA-256 of the caller's key (so a stolen backup cannot be used to replay a client's requests), the
+ * operation type, the owning actor id, a fingerprint of the request body (to detect same-key reuse with
+ * different payloads), the HTTP status returned, and a JSON-serialised snapshot of the response body
+ * (in {@code response_snapshot}) so that replays return byte-identical responses to the original caller.
+ * No credentials, authorisation tokens, or sensitive headers are retained.
  *
  * <h2>State machine</h2>
  * {@code IN_PROGRESS} → {@code COMPLETED} or {@code FAILED}. The in-progress state is what makes a
@@ -58,8 +59,12 @@ public class IdempotencyRecord {
 	@Column(name = "idempotency_key", nullable = false, updatable = false, length = 200)
 	private String keyHash;
 
-	@Column(name = "operation_type", nullable = false, updatable = false, length = 100)
+	@Column(name = "operation_type", nullable = false, updatable = false, length = 120)
 	private String operationType;
+
+	/** Authenticated actor that owns this key; one user's key never replays another's response. */
+	@Column(name = "actor_id", nullable = false, updatable = false)
+	private UUID actorId;
 
 	/** SHA-256 of the canonical request body, to detect key reuse with different content. */
 	@Column(name = "request_hash", nullable = false, updatable = false, length = 64)
@@ -86,19 +91,22 @@ public class IdempotencyRecord {
 		// JPA
 	}
 
-	public IdempotencyRecord(String keyHash, String operationType, String requestHash, Instant expiresAt) {
+	public IdempotencyRecord(String keyHash, String operationType, UUID actorId, String requestHash,
+			Instant expiresAt) {
 		this.keyHash = keyHash;
 		this.operationType = operationType;
+		this.actorId = actorId;
 		this.requestHash = requestHash;
 		this.status = Status.IN_PROGRESS;
 		this.expiresAt = expiresAt;
 		this.createdAt = Instant.now();
 	}
 
-	/** Marks the operation complete and records the status a replay should receive. */
-	public void complete(int responseStatus) {
+	/** Marks the operation complete and records the HTTP status and serialized response a replay returns. */
+	public void complete(int responseStatus, String responseSnapshot) {
 		this.status = Status.COMPLETED;
 		this.responseStatus = responseStatus;
+		this.responseSnapshot = responseSnapshot;
 	}
 
 	/** Marks the operation failed so that the caller may correct the input and retry. */
@@ -128,6 +136,10 @@ public class IdempotencyRecord {
 
 	public String getOperationType() {
 		return this.operationType;
+	}
+
+	public UUID getActorId() {
+		return this.actorId;
 	}
 
 	public String getRequestHash() {
