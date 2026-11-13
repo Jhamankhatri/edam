@@ -116,11 +116,10 @@ class OptimisticLockingIntegrationTest extends AbstractPostgreSqlIntegrationTest
 
 		int writers = 2;
 		CyclicBarrier afterRead = new CyclicBarrier(writers);
-		CyclicBarrier bothRead = new CyclicBarrier(writers);
 		ExecutorService pool = Executors.newFixedThreadPool(writers);
 		try {
-			Callable<String> first = writer(id, new BigDecimal("2000.0000"), afterRead, bothRead);
-			Callable<String> second = writer(id, new BigDecimal("3000.0000"), afterRead, bothRead);
+			Callable<String> first = writer(id, new BigDecimal("2000.0000"), afterRead);
+			Callable<String> second = writer(id, new BigDecimal("3000.0000"), afterRead);
 			Future<String> one = pool.submit(first);
 			Future<String> two = pool.submit(second);
 
@@ -153,17 +152,17 @@ class OptimisticLockingIntegrationTest extends AbstractPostgreSqlIntegrationTest
 	 * <p>The read and the write deliberately share a transaction, because that is the situation
 	 * optimistic locking addresses — a long-lived edit that began from a snapshot which has since moved on.
 	 */
-	private Callable<String> writer(UUID id, BigDecimal newAmount, CyclicBarrier afterRead,
-			CyclicBarrier bothRead) {
+	private Callable<String> writer(UUID id, BigDecimal newAmount, CyclicBarrier afterRead) {
 		return () -> {
 			try {
 				return this.transactionTemplate.execute(status -> {
 					try {
 						DepartmentApprovalLimit row = this.limits.findById(id).orElseThrow();
-						row.setLimit(newAmount);
-						// Tell the other thread this one has read, then wait for it to read as well.
+						// Both writers must have read the same version before either writes. One barrier is
+						// enough: it releases only when the second reader arrives, so by then both hold the
+						// snapshot the update will be compared against.
 						afterRead.await(10, TimeUnit.SECONDS);
-						bothRead.await(10, TimeUnit.SECONDS);
+						row.setLimit(newAmount);
 						this.limits.saveAndFlush(row);
 						return "COMMITTED";
 					}
@@ -179,6 +178,12 @@ class OptimisticLockingIntegrationTest extends AbstractPostgreSqlIntegrationTest
 					catch (java.util.concurrent.BrokenBarrierException ex) {
 						status.setRollbackOnly();
 						return "BROKEN";
+					}
+					catch (java.util.concurrent.TimeoutException ex) {
+						// The other writer never arrived, so this one must not proceed on a half-synchronised
+						// read; rolling back keeps the conflict assertion meaningful.
+						status.setRollbackOnly();
+						return "TIMED_OUT";
 					}
 				});
 			}
