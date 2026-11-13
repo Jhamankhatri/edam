@@ -262,7 +262,7 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 					.accept(MediaType.APPLICATION_JSON))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.items[0].requestId").value(requestId.toString()))
-				.andExpect(jsonPath("$.data.content[0].requestStatus").value("SUBMITTED"));
+				.andExpect(jsonPath("$.data.items[0].requestStatus").value("SUBMITTED"));
 
 			// The outsider holds approval:view and still sees nothing: the inbox is keyed by assignment.
 			ApprovalActionsApiTest.this.mockMvc
