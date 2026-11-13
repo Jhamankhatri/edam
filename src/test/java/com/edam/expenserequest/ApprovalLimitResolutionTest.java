@@ -221,8 +221,8 @@ class ApprovalLimitResolutionTest {
 		@DisplayName("a person within their limit is permitted")
 		void withinLimitPermitted() {
 			givenRows(limit(null, "100000.0000", DepartmentApprovalLimit.ExpenseType.BOTH));
-			when(this.users.findById(any())).thenReturn(Optional.empty());
-			var check = this.service.checkAuthority(DEPARTMENT, "OPEX", CURRENCY, new BigDecimal("99999.0000"),
+			when(ApprovalLimitResolutionTest.this.users.findById(any())).thenReturn(Optional.empty());
+			var check = ApprovalLimitResolutionTest.this.service.checkAuthority(DEPARTMENT, "OPEX", CURRENCY, new BigDecimal("99999.0000"),
 					List.of(PERSON));
 			assertThat(check.permittedUserIds()).containsExactly(PERSON);
 		}
@@ -231,7 +231,7 @@ class ApprovalLimitResolutionTest {
 		@DisplayName("an amount equal to the limit is permitted: the ceiling is inclusive")
 		void atLimitPermitted() {
 			givenRows(limit(null, "100000.0000", DepartmentApprovalLimit.ExpenseType.BOTH));
-			var check = this.service.checkAuthority(DEPARTMENT, "OPEX", CURRENCY, new BigDecimal("100000.0000"),
+			var check = ApprovalLimitResolutionTest.this.service.checkAuthority(DEPARTMENT, "OPEX", CURRENCY, new BigDecimal("100000.0000"),
 					List.of(PERSON));
 			assertThat(check.permittedUserIds()).containsExactly(PERSON);
 		}
@@ -240,7 +240,7 @@ class ApprovalLimitResolutionTest {
 		@DisplayName("one cent above the limit is refused")
 		void aboveLimitRefused() {
 			givenRows(limit(null, "100000.0000", DepartmentApprovalLimit.ExpenseType.BOTH));
-			var check = this.service.checkAuthority(DEPARTMENT, "OPEX", CURRENCY, new BigDecimal("100000.0001"),
+			var check = ApprovalLimitResolutionTest.this.service.checkAuthority(DEPARTMENT, "OPEX", CURRENCY, new BigDecimal("100000.0001"),
 					List.of(PERSON));
 			assertThat(check.permittedUserIds()).isEmpty();
 			assertThat(check.reasons()).isNotEmpty();
@@ -250,7 +250,7 @@ class ApprovalLimitResolutionTest {
 		@DisplayName("an unconfigured department refuses and says why")
 		void unconfiguredRefused() {
 			givenRows();
-			var check = this.service.checkAuthority(DEPARTMENT, "OPEX", CURRENCY, new BigDecimal("1.0000"),
+			var check = ApprovalLimitResolutionTest.this.service.checkAuthority(DEPARTMENT, "OPEX", CURRENCY, new BigDecimal("1.0000"),
 					List.of(PERSON));
 			assertThat(check.permittedUserIds()).isEmpty();
 			assertThat(check.reasons()).anyMatch(reason -> reason.contains("No approval limit is configured"));
@@ -262,7 +262,7 @@ class ApprovalLimitResolutionTest {
 			UUID junior = UUID.randomUUID();
 			givenRows(limit(null, "100000.0000", DepartmentApprovalLimit.ExpenseType.BOTH),
 					limit(junior, "1000.0000", DepartmentApprovalLimit.ExpenseType.BOTH));
-			var check = this.service.checkAuthority(DEPARTMENT, "OPEX", CURRENCY, new BigDecimal("5000.0000"),
+			var check = ApprovalLimitResolutionTest.this.service.checkAuthority(DEPARTMENT, "OPEX", CURRENCY, new BigDecimal("5000.0000"),
 					List.of(PERSON, junior));
 			assertThat(check.permittedUserIds()).containsExactly(PERSON);
 		}

@@ -175,7 +175,7 @@ class ExpenseRequestLifecycleTest extends AbstractPostgreSqlIntegrationTest {
 				new com.edam.expenserequest.dto.ExpenseRequestDtos.CapexDetailPayload("PURCHASE",
 						RequestFixtures.money("5000.0000"), RequestFixtures.money("5000.0000"),
 						RequestFixtures.money("5000.0000"), true, RequestFixtures.money("10000.0000"), null, null,
-						"IT_EQUIPMENT", null, null, null, null, null),
+						"IT_EQUIPMENT", null, null, null, null, null, null),
 				List.of(new AllocationPayload(this.department.getId(), null, "CC-1",
 						RequestFixtures.money("5000.0000"), RequestFixtures.money("100.0000"))),
 				List.of(new ItemPayload("Server", RequestFixtures.money("1.0000"),
@@ -238,8 +238,8 @@ class ExpenseRequestLifecycleTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("a category of the other classification is refused")
 		void wrongCategoryRefused() {
-			CreateRequest payload = new CreateRequest(this.opexType.getId(), this.capexCategory.getId(), null,
-					this.nature.getId(), this.department.getId(), null, this.currency.getId(),
+			CreateRequest payload = new CreateRequest(ExpenseRequestLifecycleTest.this.opexType.getId(), ExpenseRequestLifecycleTest.this.capexCategory.getId(), null,
+					ExpenseRequestLifecycleTest.this.nature.getId(), ExpenseRequestLifecycleTest.this.department.getId(), null, ExpenseRequestLifecycleTest.this.currency.getId(),
 					RequestFixtures.money("1000.0000"), "x", recurringOpex(), null, List.of(), null, null, null,
 					null, null, null, null);
 			assertThatThrownBy(() -> ExpenseRequestLifecycleTest.this.service.create(payload, caller()))
@@ -249,11 +249,11 @@ class ExpenseRequestLifecycleTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("supplying both OPEX and CAPEX detail is refused")
 		void bothDetailsRefused() {
-			CreateRequest payload = new CreateRequest(this.opexType.getId(), this.opexCategory.getId(), null,
-					this.nature.getId(), this.department.getId(), null, this.currency.getId(),
+			CreateRequest payload = new CreateRequest(ExpenseRequestLifecycleTest.this.opexType.getId(), ExpenseRequestLifecycleTest.this.opexCategory.getId(), null,
+					ExpenseRequestLifecycleTest.this.nature.getId(), ExpenseRequestLifecycleTest.this.department.getId(), null, ExpenseRequestLifecycleTest.this.currency.getId(),
 					RequestFixtures.money("1000.0000"), "x", recurringOpex(),
 					new com.edam.expenserequest.dto.ExpenseRequestDtos.CapexDetailPayload("PURCHASE", null, null,
-							null, true, null, null, null, null, null, null, null, null, null),
+							null, true, null, null, null, null, null, null, null, null, null, null),
 					List.of(), null, null, null, null, null, null, null);
 			assertThatThrownBy(() -> ExpenseRequestLifecycleTest.this.service.create(payload, caller()))
 				.isInstanceOf(BusinessException.class)
@@ -303,14 +303,14 @@ class ExpenseRequestLifecycleTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("a CAPEX request without items is refused at submission")
 		void capexWithoutItemsRefused() {
-			CreateRequest payload = new CreateRequest(this.capexType.getId(), this.capexCategory.getId(), null,
-					this.nature.getId(), this.department.getId(), null, this.currency.getId(),
+			CreateRequest payload = new CreateRequest(ExpenseRequestLifecycleTest.this.capexType.getId(), ExpenseRequestLifecycleTest.this.capexCategory.getId(), null,
+					ExpenseRequestLifecycleTest.this.nature.getId(), ExpenseRequestLifecycleTest.this.department.getId(), null, ExpenseRequestLifecycleTest.this.currency.getId(),
 					RequestFixtures.money("5000.0000"), "Server purchase", null,
 					new com.edam.expenserequest.dto.ExpenseRequestDtos.CapexDetailPayload("PURCHASE",
 							RequestFixtures.money("5000.0000"), RequestFixtures.money("5000.0000"),
 							RequestFixtures.money("5000.0000"), true, RequestFixtures.money("10000.0000"), null, null,
-							"IT", null, null, null, null, null),
-					List.of(new AllocationPayload(this.department.getId(), null, "CC-1",
+							"IT", null, null, null, null, null, null),
+					List.of(new AllocationPayload(ExpenseRequestLifecycleTest.this.department.getId(), null, "CC-1",
 							RequestFixtures.money("5000.0000"), RequestFixtures.money("100.0000"))),
 					null, null, null, null, null, null, null);
 			RequestResponse created = ExpenseRequestLifecycleTest.this.service.create(payload, caller());
@@ -481,10 +481,10 @@ class ExpenseRequestLifecycleTest extends AbstractPostgreSqlIntegrationTest {
 		@DisplayName("a failed create leaves no request behind")
 		void failedCreateLeavesNothingBehind() {
 			UUID media = UUID.randomUUID();
-			CreateRequest payload = new CreateRequest(this.opexType.getId(), this.opexCategory.getId(), null,
-					this.nature.getId(), this.department.getId(), null, this.currency.getId(),
+			CreateRequest payload = new CreateRequest(ExpenseRequestLifecycleTest.this.opexType.getId(), ExpenseRequestLifecycleTest.this.opexCategory.getId(), null,
+					ExpenseRequestLifecycleTest.this.nature.getId(), ExpenseRequestLifecycleTest.this.department.getId(), null, ExpenseRequestLifecycleTest.this.currency.getId(),
 					RequestFixtures.money("1000.0000"), "x", recurringOpex(), null,
-					List.of(new AllocationPayload(this.department.getId(), null, null,
+					List.of(new AllocationPayload(ExpenseRequestLifecycleTest.this.department.getId(), null, null,
 							RequestFixtures.money("1000.0000"), RequestFixtures.money("100.0000"))),
 					null, List.of(quotation("Q-1", "1000.0000")), null, null, null, null,
 					List.of(new com.edam.expenserequest.dto.ExpenseRequestDtos.DocumentReferencePayload(media,
