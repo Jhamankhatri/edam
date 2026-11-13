@@ -322,7 +322,10 @@ public class AuditReadService {
 		if (taskIds.isEmpty()) {
 			return List.of();
 		}
-		return this.actions.findForTasksAfter(taskIds, boundedAt, after.timestamp(), after.id(), fetchLimit);
+		// Hibernate 6 does not always bind List<UUID> as uuid[] in native queries on Postgres,
+		// so create a java.sql.Array explicitly.
+		java.util.UUID[] ids = taskIds.toArray(java.util.UUID[]::new);
+		return this.actions.findForTasksAfter(ids, boundedAt, after.timestamp(), after.id(), fetchLimit);
 	}
 
 	private Map<UUID, String> loadStateNames(ExpenseRequest request) {

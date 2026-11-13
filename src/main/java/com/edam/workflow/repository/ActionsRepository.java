@@ -42,7 +42,7 @@ public interface ActionsRepository extends JpaRepository<WorkflowAction, UUID> {
 			order by a.action_at asc, a.id asc
 			limit :fetchLimit
 			""", nativeQuery = true)
-	List<WorkflowAction> findForTasksAfter(@Param("taskIds") List<UUID> taskIds,
+	List<WorkflowAction> findForTasksAfter(@Param("taskIds") UUID[] taskIds,
 			@Param("boundedAt") Instant boundedAt,
 			@Param("afterTs") Instant afterTs,
 			@Param("afterId") UUID afterId,
