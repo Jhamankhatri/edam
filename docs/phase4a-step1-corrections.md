@@ -8,14 +8,14 @@
 | Branch | `feature/phase-4a-step1-audit-corrections` |
 | Target | `main` |
 | Base | `main @ 5073570a918eb6ce58ee67f1df47b35cfdb2b026` (PR #9 merge) |
-| **Final head SHA** | **`d15f46e1734f472f6d4eede9ecb34b5b9fa65a48`** |
+| **Final head SHA** | **`71876707e45781f4b65ad69919de8e25c5e8eb6c`** |
 | **Last code+tests CI (pull_request)** | **[`43519615134`](https://github.com/Jhamankhatri/edam/actions/runs/43519615134) — all green** |
 | Test tally (last code+tests CI) | 24 classes, **321 tests, 0 failures, 0 errors, 3 skipped** |
 | CI jobs (last code+tests CI) | `build-and-test` ✓, `war-package-smoke-test` ✓, `prod-profile-smoke-test` ✓ |
 
 ## Historical verification note
 
-The authoritative green CI for the production code (H-1, H-2, HMAC, tests) is run [`43519615134`](https://github.com/Jhamankhatri/edam/actions/runs/43519615134) at head `39f5614b88e3a2c8b32216e9ca80e3b5c47c442f`; all 321 tests and both smoke jobs passed. Commits after that point (`39f5614` → `d15f46e`) change only this Markdown document and no Java source, SQL migrations, tests, or configuration — they therefore do not alter runtime behaviour, and the 43519615134 results remain the authoritative verification of the code. Earlier code heads were also green with identical tallies:
+The authoritative green CI for the production code (H-1, H-2, HMAC, tests) is run [`43519615134`](https://github.com/Jhamankhatri/edam/actions/runs/43519615134) at head `39f5614b88e3a2c8b32216e9ca80e3b5c47c442f`; all 321 tests and both smoke jobs passed. All subsequent commits (`39f5614` → `d15f46e` → `7187670`) change only this Markdown document and no Java source, SQL migrations, tests, or configuration — they therefore do not alter runtime behaviour, and the 43519615134 results remain the authoritative verification of the application code. Earlier code heads were also green with identical tallies:
 - `18532be7621dba18e4c76ff5abba8a1c22668b09` (H-1/H-2 fixes + tests) — CI [`43516091998`](https://github.com/Jhamankhatri/edam/actions/runs/43516091998) ✓.
 - `442f71bf51eb04d00b95572757bd65a17e03b394` (first documentation rewrite) — CI [`43517599318`](https://github.com/Jhamankhatri/edam/actions/runs/43517599318) ✓.
 
