@@ -136,14 +136,18 @@ class AuthenticationIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 				.isInstanceOf(BusinessException.class);
 		}
 		User afterFour = this.users.findById(user.getId()).orElseThrow();
-		assertThat(afterFour.getFailedLoginCount()).isEqualTo(4);
+		assertThat(afterFour.getFailedLoginCount())
+			.as("failure count after four rejections (lockedUntil=%s)", afterFour.getLockedUntil())
+			.isEqualTo(4);
 		assertThat(afterFour.getLockedUntil()).as("four failures must not lock at a threshold of five").isNull();
 
 		assertThatThrownBy(() -> this.authService.authenticate(user.getUsername(), "Wr0ng!Passphrase", "127.0.0.1"))
 			.isInstanceOf(BusinessException.class);
 
 		User afterFive = this.users.findById(user.getId()).orElseThrow();
-		assertThat(afterFive.getLockedUntil()).as("the fifth failure must engage the lock").isNotNull();
+		assertThat(afterFive.getLockedUntil())
+			.as("the fifth failure must engage the lock (count=%s)", afterFive.getFailedLoginCount())
+			.isNotNull();
 		assertThat(afterFive.isLocked(Instant.now())).isTrue();
 	}
 
@@ -280,7 +284,10 @@ class AuthenticationIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 		// must reject bootstrap permanently.
 		InstallationState state = this.installationState.findById(InstallationState.SINGLETON_ID).orElseThrow();
 		if (!state.isBootstrapped()) {
-			state.complete(UUID.randomUUID(), Instant.now());
+			// bootstrapped_by is a foreign key to users: completion must name a real account, which is
+			// exactly the evidence requirement the constraint enforces.
+			User installer = newUser("Str0ng!Passphrase");
+			state.complete(installer.getId(), Instant.now());
 			this.installationState.save(state);
 		}
 		assertThatThrownBy(() -> this.bootstrap.bootstrap("any-token",

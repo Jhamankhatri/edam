@@ -99,18 +99,14 @@ public class AuthService {
 
 	private final AuditRecorder audit;
 
-	private final int lockThreshold;
-
-	private final Duration lockDuration;
+	private final LoginAttemptRecorder attemptRecorder;
 
 	private final Duration resetTokenTtl;
 
 	public AuthService(UserRepository users, RoleRepository roles, UserDataScopeRepository dataScopes,
 			DepartmentRepository departments, BranchRepository branches, LoginAttemptRepository loginAttempts,
 			PasswordResetTokenRepository resetTokens, PasswordEncoder passwordEncoder, PasswordPolicy passwordPolicy,
-			SecureTokens tokens, AuditRecorder audit,
-			@Value("${edam.security.lockout.threshold:5}") int lockThreshold,
-			@Value("${edam.security.lockout.duration:PT15M}") Duration lockDuration,
+			SecureTokens tokens, AuditRecorder audit, LoginAttemptRecorder attemptRecorder,
 			@Value("${edam.security.password-reset.ttl:PT30M}") Duration resetTokenTtl) {
 		this.users = users;
 		this.roles = roles;
@@ -123,8 +119,7 @@ public class AuthService {
 		this.passwordPolicy = passwordPolicy;
 		this.tokens = tokens;
 		this.audit = audit;
-		this.lockThreshold = lockThreshold;
-		this.lockDuration = lockDuration;
+		this.attemptRecorder = attemptRecorder;
 		this.resetTokenTtl = resetTokenTtl;
 	}
 
@@ -145,7 +140,25 @@ public class AuthService {
 	 * @return the authenticated user
 	 * @throws BusinessException {@code INVALID_CREDENTIALS} or {@code ACCOUNT_LOCKED}
 	 */
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	/**
+	 * Verifies credentials and returns the user on success.
+	 *
+	 * <h2>Transaction design, and the bug it prevents</h2>
+	 * This method is <strong>not</strong> transactional. That looks wrong until you follow the failure
+	 * path: it must persist an incremented failure counter and then throw. A {@code BusinessException} is
+	 * a runtime exception, so any transaction around this method would be marked rollback-only and would
+	 * discard that counter — the threshold would never be reached and the lockout would never engage.
+	 *
+	 * <p>The evidence and the counter are therefore written by {@link LoginAttemptRecorder} in an
+	 * independent, committed transaction, and only afterwards is the caller rejected. The successful path
+	 * saves the user (clearing the counter, stamping the last sign-in) in its own short transaction.
+	 *
+	 * @param username the presented login name
+	 * @param presentedPassword the presented password
+	 * @param ipAddress the caller's address, for the evidence record
+	 * @return the authenticated user
+	 * @throws BusinessException {@code INVALID_CREDENTIALS} or {@code ACCOUNT_LOCKED}
+	 */
 	public User authenticate(String username, String presentedPassword, String ipAddress) {
 		Instant now = Instant.now();
 		String normalised = (username == null) ? "" : username.trim();
@@ -154,18 +167,18 @@ public class AuthService {
 		if (maybeUser.isEmpty()) {
 			// Burn comparable CPU so an unknown username is not measurably faster than a wrong password.
 			this.passwordEncoder.matches(presentedPassword == null ? "" : presentedPassword, DUMMY_HASH);
-			recordAttempt(normalised, ipAddress, false, "unknown_user", now);
+			this.attemptRecorder.recordFailure(null, normalised, ipAddress, "unknown_user", now);
 			throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
 		}
 
 		User user = maybeUser.get();
 
 		if (user.isLocked(now)) {
-			// The lockout message is distinguishable from bad credentials *only* for a correct
-			// password: telling an attacker that a real account is locked would confirm it exists.
+			// The lockout message is distinguishable from bad credentials *only* for a correct password:
+			// telling an attacker that a real account is locked would confirm it exists.
 			boolean passwordCorrect = user.hasLocalCredential()
 					&& this.passwordEncoder.matches(presentedPassword, user.getPasswordHash());
-			recordAttempt(normalised, ipAddress, false, "account_locked", now);
+			this.attemptRecorder.recordFailure(user.getId(), normalised, ipAddress, "account_locked", now);
 			if (passwordCorrect) {
 				throw new BusinessException(ErrorCode.ACCOUNT_LOCKED);
 			}
@@ -176,37 +189,26 @@ public class AuthService {
 				&& this.passwordEncoder.matches(presentedPassword, user.getPasswordHash());
 
 		if (!passwordMatches) {
-			user.recordFailedLogin(this.lockThreshold, this.lockDuration, now);
-			this.users.save(user);
-			recordAttempt(normalised, ipAddress, false, "bad_password", now);
-			// A lockout that has just engaged is reported as bad credentials, not as a lock, so that
-			// the moment of locking does not confirm the account is real.
+			// Committed independently, so this cannot be rolled back by the rejection that follows.
+			this.attemptRecorder.recordFailure(user.getId(), normalised, ipAddress, "bad_password", now);
 			throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
 		}
 
 		// Correct password but the account was deactivated. Reported as invalid credentials: whether an
 		// account is disabled is not information an unauthenticated caller is entitled to.
 		if (!user.isActive()) {
-			recordAttempt(normalised, ipAddress, false, "inactive_account", now);
+			this.attemptRecorder.recordFailure(user.getId(), normalised, ipAddress, "inactive_account", now);
 			throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
 		}
 
+		// One committed transaction clears the counter, stamps the sign-in and records the evidence.
+		this.attemptRecorder.recordSuccess(user.getId(), normalised, ipAddress, now);
 		user.clearFailedLogins();
 		user.setLastLoginAt(now);
-		this.users.save(user);
-		recordAttempt(normalised, ipAddress, true, null, now);
 		this.audit.record(AuditAction.LOGIN_SUCCESS, "User", user.getId(),
 				"Signed in from " + (ipAddress == null ? "unknown address" : ipAddress));
 		log.info("auth.login_success userId={} username={}", user.getId(), user.getUsername());
 		return user;
-	}
-
-	private void recordAttempt(String username, String ipAddress, boolean success, String failureReason,
-			Instant when) {
-		// Truncated to the column width so a pathological oversized username cannot fail the insert and
-		// thereby lose the evidence.
-		String recorded = username.length() > 100 ? username.substring(0, 100) : username;
-		this.loginAttempts.save(new LoginAttempt(recorded, ipAddress, success, failureReason, when));
 	}
 
 	// ---------------------------------------------------------------------------------------------
