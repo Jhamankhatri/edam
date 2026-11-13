@@ -123,6 +123,11 @@ INSERT INTO roles (name, code, description, is_system_role) VALUES
     ('Expense Committee Member', 'EXPENSE_COMMITTEE_MEMBER', 'Act on assigned committee approvals', TRUE),
     ('Chief Executive Officer', 'CEO', 'Required office for configured committee levels', TRUE),
     ('Chief Financial Officer', 'CFO', 'Required office for configured committee levels', TRUE),
+    -- The head of administration (GSD) is a routable office in the delegation matrix and the workflow
+    -- approver vocabulary. Without a role to represent it, a step or rule naming HEAD_OF_ADMIN_GSD would
+    -- resolve to nobody and the request would stall with no explanation; V12 is where offices are defined.
+    ('Head of Administration (GSD)', 'HEAD_OF_ADMIN_GSD',
+     'Required office for administrative endorsement steps', TRUE),
     ('Read Only', 'READ_ONLY', 'Read own records only', TRUE);
 
 -- Role -> permission grants.
@@ -188,7 +193,7 @@ WHERE r.code IN ('DEPARTMENT_HEAD', 'RECOMMENDING_AUTHORITY', 'EXPENSE_COMMITTEE
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM roles r JOIN permissions p ON p.code IN (
     'approval:view', 'approval:act', 'request:view-all', 'document:download', 'notification:view')
-WHERE r.code IN ('CEO', 'CFO');
+WHERE r.code IN ('CEO', 'CFO', 'HEAD_OF_ADMIN_GSD');
 
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM roles r JOIN permissions p ON p.code IN ('request:view-own', 'notification:view')
