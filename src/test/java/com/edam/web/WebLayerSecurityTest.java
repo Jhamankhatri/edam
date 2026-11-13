@@ -138,7 +138,11 @@ class WebLayerSecurityTest extends AbstractPostgreSqlIntegrationTest {
 		MvcResult result = this.mockMvc.perform(get("/api/v1/auth/csrf")).andExpect(status().isOk()).andReturn();
 
 		List<String> setCookies = result.getResponse().getHeaders("Set-Cookie");
-		assertThat(setCookies).as("a CSRF token cookie must be issued").anyMatch(cookie -> cookie.startsWith("XSRF-TOKEN="));
+		assertThat(setCookies)
+			.as("a CSRF token cookie must be issued; status=%s body=%s allHeaders=%s",
+					result.getResponse().getStatus(), result.getResponse().getContentAsString(),
+					result.getResponse().getHeaderNames().stream().toList())
+			.anyMatch(cookie -> cookie.startsWith("XSRF-TOKEN="));
 		assertThat(setCookies.stream().filter(cookie -> cookie.startsWith("XSRF-TOKEN=")).findFirst().orElse(""))
 			.as("the CSRF cookie must not be HttpOnly")
 			.doesNotContain("HttpOnly");
