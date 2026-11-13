@@ -211,9 +211,10 @@ public class AuditReadService {
 		CursorKey taskKey = cursor.lastKeys.getOrDefault(SOURCE_TASK, new CursorKey(null, null));
 		CursorKey actionKey = cursor.lastKeys.getOrDefault(SOURCE_WORKFLOW, new CursorKey(null, null));
 
-		List<AuditEvent> auditRows = fetchAuditEventsFor(requestId, cursor.boundedAt, auditKey);
-		List<WorkflowTask> taskRows = fetchTaskEventsFor(request, cursor.boundedAt, taskKey);
-		List<WorkflowAction> actionRows = fetchActionEventsFor(request, cursor.boundedAt, actionKey);
+		int fetchLimit = size + SOURCE_FETCH_CHUNK;
+		List<AuditEvent> auditRows = fetchAuditEventsFor(requestId, cursor.boundedAt, auditKey, fetchLimit);
+		List<WorkflowTask> taskRows = fetchTaskEventsFor(request, cursor.boundedAt, taskKey, fetchLimit);
+		List<WorkflowAction> actionRows = fetchActionEventsFor(request, cursor.boundedAt, actionKey, fetchLimit);
 
 		Map<UUID, String> stateNames = loadStateNames(request);
 		List<TimelineEntry> all = new ArrayList<>();
@@ -245,14 +246,11 @@ public class AuditReadService {
 	// Source fetchers for timeline (keyset queries)
 	// ---------------------------------------------------------------------------------------------
 
-	private List<AuditEvent> fetchAuditEventsFor(UUID requestId, Instant boundedAt, CursorKey after) {
+	private List<AuditEvent> fetchAuditEventsFor(UUID requestId, Instant boundedAt, CursorKey after, int fetchLimit) {
 		// The repository's finder is ordered DESC; fetch a generous chunk and reverse it.
-		// Unpaged returns List but returns all rows for the request; for timeline pagination we
-		// cap at SOURCE_FETCH_CHUNK which is enough to satisfy any single page given the merge
-		// algorithm takes size entries.
 		List<AuditEvent> rows = this.audit
 				.findByEntityTypeAndEntityIdOrderByCreatedAtDesc(ENTITY_TYPE_REQUEST, requestId.toString(),
-						PageRequest.of(0, SOURCE_FETCH_CHUNK + size, Sort.by(Sort.Direction.DESC, "createdAt", "id")))
+						PageRequest.of(0, fetchLimit, Sort.by(Sort.Direction.DESC, "createdAt", "id")))
 				.getContent();
 		// Filter to the bounded window and after-key in Java; the volume per request is bounded
 		// by request depth, and we already load only one request's events.
@@ -261,12 +259,12 @@ public class AuditReadService {
 			if (e.getCreatedAt().isAfter(boundedAt)) {
 				continue;
 			}
-			if (after.timestamp != null) {
-				int c = e.getCreatedAt().compareTo(after.timestamp);
+			if (after.timestamp() != null) {
+				int c = e.getCreatedAt().compareTo(after.timestamp());
 				if (c > 0) {
 					continue;
 				}
-				if (c == 0 && after.id != null && e.getId().compareTo(after.id) >= 0) {
+				if (c == 0 && after.id() != null && e.getId().compareTo(after.id()) >= 0) {
 					continue;
 				}
 			}
@@ -276,7 +274,7 @@ public class AuditReadService {
 		return picked.size() > SOURCE_FETCH_CHUNK ? picked.subList(0, SOURCE_FETCH_CHUNK) : picked;
 	}
 
-	private List<WorkflowTask> fetchTaskEventsFor(ExpenseRequest request, Instant boundedAt, CursorKey after) {
+	private List<WorkflowTask> fetchTaskEventsFor(ExpenseRequest request, Instant boundedAt, CursorKey after, int fetchLimit) {
 		WorkflowInstance instance = this.instances.findByExpenseRequestId(request.getId()).orElse(null);
 		if (instance == null) {
 			return List.of();
@@ -288,12 +286,12 @@ public class AuditReadService {
 			if (t.getAssignedAt().isAfter(boundedAt)) {
 				continue;
 			}
-			if (after.timestamp != null) {
-				int c = t.getAssignedAt().compareTo(after.timestamp);
+			if (after.timestamp() != null) {
+				int c = t.getAssignedAt().compareTo(after.timestamp());
 				if (c > 0) {
 					continue;
 				}
-				if (c == 0 && after.id != null && t.getId().compareTo(after.id) >= 0) {
+				if (c == 0 && after.id() != null && t.getId().compareTo(after.id()) >= 0) {
 					continue;
 				}
 			}
@@ -302,7 +300,7 @@ public class AuditReadService {
 		return picked.size() > SOURCE_FETCH_CHUNK ? picked.subList(0, SOURCE_FETCH_CHUNK) : picked;
 	}
 
-	private List<WorkflowAction> fetchActionEventsFor(ExpenseRequest request, Instant boundedAt, CursorKey after) {
+	private List<WorkflowAction> fetchActionEventsFor(ExpenseRequest request, Instant boundedAt, CursorKey after, int fetchLimit) {
 		WorkflowInstance instance = this.instances.findByExpenseRequestId(request.getId()).orElse(null);
 		if (instance == null) {
 			return List.of();
@@ -316,12 +314,12 @@ public class AuditReadService {
 			if (a.getActionAt().isAfter(boundedAt)) {
 				continue;
 			}
-			if (after.timestamp != null) {
-				int c = a.getActionAt().compareTo(after.timestamp);
+			if (after.timestamp() != null) {
+				int c = a.getActionAt().compareTo(after.timestamp());
 				if (c > 0) {
 					continue;
 				}
-				if (c == 0 && after.id != null && a.getId().compareTo(after.id) >= 0) {
+				if (c == 0 && after.id() != null && a.getId().compareTo(after.id()) >= 0) {
 					continue;
 				}
 			}
