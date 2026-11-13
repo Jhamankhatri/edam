@@ -20,9 +20,9 @@ block is what has changed since, so a reader sees both the original state and th
 |---|---|---|
 | Phase 1 — Security foundation | `a118364` | Login, logout, CSRF, bootstrap and password reset exist. The §6.1 "React authentication blocker" is **closed**. |
 | Phase 2 — Request management | `4783a99` | The expense request exists: OPEX and CAPEX, drafts, submission, cancellation, validation, exchange-rate capture, register. §2.10–2.11 move to **implemented**. |
-| Phase 3 — Workflow configuration and approvals | this branch | Workflow authoring/publish API, submission integration, approval inbox and the four decisions. §2.12–2.13 move to **implemented with named gaps**. |
+| Phase 3 — Workflow configuration and approvals | `7119739` | Workflow authoring/publish API, submission integration, approval inbox and the four decisions. §2.12–2.13 move to **implemented with named gaps**. Verified post-merge — see §12. |
 
-**Current headline figures** (measured on this branch, not inherited):
+**Current headline figures** (re-measured on `main` at `7119739`, not inherited):
 
 | Metric | At `b73f8c5` | Now |
 |---|---|---|
@@ -34,7 +34,7 @@ block is what has changed since, so a reader sees both the original state and th
 | Tests touching a service or repository | 0 | **All but the pure-model and filter tests — every integration test runs against real PostgreSQL** |
 
 The verdict in §1 — "not ready for frontend integration" — was correct for its commit and is **superseded**.
-See §11 for the current position.
+See §11 for the Phase 3 position and §12 for the post-merge verification and the Phase 4 readiness verdict.
 
 ---
 
@@ -897,3 +897,121 @@ The audit's central complaint was that the product's core object did not exist. 
 6. **Currency rounding is undecided** (OD-P2-01). The converted amount is shown to an approver alongside its
    inputs but is not presented as a final figure, and no rounding rule has been invented.
 
+
+---
+
+## 12. Post-merge verification of Phase 3, and Phase 4 readiness
+
+Written after Phase 3 was merged, and **after re-checking the code rather than the Phase 3 documents**. The
+full evidence is in `PHASE_3_MERGE_VERIFICATION.md`; this section records only what changes the audit's own
+conclusions.
+
+**Verified at:** `main` = `7119739a7c839586f3aef3724886c20fb5e2ab73`, CI run
+[43429695561](https://github.com/Jhamankhatri/edam/actions/runs/43429695561) — success on all three jobs.
+
+### 12.1 The merge is real, established by hash not by pull-request state
+
+The merge commit's parents are `4783a99` (previous `main`) and `60a5084` (Phase 3 branch head), and **`main`'s
+tree is byte-identical to that branch head's tree** (`12b79f7d…`). No file was dropped in the merge and no
+conflict resolution discarded work. Zero unmerged commits remain on the Phase 3 branch.
+
+Note for anyone re-running this in the same shallow checkout: `git merge-base --is-ancestor` returns a **false
+negative** and `git rev-list --count` returns a meaningless figure, because `origin/main` is grafted as a
+single commit. Use the commit object instead.
+
+### 12.2 §2.12 and §2.13 — confirmed IMPLEMENTED, with two read-side gaps
+
+Every capability named in the Phase 3 brief was found in the source, not merely claimed: publication is
+`@Transactional` and retires before publishing; `startForSubmission` is `Propagation.MANDATORY` so submission
+cannot leave a request without a workflow; `requireAssigned` refuses both a settled task and an unassigned
+caller; `@Version` is present on `AuditableEntity` and `WorkflowTask` and mapped to 409 by the exception
+handler; all nine BRD approver types resolve in `WorkflowAssignmentResolver`.
+
+Two capabilities are **PARTIAL**, both because of what the *reader* can do, not the writer:
+
+| Capability | Status | What is missing |
+|---|---|---|
+| Workflow history | **PARTIAL** | Versions are listable, but no endpoint exposes a request's own action history |
+| Audit history | **PARTIAL** | Every action is written; **nothing reads it** — no audit query endpoint exists in any of the 16 controllers |
+
+An auditor today must use SQL. That elevates the audit read path from "nice to have" to the first Phase 4 item.
+
+### 12.3 §3's status table — four rows move
+
+The consolidated table in §3 predates Phase 3. Four rows move; the originals said "PARTIAL" or "FAIL" against
+the `b73f8c5` code, and they are quoted exactly so the delta is checkable:
+
+| §3 row | Original status | Now | Basis |
+|---|---|---|---|
+| 12 — Workflow config & versions | PARTIAL (model tests only) | **IMPLEMENTED** | Author/publish/retire service *and* controller; 19 configuration tests. OD-P3-02/-03/-05 are named gaps, not absences of the core |
+| 13 — Approve/reject/revert/forward | PARTIAL (no task API) | **IMPLEMENTED** | Inbox, count, case file, all four actions; 16 approval tests. OD-P3-01's governance rules are unenforced |
+| 14 — Documents/attachments | FAIL | **NOT IMPLEMENTED** | Unchanged. Now Phase 4's largest item |
+| 17 — Reporting/dashboards/audit | FAIL (entire read path) | **PARTIAL** | Audit *writing* is now implemented by every phase; dashboards, reports and the audit *read* path are still absent |
+
+Row 19 already listed "idempotency wiring" as missing work at `b73f8c5`. That judgement was correct and it is
+still true after Phase 3 — §12.6 below. It is the one original finding Phase 3 neither fixed nor touched.
+
+### 12.4 Two Phase 3 documents contain errors that this verification found
+
+Recorded here because the audit is the index of record, and a reader should not trust those figures:
+
+1. **`MIGRATION_ENTITY_REPORT.md` overstates the unmapped tables.** It reports 50 mapped / 32 unmapped.
+   Measured on `main`: **80 live tables, 52 mapped, 28 unmapped, 0 entities without a table.** It lists
+   `audit_events` and `idempotency_records` as unmapped — both **are** mapped (`AuditEvent`,
+   `IdempotencyRecord`) — and it contains two rows, `in` and `time`, which are **not tables**: they are regex
+   matches against comment prose in V4_1 and V7. The scan did not strip SQL comments.
+   `tools/migration-entity-report.py` now produces the correct figure and exits non-zero if any entity names a
+   table no migration creates.
+2. **OD-P2-01 misstates the rounding.** `PHASE_2_OPEN_DECISIONS.md` says rounding is "inherited from the
+   column rather than chosen". `ExchangeRateResolver.scale` explicitly applies `RoundingMode.HALF_UP`. A
+   rounding mode **has** been chosen in code; only the log says otherwise. The decision remains open — it now
+   needs ratifying rather than defining.
+
+Neither error is in the implementation. Both would mislead a Phase 4 planner: the first would send someone to
+map an already-mapped table, the second would hide an operative financial policy behind an "undecided" label.
+
+### 12.5 Headline figures, re-measured on `main`
+
+| Metric | Value | How |
+|---|---|---|
+| REST endpoints | **127** | `python3 tools/permission-map.py` |
+| Controllers | **16** | same |
+| Permissions consumed | **36 of 58** (22 unused) | same |
+| **Unguarded mapped endpoints** | **0** | same — exits 1 if any exist |
+| Live tables | **80** | `python3 tools/migration-entity-report.py` |
+| Tables mapped by an entity | **52** (28 unmapped, 0 orphans) | same |
+| Test classes / tests | **23 / 287 recorded → 284 executed, 0 failed, 3 skipped** | CI annotation |
+| Migrations | **17** (V1–V17 with V4.1) | file listing |
+
+On the test figure: the CI total counts every `<testcase>`, including skipped ones, so "287 tests, 3 skipped"
+means 284 ran. The earlier habit of writing "287 tests passing" overstated by 3. Corrected here.
+
+### 12.6 Phase 4 readiness — one verdict, stated once
+
+**Not ready for frontend integration yet; ready to *start* Phase 4 after three decisions.** A frontend can build
+the request and approval journeys today against tested contracts. It cannot build branding, documents,
+notifications or an activity timeline, because those endpoints do not exist.
+
+Six modules are entirely absent: `configuration`, `businessrules`, `documentmanagement`, `notification`,
+`reporting`, `integration`.
+
+**Three decisions gate the work:**
+
+1. **Storage** for documents — object store vs secured filesystem, plus the malware-scanning hook.
+2. **OD-P3-04** — the rule-expression language, before any business-rule evaluator is written. RULE-02 forbids
+   arbitrary code and SQL, so this is a security decision, not a syntax preference.
+3. **Audit retention, immutability and export approval** (BRD §26's own OPEN DECISION).
+
+**One finding worth separating from the rest:** idempotency exists as a working mechanism with **zero
+consumers** — `IdempotencyService` is referenced by no endpoint. For a system whose POSTs create money requests
+and record approval decisions, that is a correctness risk, and it is cheap to close because the machinery is
+already present. Earlier notes calling idempotency "implemented" are true of the component and false of the
+system.
+
+**Five open decisions still block real-money production use:** OD-P2-01 (rounding), OD-P2-03 (what exceeding a
+limit escalates to), OD-P2-07 (CAPEX department eligibility), OD-P2-08 (personal vs departmental limit
+precedence), OD-P3-01 (CEO/EC rejection rules). None blocks Phase 4, and every one is a policy the code
+currently answers by refusing or by taking the conservative direction.
+
+**Recommended Phase 4 order,** by value per unit of risk: audit search → idempotency on POSTs → branding and
+settings → documents → notifications/email → reporting → business rules.
