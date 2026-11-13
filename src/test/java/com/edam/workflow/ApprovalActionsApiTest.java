@@ -196,8 +196,11 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 				this.department.getId(), null, this.currency.getId(), new java.math.BigDecimal("1500.0000"),
 				"Approval test",
 				// OPEX detail is required by the OPEX branch of the validator.
+				// recurring, recurrenceFrequency, nonRecurringJustification, accrued, previouslyApproved,
+				// ytd, mtd, paymentTerms, budgetAvailable, budgetReference, threeQuotationsSelected,
+				// alreadyApproved, taxExempt, grnRequired — fourteen components.
 				new com.edam.expenserequest.dto.ExpenseRequestDtos.OpexDetailPayload(true, "MONTHLY",
-						null, null, null, null, null, null, null, null, null, null, null),
+						null, null, null, null, null, null, null, null, null, null, null, null),
 				null, // CAPEX detail is meaningless for an OPEX request
 				// An allocation is mandatory at submission: an unallocated expense has no department to
 				// charge. A quotation is what makes the amount defensible, so one is supplied too.
