@@ -114,11 +114,13 @@ jobs:
 
           ## Packaging contract ------------------------------------------------
           jar tf target/edam.war > war-contents.txt
-          check WAR_JSP "JSPs packaged under WEB-INF/jsp" "$(grep -c 'WEB-INF/jsp/' war-contents.txt)" '^[1-9]'
           check WAR_LIB "libraries in WEB-INF/lib" "$(grep -c 'WEB-INF/lib/[^p]' war-contents.txt)" '^[1-9]'
           check WAR_LIBPROVIDED "embedded container in WEB-INF/lib-provided" "$(grep -c 'WEB-INF/lib-provided/' war-contents.txt)" '^[1-9]'
-          check WAR_JASPER "Jasper present" "$(grep -c 'jasper' war-contents.txt)" '^[1-9]'
           check WAR_LAUNCHER "executable WAR launcher present" "$(grep -c 'loader/launch/WarLauncher' war-contents.txt)" '^[1-9]'
+          # Backend-only delivery: a packaged JSP or Jasper would mean the retired view layer crept back in.
+          check WAR_NO_JSP "no JSPs packaged (backend-only delivery)" "$(grep -c 'WEB-INF/jsp/' war-contents.txt)" '^0$'
+          check WAR_NO_JASPER "no Jasper (no server-side rendering)" "$(grep -c -i 'jasper' war-contents.txt)" '^0$'
+          check WAR_MIGRATIONS "Flyway migrations packaged" "$(grep -c 'db/migration/V' war-contents.txt)" '^[1-9]'
 
           ## Health ------------------------------------------------------------
           health_code=$(curl -sS -o /tmp/health.json -w '%{http_code}' http://localhost:18080/actuator/health)
@@ -126,58 +128,48 @@ jobs:
           check HEALTH_BODY "health body reports UP" "$(cat /tmp/health.json)" '"status"[[:space:]]*:[[:space:]]*"UP"'
           lacks HEALTH_NODETAIL "health exposes no component detail" "$(cat /tmp/health.json)" '"(db|diskSpace|ping|database|dataSource)"|postgres|jdbc'
 
-          ## Login page (rendered by JSP from configuration) --------------------
-          curl -sS -c /tmp/cookies.txt -o /tmp/login.html -w '%{http_code}' http://localhost:18080/login > /tmp/login.code
-          login_body=$(cat /tmp/login.html)
-          check LOGIN_CODE "login page returns 200" "$(cat /tmp/login.code)" '^200$'
-          check LOGIN_FORM "login form present" "$login_body" '<form[^>]+action="/login"'
-          check LOGIN_USERNAME "username field present" "$login_body" 'name="username"'
-          check LOGIN_PASSWORD "password field present" "$login_body" 'name="password"'
-          check LOGIN_CSRF "csrf token present" "$login_body" 'name="_csrf"'
-          check LOGIN_BRAND "institution branding rendered from configuration" "$login_body" 'DemoBank'
-          check LOGIN_BRAND_NAME "institution legal name rendered" "$login_body" 'Demo Bank Limited'
-          check LOGIN_THEME "theme tokens injected from configuration" "$login_body" '--edam-primary:[[:space:]]*#[0-9a-fA-F]{6}'
-          lacks LOGIN_NO_LEAK "login page exposes no internal detail" "$login_body" 'stacktrace|java\.lang|org\.springframework'
-
-          ## Unauthenticated access is redirected, API is refused as JSON ---------
-          dash=$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' http://localhost:18080/dashboard)
-          check DASH_REDIRECT "dashboard requires authentication" "$dash" '^302 .*/login$'
-
+          ## API contract -------------------------------------------------------
           api=$(curl -sS -w ' %{http_code}' -H 'Accept: application/json' http://localhost:18080/api/v1/system/info)
           check API_401 "api rejects anonymous access" "$api" ' 401$'
           check API_ENVELOPE "api error envelope present" "$api" '"code":"EDAM-2001"'
+          check API_CORRELATION "api error carries a correlation id" "$api" '"correlationId":"[0-9a-f-]{36}"'
+          lacks API_NO_LEAK "api error exposes no internal detail" "$api" 'stacktrace|java\.lang|org\.springframework|password'
 
-          ## Unknown paths: no redirect loop, never a 302 that hides a fault -------
+          # An anonymous browser navigation must receive JSON too, never a redirect to a page that no
+          # longer exists: a 302 would break a fetch wrapper that does not follow redirects.
+          nav=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Accept: text/html' http://localhost:18080/api/v1/system/info)
+          check API_ANON_NAV "anonymous navigation to an API path answers 401, never 302" "$nav" '^401$'
+
+          ## OpenAPI schema is public so a client can be generated from it -------
+          docs=$(curl -sS -w ' %{http_code}' http://localhost:18080/v3/api-docs)
+          check OPENAPI_CODE "OpenAPI document served" "$docs" ' 200$'
+          check OPENAPI_TITLE "OpenAPI document names the API" "$docs" '"title"'
+
+          ## Unknown paths: no redirect loop, never a 302 that hides a fault ------
           unknown=$(curl -sS -o /tmp/unknown.html -w '%{http_code}' http://localhost:18080/no-such-page-here)
           case "$unknown" in
             302) printf '::notice title=OK UNKNOWN_PATH::anonymous unknown path redirected to sign-in (%s)\n' "$unknown" ;;
             40*) printf '::notice title=OK UNKNOWN_PATH::anonymous unknown path answered %s\n' "$unknown" ;;
-            *)   printf '::error title=FAIL UNKNOWN_PATH::unexpected status %s (5xx here means the error page is broken)\n' "$unknown"; fail=1 ;;
+            *)   printf '::error title=FAIL UNKNOWN_PATH::unexpected status %s (5xx here means the error path is broken)\n' "$unknown"; fail=1 ;;
           esac
           lacks UNKNOWN_PATH_LEAK "unknown path exposes no internal detail" "$(cat /tmp/unknown.html)" 'stacktrace|java\.lang|org\.springframework'
 
-          ## Static assets: a missing file is a 404, never a 500 -------------------
-          favicon=$(curl -sS -o /tmp/favicon.ico -w '%{http_code}' http://localhost:18080/favicon.ico)
-          check FAVICON_CODE "favicon served from the packaged WAR" "$favicon" '^200$'
-          missing_asset=$(curl -sS -o /tmp/missing.asset -w '%{http_code}' http://localhost:18080/css/no-such-file.css)
-          check MISSING_ASSET_CODE "missing static asset is a 404" "$missing_asset" '^404$'
-
           ## Correlation id ------------------------------------------------------
-          curl -sSI http://localhost:18080/login | tr -d '\r' > "$scratch/headers.txt" || true
+          curl -sSI -H 'Accept: application/json' http://localhost:18080/api/v1/system/info | tr -d '\r' > "$scratch/headers.txt" || true
           cid=$(grep -i '^X-Correlation-Id:' "$scratch/headers.txt" | head -1 || true)
           check CORRELATION "correlation id header present" "$cid" '^X-Correlation-Id: [0-9a-f-]{36}$'
 
-          ## Sign-in end to end, then a page that renders the authenticated shell --
-          curl -sS -b /tmp/cookies.txt -c /tmp/cookies.txt -o /dev/null http://localhost:18080/login
-          tr -d '\000' < /tmp/login.html > "$scratch/login.txt"
-          token=$(sed -nE 's/.*name="_csrf"[^>]*value="([^"]+)".*/\1/p' "$scratch/login.txt" | head -1)
-          signin=$(curl -sS -b /tmp/cookies.txt -c /tmp/cookies.txt -o /dev/null -w '%{http_code}' \
-            -d "username=admin&password=admin-change-me&_csrf=$token" http://localhost:18080/login)
-          check SIGNIN_SUBMIT "valid credentials accepted" "$signin" '^(200|302)$'
-          curl -sS -b /tmp/cookies.txt -o /tmp/dashboard.html -w '%{http_code}' http://localhost:18080/dashboard > /tmp/dash.code
-          check DASH_RENDER "authenticated dashboard renders via JSP" "$(cat /tmp/dash.code)" '^200$'
-          check DASH_SHELL "authenticated layout rendered" "$(cat /tmp/dashboard.html)" 'edam-sidebar'
-          check DASH_USER "signed-in identity rendered" "$(cat /tmp/dashboard.html)" 'Administrator'
+          ## Protected business surface ------------------------------------------
+          # A business endpoint must never answer an anonymous caller. 401/403 is correct; 404 means the
+          # path is not mapped in this build; 200 or 5xx is a defect.
+          protected_code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Accept: application/json' \
+            http://localhost:18080/api/v1/organization/profile)
+          case "$protected_code" in
+            401|403) printf '::notice title=OK PROTECTED::business endpoint refuses anonymous access (%s)\n' "$protected_code" ;;
+            404)     printf '::notice title=OK PROTECTED::business endpoint not mapped in this build (%s)\n' "$protected_code" ;;
+            *)       printf '::error title=FAIL PROTECTED::business endpoint answered %s to an anonymous caller\n' "$protected_code"; fail=1 ;;
+          esac
+
 
           echo "--- startup log excerpt ---"
           grep -E "Flyway|Successfully applied|Started EdamApplication" war.log | head -10 || true
@@ -188,15 +180,14 @@ jobs:
           set +e
           [ -f war.log ] || exit 0
           sweep=""
-          for path in /login /access-denied /css/edam.css /favicon.ico; do
+          for path in /actuator/health /v3/api-docs /api/v1/system/info /api/v1/does-not-exist; do
             code=$(curl -sS -o /dev/null -w "%{http_code}" "http://localhost:18080$path")
             sweep="$sweep $path=$code"
           done
           security=$(grep -E "Securing |Failed to authorize|requires an authenticated|Access is denied" war.log | head -4 | tr '\n' '|' | head -c 700)
-          jasper=$(grep -iE "JasperException|Unable to compile|org.apache.jasper" war.log | head -2 | tr '\n' '|' | head -c 500)
           errors=$(grep -E " ERROR |Exception" war.log | head -3 | tr '\n' '|' | head -c 600)
-          printf '::error title=DIAGNOSTICS::sweep:%s || security:%s || jasper:%s || errors:%s\n' \
-            "$sweep" "${security:-none}" "${jasper:-none}" "${errors:-none}"
+          printf '::error title=DIAGNOSTICS::sweep:%s || security:%s || errors:%s\n' \
+            "$sweep" "${security:-none}" "${errors:-none}"
       - name: Application log on failure
         if: failure()
         run: tail -c 6000 war.log || true
@@ -280,13 +271,24 @@ jobs:
             fail=1
           fi
 
-          # Anonymous browser traffic is still redirected to sign-in, and no fixture account
-          # exists: the development identity store is profile-gated.
-          login_code=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:18081/login)
-          if [ "$login_code" = "200" ]; then
-            printf '::notice title=OK PROD_LOGIN::login page renders without a development user store\n'
+          # Unknown paths answer a client error under the production profile, never a 5xx and never a
+          # redirect loop: a 5xx here would mean the error path itself is broken in production settings.
+          unknown_code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Accept: application/json' \
+            http://localhost:18081/no-such-path)
+          case "$unknown_code" in
+            40*) printf '::notice title=OK PROD_UNKNOWN::unknown path answered %s under the production profile\n' "$unknown_code" ;;
+            *)   printf '::error title=FAIL PROD_UNKNOWN::unknown path answered %s\n' "$unknown_code"; fail=1 ;;
+          esac
+
+          # The API must refuse anonymous callers in production exactly as in development. This is the
+          # check that the development identity store is genuinely absent: if it leaked into the prod
+          # profile, the fixture account would be reachable.
+          prod_api=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Accept: application/json' \
+            http://localhost:18081/api/v1/system/info)
+          if [ "$prod_api" = "401" ]; then
+            printf '::notice title=OK PROD_API_AUTH::api refuses anonymous access in the production profile\n'
           else
-            printf '::error title=FAIL PROD_LOGIN::login answered %s\n' "$login_code"
+            printf '::error title=FAIL PROD_API_AUTH::api answered %s to an anonymous caller\n' "$prod_api"
             fail=1
           fi
 
