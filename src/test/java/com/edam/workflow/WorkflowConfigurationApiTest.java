@@ -378,25 +378,6 @@ class WorkflowConfigurationApiTest extends AbstractPostgreSqlIntegrationTest {
 			assertThat(reloaded.getSteps()).hasSize(1);
 			assertThat(reloaded.getSteps().get(0).getApprovers()).hasSize(2);
 		}
-		void publishedRevisionIsImmutable() {
-			com.edam.workflow.dto.WorkflowDtos.DefinitionResponse definition = WorkflowConfigurationApiTest.this.definition("IMMUT-" + System.nanoTime());
-			com.edam.workflow.dto.WorkflowDtos.VersionResponse published = WorkflowConfigurationApiTest.this.publish(
-					WorkflowConfigurationApiTest.this.draft(definition));
-
-			assertThatThrownBy(() -> WorkflowConfigurationApiTest.this.configuration.createDraft(
-					definition.id(), new com.edam.workflow.dto.WorkflowDtos.SaveDraftRequest(
-							twoApproverStep(WorkflowConfigurationApiTest.this.approver,
-									WorkflowConfigurationApiTest.this.secondApprover),
-							List.of(), null)))
-				.isInstanceOf(BusinessException.class)
-				.hasMessageContaining("draft");
-
-			// The published revision is untouched by the attempt.
-			WorkflowVersion reloaded = WorkflowConfigurationApiTest.this.versions.findById(published.id())
-				.orElseThrow();
-			assertThat(reloaded.getStatus()).isEqualTo(WorkflowVersion.Status.PUBLISHED);
-			assertThat(reloaded.getVersionNumber()).isEqualTo(published.versionNumber());
-		}
 
 		@Test
 		@DisplayName("publishing a second revision retires the first and keeps it on record")
