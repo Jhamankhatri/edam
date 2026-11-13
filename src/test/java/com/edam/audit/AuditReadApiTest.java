@@ -728,26 +728,28 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 			assertThat(p2.eventIds.indexOf(ids.get(0).toString())).isEqualTo(i1);
 			assertThat(p2.eventIds.indexOf(ids.get(1).toString())).isEqualTo(i2);
 			// Page walk also preserves ordering: with size=1 the two events must appear in the
-			// same order across two pages.
-			PageResult s1 = fetchPage(requestId, 1, null, requesterPrincipal());
-			assertThat(s1.eventIds).contains(p1.eventIds.get(first));
-			PageResult s2 = fetchPage(requestId, 1, s1.nextCursor, requesterPrincipal());
-			// Eventually we will see the second id. Walk a few pages to find it.
-			String cur = s2.nextCursor;
-			boolean found = false;
-			for (int step = 0; step < 100; step++) {
+			// same order across pages; once the second id appears, the first must not appear on
+			// or after that page.
+			String cur = null;
+			boolean sawFirst = false;
+			boolean sawSecond = false;
+			for (int step = 0; step < 200; step++) {
 				PageResult sp = fetchPage(requestId, 1, cur, requesterPrincipal());
+				if (sp.eventIds.contains(p1.eventIds.get(first))) {
+					assertThat(sawSecond)
+							.as("first id observed after second id — ordering violated")
+							.isFalse();
+					sawFirst = true;
+				}
 				if (sp.eventIds.contains(p1.eventIds.get(second))) {
-					// Ensure that the first id is NOT seen after the second.
-					assertThat(sp.eventIds).doesNotContain(p1.eventIds.get(first));
-					found = true;
+					sawSecond = true;
 					break;
 				}
-				assertThat(sp.eventIds).doesNotContain(p1.eventIds.get(first));
 				cur = sp.nextCursor;
 				if (cur == null) break;
 			}
-			assertThat(found).isTrue();
+			assertThat(sawFirst).as("expected to see first id in page walk").isTrue();
+			assertThat(sawSecond).as("expected to see second id in page walk").isTrue();
 		}
 
 		@Test
