@@ -38,6 +38,9 @@ BEGIN
         WHERE p.proname = 'uuidv7'
           AND n.nspname = current_schema()
     ) THEN
+        -- IMMUTABLE would be wrong: the value depends on the clock. STABLE is also wrong for the
+        -- same reason, so VOLATILE is declared explicitly to stop the planner folding two calls
+        -- into one and generating duplicate keys inside a batch insert.
         CREATE FUNCTION uuidv7() RETURNS uuid
         LANGUAGE sql
         VOLATILE
@@ -53,7 +56,7 @@ BEGIN
                 || substr('89ab', (('x' || substr(r, 17, 1))::bit(4)::int % 4) + 1, 1)
                 -- rand_b: the remaining 15 random hex digits
                 || substr(r, 18, 15)
-            )::uuid::text
+            )::uuid
             FROM (
                 SELECT replace(gen_random_uuid()::text, '-', '') AS r
             ) AS entropy
