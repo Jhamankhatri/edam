@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -530,11 +531,13 @@ public class AuditReadService {
 			Instant boundedAt = Instant.parse(root.get("b").asText());
 			Map<String, CursorKey> lastKeys = new LinkedHashMap<>();
 			JsonNode keys = root.path("k");
-			keys.fields().forEachRemaining(entry -> {
+			Iterator<Map.Entry<String, JsonNode>> fields = keys.fields();
+			while (fields.hasNext()) {
+				Map.Entry<String, JsonNode> entry = fields.next();
 				Instant ts = Instant.parse(entry.getValue().get("t").asText());
 				UUID keyId = UUID.fromString(entry.getValue().get("i").asText());
 				lastKeys.put(entry.getKey(), new CursorKey(ts, keyId));
-			});
+			}
 			return new TimelineCursor(version, boundedAt, requestId, lastKeys);
 		}
 		catch (BusinessException ex) {
