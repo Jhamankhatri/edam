@@ -81,11 +81,15 @@ public class AuthController {
 
 	private final SecurityContextRepository securityContextRepository;
 
+	private final org.springframework.security.web.csrf.CsrfTokenRepository csrfTokenRepository;
+
 	public AuthController(AuthService auth, InstallationBootstrapService bootstrap,
-			SecurityContextRepository securityContextRepository) {
+			SecurityContextRepository securityContextRepository,
+			org.springframework.security.web.csrf.CsrfTokenRepository csrfTokenRepository) {
 		this.auth = auth;
 		this.bootstrap = bootstrap;
 		this.securityContextRepository = securityContextRepository;
+		this.csrfTokenRepository = csrfTokenRepository;
 	}
 
 	@PostMapping("/login")
@@ -127,11 +131,18 @@ public class AuthController {
 	@Operation(summary = "Obtain a CSRF token",
 			description = "The token must be sent back in the X-XSRF-TOKEN header on every state-changing request.")
 	public ApiResponse<CsrfTokenResponse> csrf(HttpServletRequest request, HttpServletResponse response) {
-		// Reading the attribute is what forces Spring Security to generate and write the cookie.
+		// Reading the attribute is what forces Spring Security to generate the deferred token under the
+		// attribute name this handler uses; it is also what a body-rendering client needs.
 		Object token = request.getAttribute("_csrf");
 		if (!(token instanceof org.springframework.security.web.csrf.CsrfToken csrfToken)) {
 			throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "CSRF token is not available");
 		}
+		// Save it explicitly. Handing the token out in the body without persisting it would leave a client
+		// that trusts the cookie with nothing to send: on a GET the filter never dereferences the deferred
+		// token, so the Set-Cookie header would not be written by the time the response leaves. Writing it
+		// here makes the cookie part of this endpoint's contract rather than a side effect of the filter.
+		csrfToken.getToken();
+		this.csrfTokenRepository.saveToken(csrfToken, request, response);
 		return ApiResponse.success(
 				new CsrfTokenResponse(csrfToken.getHeaderName(), csrfToken.getParameterName(), csrfToken.getToken()),
 				CorrelationId.current(), request.getRequestURI());
