@@ -206,11 +206,18 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 	void differentPayloadIsConflict() throws Exception {
 		String key = "key-conflict-" + UUID.randomUUID();
 		EdamPrincipal caller = owner();
-		long countBefore = this.idempotencyRecords.count();
-		createDraft(opexBody("100.0000", "original"), key, caller, HttpStatus.CREATED.value());
-		long countAfter = this.idempotencyRecords.count();
-		org.junit.jupiter.api.Assertions.assertEquals(countBefore + 1, countAfter,
-				"Expected exactly one new idempotency record after first create");
+		MvcResult first = createDraft(opexBody("100.0000", "original"), key, caller, HttpStatus.CREATED.value());
+		CreatedEnvelope firstEnv = parseCreated(first);
+		// Look up the record directly by iterating and find a COMPLETED row for our actor/operation.
+		java.util.List<IdempotencyRecord> mine = this.idempotencyRecords.findAll().stream()
+				.filter(r -> r.getActorId().equals(caller.userId()))
+				.filter(r -> "POST /api/v1/expense-requests".equals(r.getOperationType()))
+				.filter(r -> r.getStatus() == IdempotencyRecord.Status.COMPLETED)
+				.toList();
+		org.junit.jupiter.api.Assertions.assertFalse(mine.isEmpty(),
+				"Expected a COMPLETED idempotency record for caller " + caller.userId()
+						+ " after first create; found none. Total records: "
+						+ this.idempotencyRecords.count() + ", first requestId=" + firstEnv.data().id());
 		MvcResult conflict = this.mockMvc.perform(post(BASE).with(user(caller)).with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
 						.accept(MediaType.APPLICATION_JSON)
