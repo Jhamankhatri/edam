@@ -183,9 +183,9 @@ class SubmissionIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 					List.of(new com.edam.workflow.dto.WorkflowDtos.ApproverRequest(
 							WorkflowStepApprover.ApproverType.USER, null, this.approver.getId(), null))));
 		}
-		var draft = this.configuration.createDraft(definition.getId(),
+		var version = this.configuration.createDraft(definition.getId(),
 				new com.edam.workflow.dto.WorkflowDtos.SaveDraftRequest(stepRequests, List.of(), null));
-		return this.configuration.publish(draft.getId(),
+		return this.configuration.publish(version.id(),
 				new com.edam.workflow.dto.WorkflowDtos.PublishRequest(null), this.approver.getId()).id();
 	}
 
