@@ -309,28 +309,6 @@ class ApproverResolutionTest extends AbstractPostgreSqlIntegrationTest {
 			assertThat(ApproverResolutionTest.this.requestRows.findById(draftId).orElseThrow()
 				.getCurrentStatusCode()).isEqualTo(ExpenseRequest.Status.DRAFT);
 		}
-		void emptyCommitteeRefuses() {
-			// No seats exist, so the committee resolves to nobody. The requirement is that the request is
-			// refused rather than advanced to the next step or approved outright.
-			ExpenseRequestType type = RequestFixtures.requestType(ApproverResolutionTest.this.requestTypes,
-					"RSC-" + UUID.randomUUID().toString().substring(0, 8));
-			var definition = ApproverResolutionTest.this.configuration
-				.createDefinition(new com.edam.workflow.dto.WorkflowDtos.SaveDefinitionRequest(
-						"RSC-" + UUID.randomUUID().toString().substring(0, 8), "Committee chain", null,
-						type.getId()));
-			var draft = ApproverResolutionTest.this.configuration.createDraft(definition.id(),
-					new com.edam.workflow.dto.WorkflowDtos.SaveDraftRequest(
-							List.of(new com.edam.workflow.dto.WorkflowDtos.StepRequest("COMMITTEE",
-									"Committee approval", (short) 1, WorkflowStep.ApprovalMode.PARALLEL, (short) 1,
-									List.of(new com.edam.workflow.dto.WorkflowDtos.ApproverRequest(
-											WorkflowStepApprover.ApproverType.EXPENSE_COMMITTEE, null, null,
-											UUID.randomUUID())))),
-							List.of(), null));
-			assertThatThrownBy(() -> ApproverResolutionTest.this.configuration.publish(draft.id(),
-					new com.edam.workflow.dto.WorkflowDtos.PublishRequest(null), ApproverResolutionTest.this.approver.getId()))
-				.as("a committee step naming a level that does not exist must not be publishable")
-				.isInstanceOf(RuntimeException.class);
-		}
 
 		@Test
 		@DisplayName("a CEO step with no office holder refuses submission rather than skipping")
