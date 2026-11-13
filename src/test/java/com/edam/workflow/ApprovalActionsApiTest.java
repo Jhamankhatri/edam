@@ -183,6 +183,21 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 				Permissions.APPROVAL_ACT);
 	}
 
+	/**
+	 * The same approver, scoped to a department that is not the request's.
+	 *
+	 * <p>Their task still names them, so the approval endpoints must serve the request; the register must
+	 * not. Without the narrower scope the register would legitimately answer, and the test would prove
+	 * nothing about assignment granting access.
+	 */
+	private EdamPrincipal approverOutsideTheRegisterScope() {
+		Department elsewhere = RequestFixtures.department(this.departments, this.units, this.unitTypes);
+		return new EdamPrincipal(this.approver.getId(), "EMP", "apr-" + this.approver.getId(),
+				"Outside Scope", Set.of(), Set.of(Permissions.REQUEST_VIEW_OWN, Permissions.APPROVAL_VIEW,
+						Permissions.APPROVAL_ACT),
+				Set.of(new DataScope(DataScope.Type.DEPARTMENT, elsewhere.getId())));
+	}
+
 	/** A caller with every approval permission but no task assigned to them. */
 	private EdamPrincipal unassigned() {
 		return principal(this.outsider, Permissions.APPROVAL_VIEW, Permissions.APPROVAL_ACT);
@@ -246,7 +261,7 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 				.perform(get(APPROVALS).with(user(ApprovalActionsApiTest.this.approverPerformer()))
 					.accept(MediaType.APPLICATION_JSON))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.data.content[0].requestId").value(requestId.toString()))
+				.andExpect(jsonPath("$.data.items[0].requestId").value(requestId.toString()))
 				.andExpect(jsonPath("$.data.content[0].requestStatus").value("SUBMITTED"));
 
 			// The outsider holds approval:view and still sees nothing: the inbox is keyed by assignment.
@@ -254,7 +269,7 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 				.perform(get(APPROVALS).with(user(ApprovalActionsApiTest.this.unassigned()))
 					.accept(MediaType.APPLICATION_JSON))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.data.content").isEmpty());
+				.andExpect(jsonPath("$.data.items").isEmpty());
 		}
 
 		@Test
@@ -327,15 +342,18 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 			UUID requestId = ApprovalActionsApiTest.this.submittedRequest();
 			WorkflowTask task = ApprovalActionsApiTest.this.openTask(requestId);
 
-			// The register endpoint would refuse this caller: assignment is the only thing granting access.
+			// The register endpoint refuses this caller: their data scope covers another department, and
+			// nothing else entitles them to the row. Assignment is the only thing granting access.
 			ApprovalActionsApiTest.this.mockMvc
 				.perform(get(REQUESTS + "/" + requestId)
-					.with(user(ApprovalActionsApiTest.this.approverPerformer())).accept(MediaType.APPLICATION_JSON))
+					.with(user(ApprovalActionsApiTest.this.approverOutsideTheRegisterScope()))
+					.accept(MediaType.APPLICATION_JSON))
 				.andExpect(status().isNotFound());
 
 			ApprovalActionsApiTest.this.mockMvc
 				.perform(get(APPROVALS + "/tasks/" + task.getId() + "/request")
-					.with(user(ApprovalActionsApiTest.this.approverPerformer())).accept(MediaType.APPLICATION_JSON))
+					.with(user(ApprovalActionsApiTest.this.approverOutsideTheRegisterScope()))
+					.accept(MediaType.APPLICATION_JSON))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.id").value(requestId.toString()));
 		}
@@ -393,7 +411,7 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 					.contentType(MediaType.APPLICATION_JSON)
 					.content(ApprovalActionsApiTest.this.actionBody("I approve this")))
 				.andExpect(status().isForbidden())
-				.andExpect(jsonPath("$.error.code").value("EDAM-2003"));
+				.andExpect(jsonPath("$.error.code").value("EDAM-2002"));
 
 			// The task is untouched, so the refusal is not merely a status code.
 			assertThat(ApprovalActionsApiTest.this.tasks.findById(task.getId()).orElseThrow().getStatus())
@@ -435,7 +453,10 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 					.with(user(ApprovalActionsApiTest.this.approverPerformer()))
 					.contentType(MediaType.APPLICATION_JSON)
 					.content(ApprovalActionsApiTest.this.actionBody("Second")))
-				.andExpect(status().isConflict());
+				// 422 rather than 409: the request is well-formed and the caller is who they say they are,
+				// but the task is no longer in a state that accepts the action. 409 would suggest the client
+				// should retry after a reload; there is nothing to retry.
+				.andExpect(status().isUnprocessableEntity());
 
 			// One approval was recorded, not two: the audit trail is not double-counted.
 			assertThat(ApprovalActionsApiTest.this.actions
