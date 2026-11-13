@@ -9,7 +9,9 @@ import com.edam.workflow.model.WorkflowTask;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 /**
  * Individual approval tasks: one per approver per step.
@@ -24,7 +26,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
  * are the tasks of a single request or a single approver, so they are small by construction; a query that
  * scanned every task in the institution would be the wrong shape here regardless.
  */
-public interface TasksRepository extends JpaRepository<WorkflowTask, UUID> {
+public interface TasksRepository extends JpaRepository<WorkflowTask, UUID>, JpaSpecificationExecutor<WorkflowTask> {
 
 	List<WorkflowTask> findByWorkflowInstanceIdAndStatus(UUID instanceId, WorkflowTask.TaskStatus status);
 
@@ -45,13 +47,14 @@ public interface TasksRepository extends JpaRepository<WorkflowTask, UUID> {
 	default Page<WorkflowTask> findInbox(UUID userId, Collection<UUID> roleIds, Pageable pageable) {
 		// The set is materialised once so the predicate is a constant-time membership test per row.
 		java.util.Set<UUID> roles = java.util.Set.copyOf(roleIds);
-		return findAll((root, query, cb) -> {
+		Specification<WorkflowTask> specification = (root, query, cb) -> {
 			var open = cb.equal(root.get("status"), WorkflowTask.TaskStatus.PENDING);
 			var mine = cb.equal(root.get("assignedUserId"), userId);
 			var byRole = root.get("assignedRoleId").in(roles);
 			query.orderBy(cb.desc(root.get("assignedAt")));
 			return cb.and(open, cb.or(mine, byRole));
-		}, pageable);
+		};
+		return findAll(specification, pageable);
 	}
 
 	/** How many approvals a step of an instance has already recorded. Quorum is decided on this number. */
