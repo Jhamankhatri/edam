@@ -5,6 +5,8 @@ import java.util.UUID;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
@@ -61,6 +63,14 @@ public class OpexRequestDetail {
 	@Column(name = "is_recurring", nullable = false)
 	private boolean recurring;
 
+	/**
+	 * Named, not ordinal.
+	 *
+	 * <p>{@code @Enumerated} defaults to {@code ORDINAL}, which would have stored {@code 0}, {@code 1}, …
+	 * in this {@code VARCHAR} column and failed the schema's own CHECK. String mapping also means a future
+	 * reordering of the enum cannot silently reinterpret every stored row.
+	 */
+	@Enumerated(EnumType.STRING)
 	@Column(name = "recurrence_frequency", length = 50)
 	private RecurrenceFrequency recurrenceFrequency;
 

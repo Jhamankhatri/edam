@@ -83,12 +83,39 @@ def report_error_lines(log: str) -> None:
 
 
 def report_summaries() -> None:
-    for report in sorted(glob.glob("target/surefire-reports/*.txt")):
-        with open(report, encoding="utf-8", errors="replace") as handle:
-            for line in handle:
-                if line.startswith("Tests run"):
-                    emit("notice", f"TEST {report.split('/')[-1][:-4]}", line)
-                    break
+    """Per-class totals, read from the XML rather than the .txt summary.
+
+    The .txt file beside a report describes only the outer class, so a class whose
+    tests all live in @Nested classes reports "Tests run: 0" there even though every
+    test executed. Reading the XML counts the nested test cases too, which is the
+    number a reviewer needs; without it a green build looks like a build that ran
+    nothing.
+    """
+    total = failures = errors = skipped = 0
+    classes = 0
+    for report in sorted(glob.glob("target/surefire-reports/*.xml")):
+        try:
+            root = ET.parse(report).getroot()
+        except ET.ParseError:
+            continue
+        cases = list(root.iter("testcase"))
+        if not cases:
+            continue
+        classes += 1
+        case_fail = sum(1 for c in cases if c.findall("failure"))
+        case_err = sum(1 for c in cases if c.findall("error"))
+        case_skip = sum(1 for c in cases if c.findall("skipped"))
+        total += len(cases)
+        failures += case_fail
+        errors += case_err
+        skipped += case_skip
+        name = (root.get("name") or report.split("/")[-1][:-4]).split(".")[-1]
+        emit("notice", f"TEST {name}",
+             f"Tests run: {len(cases)}, Failures: {case_fail}, Errors: {case_err}, Skipped: {case_skip}")
+    # One aggregate, so a partial run is distinguishable from a complete one.
+    emit("notice", "TEST TOTAL",
+         f"Classes: {classes}, Tests run: {total}, Failures: {failures}, Errors: {errors}, "
+         f"Skipped: {skipped}")
 
 
 def main() -> int:
