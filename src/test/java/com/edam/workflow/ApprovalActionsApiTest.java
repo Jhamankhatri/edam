@@ -190,7 +190,8 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 
 	/** Creates and submits a request, returning the submitted entity's id. */
 	private UUID submittedRequest() {
-		var created = this.requests.create(new com.edam.expenserequest.dto.ExpenseRequestDtos.CreateRequest(
+		com.edam.expenserequest.dto.ExpenseRequestDtos.RequestResponse created = this.requests
+			.create(new com.edam.expenserequest.dto.ExpenseRequestDtos.CreateRequest(
 				this.requestType.getId(), this.category.getId(), null, this.nature.getId(),
 				this.department.getId(), null, this.currency.getId(), new java.math.BigDecimal("1500.0000"),
 				"Approval test",
@@ -206,7 +207,7 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 	private WorkflowTask openTask(UUID requestId) {
 		WorkflowInstance instance = this.instances.findByExpenseRequestId(requestId).orElseThrow();
 		return this.tasks.findByWorkflowInstanceIdOrderByAssignedAtAsc(instance.getId()).stream()
-			.filter(task -> task.getStatus() == WorkflowTask.Status.OPEN)
+			.filter(task -> task.getStatus() == WorkflowTask.TaskStatus.PENDING)
 			.findFirst()
 			.orElseThrow(() -> new AssertionError("the submitted request has no open approval task"));
 	}
@@ -383,7 +384,7 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 
 			// The task is untouched, so the refusal is not merely a status code.
 			assertThat(ApprovalActionsApiTest.this.tasks.findById(task.getId()).orElseThrow().getStatus())
-				.isEqualTo(WorkflowTask.Status.OPEN);
+				.isEqualTo(WorkflowTask.TaskStatus.PENDING);
 		}
 
 		@Test
@@ -400,7 +401,7 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 				.andExpect(status().isBadRequest());
 
 			assertThat(ApprovalActionsApiTest.this.tasks.findById(task.getId()).orElseThrow().getStatus())
-				.isEqualTo(WorkflowTask.Status.OPEN);
+				.isEqualTo(WorkflowTask.TaskStatus.PENDING);
 		}
 
 		@Test
@@ -475,7 +476,7 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 
 			// The request is editable again, which is the point of a revert.
 			ExpenseRequest reverted = ApprovalActionsApiTest.this.requestRows.findById(requestId).orElseThrow();
-			assertThat(reverted.getStatus()).isEqualTo(ExpenseRequest.Status.REVERTED);
+			assertThat(reverted.getStatus()).isEqualTo(ExpenseRequest.Status.RETURNED);
 			assertThat(reverted.isEditable()).isTrue();
 
 			// The step was re-opened rather than abandoned, so the chain is ready for resubmission.
@@ -515,11 +516,11 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 				.orElseThrow();
 			List<WorkflowTask> open = ApprovalActionsApiTest.this.tasks
 				.findByWorkflowInstanceIdOrderByAssignedAtAsc(instance.getId())
-				.stream().filter(candidate -> candidate.getStatus() == WorkflowTask.Status.OPEN).toList();
+				.stream().filter(candidate -> candidate.getStatus() == WorkflowTask.TaskStatus.PENDING).toList();
 			assertThat(open).hasSize(1);
 			assertThat(open.get(0).getAssignedUserId())
 				.isEqualTo(ApprovalActionsApiTest.this.outsider.getId());
-			assertThat(open.get(0).getStepId()).isEqualTo(task.getStepId());
+			assertThat(open.get(0).getWorkflowStepId()).isEqualTo(task.getWorkflowStepId());
 		}
 
 		@Test
@@ -549,7 +550,7 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 				.andExpect(status().isBadRequest());
 
 			assertThat(ApprovalActionsApiTest.this.tasks.findById(task.getId()).orElseThrow().getStatus())
-				.isEqualTo(WorkflowTask.Status.OPEN);
+				.isEqualTo(WorkflowTask.TaskStatus.PENDING);
 		}
 
 		@Test
@@ -568,7 +569,7 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 				.andExpect(status().isNotFound());
 
 			assertThat(ApprovalActionsApiTest.this.tasks.findById(task.getId()).orElseThrow().getStatus())
-				.isEqualTo(WorkflowTask.Status.OPEN);
+				.isEqualTo(WorkflowTask.TaskStatus.PENDING);
 		}
 	}
 
