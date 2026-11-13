@@ -22,6 +22,10 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 
@@ -39,17 +43,21 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
  * membership is a set, never a single assumed tenant.</li>
  * </ul>
  *
- * <p>Every request requires authentication except the login page, the denial page, static
- * assets and the health probes, which are read-only and expose no business data.
+ * <p>Every request requires authentication except the documented public surface: the error
+ * dispatch, the OpenAPI document, the health probes, and the authentication endpoints that
+ * cannot require a session by definition (sign-in, CSRF issuance, installation status and
+ * bootstrap, password reset).
  *
- * <p>JSP rendering happens on a servlet FORWARD dispatch (view controller → JSP). The chain
- * is restricted to the REQUEST dispatcher type through
- * {@code spring.security.filter.dispatcher-types} (application.yml) for two reasons: an
- * internal forward to {@code /WEB-INF/jsp/login.jsp} must not be re-authorized as a URL
- * (which would redirect anonymous visitors to {@code /login} in a loop), and a container
- * error dispatch must not be turned into a redirect, which would disguise server faults as
- * authentication problems. {@code ServletFilterConfig} re-establishes the security context
- * for error dispatches so the error page can still render the signed-in user.
+ * <p>There is no server-rendered view in this application. The frontend is a separate React
+ * deployment, so the filter chain answers JSON only: an unauthenticated call receives a 401
+ * envelope with a correlation id, never a redirect to a login page. A redirect would be
+ * invisible to {@code fetch} and would look, to the client, like a successful response with
+ * the wrong content type.
+ *
+ * <p>The chain is restricted to the REQUEST dispatcher type through
+ * {@code spring.security.filter.dispatcher-types} (application.yml) so that a container
+ * error dispatch is not re-authorized — which would disguise a server fault as a 401.
+ * {@code ServletFilterConfig} restores the security context for that dispatch.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableWebSecurity
@@ -69,7 +77,8 @@ public class SecurityConfig {
 			+ "frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
 	@Bean
-	SecurityFilterChain securityFilterChain(HttpSecurity http, JsonMapper jsonMapper) throws Exception {
+	SecurityFilterChain securityFilterChain(HttpSecurity http, JsonMapper jsonMapper,
+			org.springframework.web.cors.CorsConfigurationSource corsSource) throws Exception {
 		RequestMatcher[] publicMatchers = {
 				// The container's error dispatch re-enters the filter chain. Without this,
 				// an authenticated 500 would turn into a 302 to the login page.
@@ -82,21 +91,49 @@ public class SecurityConfig {
 				PathPatternRequestMatcher.pathPattern("/swagger-ui/**"),
 				PathPatternRequestMatcher.pathPattern("/actuator/health"),
 				PathPatternRequestMatcher.pathPattern("/actuator/health/**"),
-				PathPatternRequestMatcher.pathPattern("/actuator/info") };
+				PathPatternRequestMatcher.pathPattern("/actuator/info"),
+				// The authentication surface. These cannot require a session: they are how a session is
+				// obtained, how a locked-out user recovers, and how a client discovers whether this
+				// installation has been set up at all. Each is individually annotated with @PublicEndpoint
+				// stating why, and each is rate-relevant — the login path is lockout-protected in the
+				// service, and bootstrap closes permanently once used.
+				PathPatternRequestMatcher.pathPattern("/api/v1/auth/login"),
+				PathPatternRequestMatcher.pathPattern("/api/v1/auth/logout"),
+				PathPatternRequestMatcher.pathPattern("/api/v1/auth/csrf"),
+				PathPatternRequestMatcher.pathPattern("/api/v1/auth/installation"),
+				PathPatternRequestMatcher.pathPattern("/api/v1/auth/bootstrap"),
+				PathPatternRequestMatcher.pathPattern("/api/v1/auth/forgot-password"),
+				PathPatternRequestMatcher.pathPattern("/api/v1/auth/reset-password") };
 		http.authorizeHttpRequests(authorize -> authorize.requestMatchers(publicMatchers).permitAll()
 			.anyRequest()
 			.authenticated())
-			// CSRF protection stays enabled for the session-based JSP UI. API callers must
-			// present the token; disabling it would undermine the transactional-safety
-			// requirements of the approval workflow.
-			.csrf(csrf -> csrf.ignoringRequestMatchers(PathPatternRequestMatcher.pathPattern("/actuator/**")))
-			// Form login is retained as the fallback local mechanism until the bank decides its identity
-			// provider. It authenticates through the EdamUserDetailsService seam, so an OIDC adapter
-			// replaces it without touching a single authorization rule.
-			.formLogin(form -> form.permitAll())
-			.logout(logout -> logout.logoutUrl("/logout")
-				.invalidateHttpSession(true)
-				.deleteCookies("JSESSIONID"))
+			// CSRF protection stays ON for every state-changing request. It is not disabled for the API:
+			// the API is authenticated by a cookie, so a cross-site form post would otherwise carry the
+			// user's session with it. What changes is the *token transport* — the token moves from a
+			// server-rendered hidden field to a cookie the React client can read.
+			//
+			// CookieCsrfTokenRepository.withHttpOnlyFalse() is the load-bearing call. Spring's default
+			// repository sets the XSRF-TOKEN cookie HttpOnly, which no JavaScript can read, so every
+			// non-GET request from a browser client would fail with 403 while appearing to be configured
+			// correctly. Marking it readable is safe: the cookie is not a credential, it is a value the
+			// browser must echo back in a header, and a cross-origin attacker can neither read it
+			// (same-origin policy) nor guess it.
+			.csrf(csrf -> csrf
+				.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+				// A JS client sends the token in a header, not as a request parameter. This handler is
+				// what makes header-based checking work for a client that never renders a form.
+				.csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
+				.ignoringRequestMatchers(PathPatternRequestMatcher.pathPattern("/actuator/**")))
+			// Form login is removed: it answers with a 302 and a hidden HTML form, neither of which a
+			// JSON client can use. Authentication is POST /api/v1/auth/login, which writes the same
+			// session through the same identity adapter. Logout is POST /api/v1/auth/logout for the same
+			// reason: Spring's built-in logout requires a CSRF-protected POST to a fixed URL and returns
+			// a redirect, which the client would have to special-case.
+			.logout(logout -> logout.disable())
+			// Explicit, because the React client lives on a different origin in development and must be
+			// able to send the session cookie. Credentialed CORS is configured in CorsConfig with an
+			// exact origin list; a wildcard is impossible there by construction.
+			.cors(cors -> cors.configurationSource(corsSource))
 			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
 				.sessionFixation(fixation -> fixation.migrateSession()))
 			.exceptionHandling(exceptions -> exceptions
@@ -108,6 +145,19 @@ public class SecurityConfig {
 			// client retries explicitly anyway.
 			.requestCache(cache -> cache.disable());
 		return http.build();
+	}
+
+	/**
+	 * Persists the authenticated context for the JSON login endpoint.
+	 *
+	 * <p>Declared explicitly rather than relying on the framework's default so that the login controller
+	 * and the filter chain provably share one repository. If they disagreed, a session written at login
+	 * would not be the session read on the next request, and every call would be anonymous — a failure
+	 * that looks like "login silently does nothing".
+	 */
+	@Bean
+	SecurityContextRepository securityContextRepository() {
+		return new HttpSessionSecurityContextRepository();
 	}
 
 	/**

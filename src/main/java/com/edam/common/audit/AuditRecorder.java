@@ -72,6 +72,20 @@ public class AuditRecorder {
 		write(action, entityType, entityId, null, null);
 	}
 
+	/**
+	 * Record an event with a human-readable reason.
+	 *
+	 * <p>Security events need to say <em>why</em>, not just <em>what</em>: "sign-in refused" is not
+	 * actionable in an investigation, "sign-in refused because the account is locked" is. The reason is
+	 * redacted exactly like a state diff, so a caller cannot accidentally persist a credential by passing
+	 * one in.
+	 */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public void record(AuditAction action, String entityType, Object entityId, String reason) {
+		write(action, entityType, entityId, null,
+				(reason == null) ? null : java.util.Map.of("reason", reason));
+	}
+
 	/** Record a state change with redacted before/after maps. */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void recordChange(AuditAction action, String entityType, Object entityId, Map<String, Object> before,

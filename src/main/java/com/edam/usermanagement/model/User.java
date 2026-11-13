@@ -78,6 +78,23 @@ public class User extends AuditableEntity {
 	@Column(name = "last_login_at")
 	private Instant lastLoginAt;
 
+	/**
+	 * Consecutive failed sign-ins since the last success.
+	 *
+	 * <p>Kept on the user row rather than derived from {@code login_attempts} on every sign-in: the
+	 * lockout decision is on the authentication hot path and must not depend on scanning an
+	 * append-only evidence table. The evidence table remains the record of what happened; these
+	 * columns are the decision.
+	 */
+	@Column(name = "failed_login_count", nullable = false)
+	private int failedLoginCount;
+
+	@Column(name = "locked_until")
+	private Instant lockedUntil;
+
+	@Column(name = "password_changed_at")
+	private Instant passwordChangedAt;
+
 	/** Display name, derived rather than stored, so a name change cannot leave two versions behind. */
 	public String displayName() {
 		return (this.firstName + " " + this.lastName).trim();
@@ -182,6 +199,51 @@ public class User extends AuditableEntity {
 
 	public void setLastLoginAt(Instant lastLoginAt) {
 		this.lastLoginAt = lastLoginAt;
+	}
+
+
+	public int getFailedLoginCount() {
+		return this.failedLoginCount;
+	}
+
+	public Instant getLockedUntil() {
+		return this.lockedUntil;
+	}
+
+	public Instant getPasswordChangedAt() {
+		return this.passwordChangedAt;
+	}
+
+	/** True when the lockout window has not yet elapsed. */
+	public boolean isLocked(Instant now) {
+		return this.lockedUntil != null && this.lockedUntil.isAfter(now);
+	}
+
+	/** Records one failed authentication. */
+	public void recordFailedLogin(int lockThreshold, java.time.Duration lockDuration, Instant now) {
+		this.failedLoginCount++;
+		if (this.failedLoginCount >= lockThreshold) {
+			this.lockedUntil = now.plus(lockDuration);
+		}
+	}
+
+	/** Clears the failure count and any lockout. Called on a successful sign-in or an admin unlock. */
+	public void clearFailedLogins() {
+		this.failedLoginCount = 0;
+		this.lockedUntil = null;
+	}
+
+	/**
+	 * Sets the credential and stamps the change time.
+	 *
+	 * <p>The timestamp is what lets a session established before a password change be treated as
+	 * stale; without it a stolen session would survive the very reset intended to revoke it.
+	 */
+	public void changePassword(String passwordHash, Instant when) {
+		this.passwordHash = passwordHash;
+		this.passwordChangedAt = when;
+		this.failedLoginCount = 0;
+		this.lockedUntil = null;
 	}
 
 }
