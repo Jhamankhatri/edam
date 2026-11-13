@@ -154,7 +154,7 @@ class ApprovalLimitApiTest extends AbstractPostgreSqlIntegrationTest {
 		@DisplayName("listing limits requires the view permission")
 		void listRequiresPermission() throws Exception {
 			ApprovalLimitApiTest.this.mockMvc
-				.perform(get(LIMITS).with(user(principal(UUID.randomUUID(), Permissions.REQUEST_VIEW_OWN)))
+				.perform(get(LIMITS).with(user(ApprovalLimitApiTest.this.principal(UUID.randomUUID(), Permissions.REQUEST_VIEW_OWN)))
 					.accept(MediaType.APPLICATION_JSON))
 				.andExpect(status().isForbidden())
 				.andExpect(jsonPath("$.error.code").value("EDAM-2005"));
@@ -164,13 +164,13 @@ class ApprovalLimitApiTest extends AbstractPostgreSqlIntegrationTest {
 		@DisplayName("a viewer may read but not create")
 		void viewerCannotWrite() throws Exception {
 			ApprovalLimitApiTest.this.mockMvc
-				.perform(get(LIMITS).with(user(viewer())).accept(MediaType.APPLICATION_JSON))
+				.perform(get(LIMITS).with(user(ApprovalLimitApiTest.this.viewer())).accept(MediaType.APPLICATION_JSON))
 				.andExpect(status().isOk());
 
 			ApprovalLimitApiTest.this.mockMvc
-				.perform(post(LIMITS).with(csrf()).with(user(viewer()))
+				.perform(post(LIMITS).with(csrf()).with(user(ApprovalLimitApiTest.this.viewer()))
 					.contentType(MediaType.APPLICATION_JSON)
-					.content(limitBody("100000.0000", null))
+					.content(ApprovalLimitApiTest.this.limitBody("100000.0000", null))
 					.accept(MediaType.APPLICATION_JSON))
 				.andExpect(status().isForbidden())
 				.andExpect(jsonPath("$.error.code").value("EDAM-2005"));
@@ -198,9 +198,9 @@ class ApprovalLimitApiTest extends AbstractPostgreSqlIntegrationTest {
 		void zeroLimitRefused() throws Exception {
 			long before = ApprovalLimitApiTest.this.limits.count();
 			ApprovalLimitApiTest.this.mockMvc
-				.perform(post(LIMITS).with(csrf()).with(user(manager()))
+				.perform(post(LIMITS).with(csrf()).with(user(ApprovalLimitApiTest.this.manager()))
 					.contentType(MediaType.APPLICATION_JSON)
-					.content(limitBody("0.0000", null))
+					.content(ApprovalLimitApiTest.this.limitBody("0.0000", null))
 					.accept(MediaType.APPLICATION_JSON))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.error.code").value("EDAM-1001"));
@@ -216,9 +216,9 @@ class ApprovalLimitApiTest extends AbstractPostgreSqlIntegrationTest {
 					  "expenseType": "OPEX",
 					  "approvalLimit": 5000.0000
 					}
-					""".formatted(this.department.getId());
+					""".formatted(ApprovalLimitApiTest.this.department.getId());
 			ApprovalLimitApiTest.this.mockMvc
-				.perform(post(LIMITS).with(csrf()).with(user(manager()))
+				.perform(post(LIMITS).with(csrf()).with(user(ApprovalLimitApiTest.this.manager()))
 					.contentType(MediaType.APPLICATION_JSON).content(body)
 					.accept(MediaType.APPLICATION_JSON))
 				.andExpect(status().isBadRequest())
@@ -235,9 +235,9 @@ class ApprovalLimitApiTest extends AbstractPostgreSqlIntegrationTest {
 					  "currencyId": "%s",
 					  "approvalLimit": 5000.0000
 					}
-					""".formatted(UUID.randomUUID(), this.currency.getId());
+					""".formatted(UUID.randomUUID(), ApprovalLimitApiTest.this.currency.getId());
 			ApprovalLimitApiTest.this.mockMvc
-				.perform(post(LIMITS).with(csrf()).with(user(manager()))
+				.perform(post(LIMITS).with(csrf()).with(user(ApprovalLimitApiTest.this.manager()))
 					.contentType(MediaType.APPLICATION_JSON).content(body)
 					.accept(MediaType.APPLICATION_JSON))
 				.andExpect(status().isNotFound());
@@ -256,9 +256,9 @@ class ApprovalLimitApiTest extends AbstractPostgreSqlIntegrationTest {
 		@DisplayName("a created department-wide limit is readable afterwards")
 		void createThenRead() throws Exception {
 			String created = ApprovalLimitApiTest.this.mockMvc
-				.perform(post(LIMITS).with(csrf()).with(user(manager()))
+				.perform(post(LIMITS).with(csrf()).with(user(ApprovalLimitApiTest.this.manager()))
 					.contentType(MediaType.APPLICATION_JSON)
-					.content(limitBody("250000.0000", null))
+					.content(ApprovalLimitApiTest.this.limitBody("250000.0000", null))
 					.accept(MediaType.APPLICATION_JSON))
 				.andExpect(status().isCreated())
 				.andExpect(jsonPath("$.data.approvalLimit").value(250000.0000))
@@ -268,9 +268,9 @@ class ApprovalLimitApiTest extends AbstractPostgreSqlIntegrationTest {
 
 			String id = created.replaceAll(".*\"id\"\\s*:\\s*\"([^\"]+)\".*", "$1");
 			ApprovalLimitApiTest.this.mockMvc
-				.perform(get(LIMITS + "/" + id).with(user(viewer())).accept(MediaType.APPLICATION_JSON))
+				.perform(get(LIMITS + "/" + id).with(user(ApprovalLimitApiTest.this.viewer())).accept(MediaType.APPLICATION_JSON))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.data.departmentId").value(this.department.getId().toString()))
+				.andExpect(jsonPath("$.data.departmentId").value(ApprovalLimitApiTest.this.department.getId().toString()))
 				.andExpect(jsonPath("$.data.userId").doesNotExist());
 
 			// The row is committed, not merely returned: read it back from the repository without MockMvc.
@@ -281,24 +281,24 @@ class ApprovalLimitApiTest extends AbstractPostgreSqlIntegrationTest {
 		@DisplayName("a personal limit records its holder")
 		void personalLimitRecordsHolder() throws Exception {
 			ApprovalLimitApiTest.this.mockMvc
-				.perform(post(LIMITS).with(csrf()).with(user(manager()))
+				.perform(post(LIMITS).with(csrf()).with(user(ApprovalLimitApiTest.this.manager()))
 					.contentType(MediaType.APPLICATION_JSON)
-					.content(limitBody("75000.0000", this.holder.getId()))
+					.content(ApprovalLimitApiTest.this.limitBody("75000.0000", ApprovalLimitApiTest.this.holder.getId()))
 					.accept(MediaType.APPLICATION_JSON))
 				.andExpect(status().isCreated())
-				.andExpect(jsonPath("$.data.userId").value(this.holder.getId().toString()));
+				.andExpect(jsonPath("$.data.userId").value(ApprovalLimitApiTest.this.holder.getId().toString()));
 		}
 
 		@Test
 		@DisplayName("updating an amount is persisted")
 		void updatePersists() throws Exception {
 			DepartmentApprovalLimit existing = ApprovalLimitApiTest.this.limits
-				.save(new DepartmentApprovalLimit(this.department.getId(), null,
-						DepartmentApprovalLimit.ExpenseType.OPEX, this.currency.getId(),
+				.save(new DepartmentApprovalLimit(ApprovalLimitApiTest.this.department.getId(), null,
+						DepartmentApprovalLimit.ExpenseType.OPEX, ApprovalLimitApiTest.this.currency.getId(),
 						new BigDecimal("1000.0000"), Instant.now().minusSeconds(60), null));
 
 			ApprovalLimitApiTest.this.mockMvc
-				.perform(put(LIMITS + "/" + existing.getId()).with(csrf()).with(user(manager()))
+				.perform(put(LIMITS + "/" + existing.getId()).with(csrf()).with(user(ApprovalLimitApiTest.this.manager()))
 					.contentType(MediaType.APPLICATION_JSON)
 					.content("""
 							{
@@ -307,7 +307,7 @@ class ApprovalLimitApiTest extends AbstractPostgreSqlIntegrationTest {
 							  "currencyId": "%s",
 							  "approvalLimit": 2500.0000
 							}
-							""".formatted(this.department.getId(), this.currency.getId()))
+							""".formatted(ApprovalLimitApiTest.this.department.getId(), ApprovalLimitApiTest.this.currency.getId()))
 					.accept(MediaType.APPLICATION_JSON))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.approvalLimit").value(2500.0000));
@@ -329,8 +329,8 @@ class ApprovalLimitApiTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("reports a candidate as permitted when their limit covers the amount")
 		void permittedCandidate() throws Exception {
-			ApprovalLimitApiTest.this.limits.save(new DepartmentApprovalLimit(this.department.getId(),
-					this.holder.getId(), DepartmentApprovalLimit.ExpenseType.BOTH, this.currency.getId(),
+			ApprovalLimitApiTest.this.limits.save(new DepartmentApprovalLimit(ApprovalLimitApiTest.this.department.getId(),
+					ApprovalLimitApiTest.this.holder.getId(), DepartmentApprovalLimit.ExpenseType.BOTH, ApprovalLimitApiTest.this.currency.getId(),
 					new BigDecimal("500000.0000"), Instant.now().minusSeconds(60), null));
 			String body = """
 					{
@@ -340,13 +340,13 @@ class ApprovalLimitApiTest extends AbstractPostgreSqlIntegrationTest {
 					  "amount": 1000.0000,
 					  "candidateUserIds": ["%s"]
 					}
-					""".formatted(this.department.getId(), this.currency.getId(), this.holder.getId());
+					""".formatted(ApprovalLimitApiTest.this.department.getId(), ApprovalLimitApiTest.this.currency.getId(), ApprovalLimitApiTest.this.holder.getId());
 			ApprovalLimitApiTest.this.mockMvc
-				.perform(post(LIMITS + "/authority-check").with(csrf()).with(user(viewer()))
+				.perform(post(LIMITS + "/authority-check").with(csrf()).with(user(ApprovalLimitApiTest.this.viewer()))
 					.contentType(MediaType.APPLICATION_JSON).content(body)
 					.accept(MediaType.APPLICATION_JSON))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.data.permittedUserIds[0]").value(this.holder.getId().toString()));
+				.andExpect(jsonPath("$.data.permittedUserIds[0]").value(ApprovalLimitApiTest.this.holder.getId().toString()));
 		}
 
 		@Test
@@ -360,9 +360,9 @@ class ApprovalLimitApiTest extends AbstractPostgreSqlIntegrationTest {
 					  "amount": 1000.0000,
 					  "candidateUserIds": ["%s"]
 					}
-					""".formatted(this.department.getId(), this.currency.getId(), UUID.randomUUID());
+					""".formatted(ApprovalLimitApiTest.this.department.getId(), ApprovalLimitApiTest.this.currency.getId(), UUID.randomUUID());
 			ApprovalLimitApiTest.this.mockMvc
-				.perform(post(LIMITS + "/authority-check").with(csrf()).with(user(viewer()))
+				.perform(post(LIMITS + "/authority-check").with(csrf()).with(user(ApprovalLimitApiTest.this.viewer()))
 					.contentType(MediaType.APPLICATION_JSON).content(body)
 					.accept(MediaType.APPLICATION_JSON))
 				.andExpect(status().isOk())
@@ -389,13 +389,13 @@ class ApprovalLimitApiTest extends AbstractPostgreSqlIntegrationTest {
 					  "userId": "%s",
 					  "expenseType": "CAPEX"
 					}
-					""".formatted(this.department.getId(), this.holder.getId());
+					""".formatted(ApprovalLimitApiTest.this.department.getId(), ApprovalLimitApiTest.this.holder.getId());
 			String created = ApprovalLimitApiTest.this.mockMvc
-				.perform(post(AUTHORITIES).with(csrf()).with(user(manager()))
+				.perform(post(AUTHORITIES).with(csrf()).with(user(ApprovalLimitApiTest.this.manager()))
 					.contentType(MediaType.APPLICATION_JSON).content(body)
 					.accept(MediaType.APPLICATION_JSON))
 				.andExpect(status().isCreated())
-				.andExpect(jsonPath("$.data.userId").value(this.holder.getId().toString()))
+				.andExpect(jsonPath("$.data.userId").value(ApprovalLimitApiTest.this.holder.getId().toString()))
 				.andExpect(jsonPath("$.data.expenseType").value("CAPEX"))
 				.andReturn()
 				.getResponse()
@@ -404,7 +404,7 @@ class ApprovalLimitApiTest extends AbstractPostgreSqlIntegrationTest {
 			String id = created.replaceAll(".*\"id\"\\s*:\\s*\"([^\"]+)\".*", "$1");
 			RecommendingAuthority reloaded = ApprovalLimitApiTest.this.authorities.findById(UUID.fromString(id))
 				.orElseThrow();
-			assertThat(reloaded.getUserId()).isEqualTo(this.holder.getId());
+			assertThat(reloaded.getUserId()).isEqualTo(ApprovalLimitApiTest.this.holder.getId());
 			assertThat(reloaded.getExpenseType().name()).isEqualTo("CAPEX");
 		}
 
@@ -412,7 +412,7 @@ class ApprovalLimitApiTest extends AbstractPostgreSqlIntegrationTest {
 		@DisplayName("reading authorities needs the view permission")
 		void viewPermissionRequired() throws Exception {
 			ApprovalLimitApiTest.this.mockMvc
-				.perform(get(AUTHORITIES).with(user(principal(UUID.randomUUID(), Permissions.APPROVAL_LIMIT_VIEW)))
+				.perform(get(AUTHORITIES).with(user(ApprovalLimitApiTest.this.principal(UUID.randomUUID(), Permissions.APPROVAL_LIMIT_VIEW)))
 					.accept(MediaType.APPLICATION_JSON))
 				.andExpect(status().isForbidden());
 		}
@@ -421,14 +421,14 @@ class ApprovalLimitApiTest extends AbstractPostgreSqlIntegrationTest {
 		@DisplayName("a missing holder is refused")
 		void missingHolderRefused() throws Exception {
 			ApprovalLimitApiTest.this.mockMvc
-				.perform(post(AUTHORITIES).with(csrf()).with(user(manager()))
+				.perform(post(AUTHORITIES).with(csrf()).with(user(ApprovalLimitApiTest.this.manager()))
 					.contentType(MediaType.APPLICATION_JSON)
 					.content("""
 							{
 							  "departmentId": "%s",
 							  "expenseType": "OPEX"
 							}
-							""".formatted(this.department.getId()))
+							""".formatted(ApprovalLimitApiTest.this.department.getId()))
 					.accept(MediaType.APPLICATION_JSON))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.error.code").value("EDAM-1001"));
