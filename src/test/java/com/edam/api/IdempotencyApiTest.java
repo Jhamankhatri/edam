@@ -206,12 +206,11 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 	void differentPayloadIsConflict() throws Exception {
 		String key = "key-conflict-" + UUID.randomUUID();
 		EdamPrincipal caller = owner();
+		long countBefore = this.idempotencyRecords.count();
 		createDraft(opexBody("100.0000", "original"), key, caller, HttpStatus.CREATED.value());
-		// Sanity: the idempotency record exists and is COMPLETED before the conflicting retry.
-		long completed = this.idempotencyRecords.findAll().stream()
-				.filter(r -> r.getStatus() == IdempotencyRecord.Status.COMPLETED).count();
-		org.junit.jupiter.api.Assertions.assertTrue(completed >= 1,
-				"Expected at least one COMPLETED idempotency record; got " + completed);
+		long countAfter = this.idempotencyRecords.count();
+		org.junit.jupiter.api.Assertions.assertEquals(countBefore + 1, countAfter,
+				"Expected exactly one new idempotency record after first create");
 		MvcResult conflict = this.mockMvc.perform(post(BASE).with(user(caller)).with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
 						.accept(MediaType.APPLICATION_JSON)
