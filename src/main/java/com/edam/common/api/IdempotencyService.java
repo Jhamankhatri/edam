@@ -121,34 +121,38 @@ public class IdempotencyService {
 	 * @param key caller-supplied {@code Idempotency-Key} header (trimmed); null/blank ⇒ opt-out
 	 * @param fingerprint canonical SHA-256 of the request body + path parameters (see below)
 	 */
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public Decision check(String operationType, UUID actorId, String key, String fingerprint) {
 		if (key == null || key.isBlank()) {
 			return Proceed.INSTANCE;
 		}
 		validateKey(key);
 		String keyHash = sha256(key);
-		Optional<IdempotencyRecord> existing = this.records.findByKey(keyHash, operationType, actorId);
-		if (existing.isEmpty()) {
-			Instant now = Instant.now();
-			try {
-				this.records.saveAndFlush(new IdempotencyRecord(keyHash, operationType, actorId, fingerprint,
-						now.plus(RETENTION)));
-			}
-			catch (DataIntegrityViolationException ex) {
-				// Lost the race with a concurrent identical request. Fall through to one re-read so
-				// the winner's COMPLETED/IN_PROGRESS state is visible and returned to the caller
-				// rather than a blanket 409.
-				existing = this.records.findByKey(keyHash, operationType, actorId);
-				if (existing.isEmpty()) {
-					throw new BusinessException(ErrorCode.PRECONDITION_FAILED,
-							"An identical request is already being processed. Retry once it completes.");
+		// Run the claim in its own transaction so the IN_PROGRESS row is committed before the
+		// business service's @Transactional begins. Using Programmatic Tx here avoids relying on
+		// self-invocation of @Transactional through the same bean proxy (which would silently
+		// join the outer transaction if the caller's TX happened to be open already).
+		return this.newTxTemplate.execute(status -> {
+			Optional<IdempotencyRecord> existing = this.records.findByKey(keyHash, operationType, actorId);
+			if (existing.isEmpty()) {
+				Instant now = Instant.now();
+				try {
+					this.records.saveAndFlush(new IdempotencyRecord(keyHash, operationType, actorId, fingerprint,
+							now.plus(RETENTION)));
 				}
-				return decideForExisting(existing.get(), keyHash, operationType, actorId, fingerprint);
+				catch (DataIntegrityViolationException ex) {
+					// Lost the race with a concurrent identical request; re-read and decide against
+					// the winner's record.
+					existing = this.records.findByKey(keyHash, operationType, actorId);
+					if (existing.isEmpty()) {
+						throw new BusinessException(ErrorCode.PRECONDITION_FAILED,
+								"An identical request is already being processed. Retry once it completes.");
+					}
+					return decideForExisting(existing.get(), keyHash, operationType, actorId, fingerprint);
+				}
+				return (Decision) Proceed.INSTANCE;
 			}
-			return Proceed.INSTANCE;
-		}
-		return decideForExisting(existing.get(), keyHash, operationType, actorId, fingerprint);
+			return decideForExisting(existing.get(), keyHash, operationType, actorId, fingerprint);
+		});
 	}
 
 	/** Resolve the decision for an existing IN_PROGRESS / FAILED / COMPLETED record. */

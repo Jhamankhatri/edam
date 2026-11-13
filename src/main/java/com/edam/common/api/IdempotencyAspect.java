@@ -60,14 +60,11 @@ public class IdempotencyAspect {
 		HttpServletRequest request = currentRequest();
 		String key = request == null ? null : request.getHeader(IDEMPOTENCY_HEADER);
 		if (key == null || key.isBlank()) {
-			// Opt-out: clients that do not send the header get the existing behaviour unchanged.
 			return joinPoint.proceed();
 		}
 		EdamPrincipal principal = this.institutionContext.principal();
 		if (principal == null) {
-			// Should not happen on authenticated endpoints; if it does, behave as if no key was sent
-			// rather than blocking the request with an NPE.
-			log.warn("idempotency.no_principal header_present=true path={}", request.getRequestURI());
+			log.warn("idempotency.no_principal header_present=true path={}", request != null ? request.getRequestURI() : "?");
 			return joinPoint.proceed();
 		}
 		UUID actorId = principal.userId();
@@ -76,8 +73,8 @@ public class IdempotencyAspect {
 		String operation = idempotentOperation.value();
 		IdempotencyService.Decision decision = this.idempotency.check(operation, actorId, key.trim(), fingerprint);
 		if (decision instanceof IdempotencyService.Replay replay) {
-				return writeReplay(replay);
-			}
+			return writeReplay(replay);
+		}
 		// Proceed: invoke the controller and finalise the record based on outcome.
 		Object result;
 		try {
