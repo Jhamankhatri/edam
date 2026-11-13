@@ -522,7 +522,7 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 							draftId.toString(), from, to)
 							.with(user(auditorDepartmentScoped())).accept(MediaType.APPLICATION_JSON))
 					.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-			Number total = com.jayway.jsonpath.JsonPath.read(body, "$.data.page.totalElements");
+			Number total = com.jayway.jsonpath.JsonPath.read(body, "$.data.totalElements");
 			assertThat(total.longValue()).isEqualTo(0L);
 		}
 
@@ -936,7 +936,7 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 						.performedBy(AuditReadApiTest.this.requester.getId())
 						.performedByUsername(AuditReadApiTest.this.requester.getUsername())
 						.createdAt(ts)
-						.newValues("{\"note\":\"high-bit-\"" + id + "}")
+						.newValues("{\"note\":\"high-bit-" + id + "\"}")
 						.build();
 				AuditReadApiTest.this.auditRepository.save(e);
 			}
