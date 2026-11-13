@@ -95,7 +95,7 @@ public class CommitteeController {
 	@Operation(summary = "Deactivate a committee and its levels")
 	public ApiResponse<Void> deactivate(@PathVariable UUID id, HttpServletRequest request) {
 		this.committees.deactivate(id);
-		return ApiResponse.success(null, CorrelationId.current(), request.getRequestURI());
+		return ApiResponse.success(CorrelationId.current(), request.getRequestURI());
 	}
 
 	@PostMapping("/{id}/members")
@@ -117,7 +117,7 @@ public class CommitteeController {
 	public ApiResponse<Void> endMembership(@PathVariable UUID id, @PathVariable UUID memberId,
 			HttpServletRequest request) {
 		this.committees.endMembership(id, memberId);
-		return ApiResponse.success(null, CorrelationId.current(), request.getRequestURI());
+		return ApiResponse.success(CorrelationId.current(), request.getRequestURI());
 	}
 
 	@PostMapping("/{id}/levels")
@@ -137,7 +137,7 @@ public class CommitteeController {
 	public ApiResponse<Void> deactivateLevel(@PathVariable UUID id, @PathVariable UUID levelId,
 			HttpServletRequest request) {
 		this.committees.deactivateLevel(id, levelId);
-		return ApiResponse.success(null, CorrelationId.current(), request.getRequestURI());
+		return ApiResponse.success(CorrelationId.current(), request.getRequestURI());
 	}
 
 	@GetMapping("/coverage")

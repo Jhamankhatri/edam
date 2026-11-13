@@ -41,6 +41,10 @@ public class ExpenseCommittee extends AuditableEntity {
 	@OrderBy("levelNumber ASC")
 	private List<CommitteeLevel> levels = new ArrayList<>();
 
+	@OneToMany(mappedBy = "committee", cascade = CascadeType.ALL, orphanRemoval = true)
+	@OrderBy("effectiveFrom ASC")
+	private List<CommitteeMember> members = new ArrayList<>();
+
 	protected ExpenseCommittee() {
 	}
 
@@ -78,6 +82,10 @@ public class ExpenseCommittee extends AuditableEntity {
 
 	public List<CommitteeLevel> getLevels() {
 		return this.levels;
+	}
+
+	public List<CommitteeMember> getMembers() {
+		return this.members;
 	}
 
 }
