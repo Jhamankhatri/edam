@@ -78,7 +78,8 @@ public class SecurityConfig {
 
 	@Bean
 	SecurityFilterChain securityFilterChain(HttpSecurity http, JsonMapper jsonMapper,
-			org.springframework.web.cors.CorsConfigurationSource corsSource) throws Exception {
+			@org.springframework.beans.factory.annotation.Qualifier("corsConfigurationSource") org.springframework.web.cors.CorsConfigurationSource corsSource)
+			throws Exception {
 		RequestMatcher[] publicMatchers = {
 				// The container's error dispatch re-enters the filter chain. Without this,
 				// an authenticated 500 would turn into a 302 to the login page.

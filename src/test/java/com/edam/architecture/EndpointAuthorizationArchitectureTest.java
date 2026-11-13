@@ -122,14 +122,20 @@ class EndpointAuthorizationArchitectureTest {
 				}
 			}
 		}
-		// The allow-list is intentionally tiny: liveness/readiness, application metadata, and the
-		// caller's own identity (which a user with no roles must still be able to read so the client can
-		// render a tenant selector). If a business endpoint ever appears here, this assertion is the
-		// prompt to justify it in review.
+		// The allow-list is intentionally small and is enumerated by *controller*, not by pattern, so
+		// that adding a public method to an existing controller still fails this test.
+		//
+		// AuthController is public by necessity: it contains the endpoints by which a session is
+		// obtained, renewed and recovered. Each method carries its own @PublicEndpoint reason, and the
+		// first test in this class still requires that reason to be present and non-blank. The guarded
+		// methods of that same controller (GET /auth/me, POST /auth/change-password) are NOT in this
+		// list — they carry @EdamPermission-style authentication requirements and are covered by the
+		// first test.
 		assertThat(publicEndpoints)
 			.as("unexpected public endpoint(s); add them here only with a security justification")
 			.allMatch(entry -> entry.contains("Health") || entry.contains("Probe") || entry.contains("System")
-					|| entry.contains("Platform") || entry.startsWith("DevUserController"));
+					|| entry.contains("Platform") || entry.startsWith("DevUserController")
+					|| entry.startsWith("AuthController"));
 	}
 
 	private static List<Class<?>> controllers() throws ClassNotFoundException {

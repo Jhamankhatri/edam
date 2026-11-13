@@ -1,5 +1,6 @@
 package com.edam.web;
 
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -17,6 +18,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -114,13 +117,39 @@ class WebLayerSecurityTest extends AbstractPostgreSqlIntegrationTest {
 	}
 
 	@Test
-	@DisplayName("CSRF protection is enabled: a state-changing request without a token is rejected")
+	@DisplayName("CSRF is enforced: a state-changing request without a token is rejected")
 	void csrfIsEnforced() throws Exception {
-		// A rejected POST is answered with 403 (denied) or 302 (invalid CSRF token); what matters is
-		// that it is not processed as a successful logout.
-		MvcResult result = this.mockMvc.perform(post("/logout").with(user(principalWith()))).andReturn();
+		// CSRF is enabled, not disabled, for the browser client. The endpoint under test is the logout
+		// API because it is public and mutating: if CSRF were permissive, an anonymous cross-site POST
+		// would be processed. 403 is the expected outcome; a 200 would mean the request was allowed
+		// through, which is the regression this test exists to catch.
+		MvcResult result = this.mockMvc.perform(post("/api/v1/auth/logout")).andReturn();
 
-		assertThat(result.getResponse().getStatus()).isIn(403, 302);
+		assertThat(result.getResponse().getStatus()).isEqualTo(403);
+	}
+
+	@Test
+	@DisplayName("the CSRF cookie is readable by JavaScript, which is what makes the API usable from React")
+	void csrfCookieIsReadableByJavaScript() throws Exception {
+		// Spring's default CSRF repository marks XSRF-TOKEN HttpOnly, which silently breaks every
+		// mutating request from a browser client. This asserts the configured repository writes the
+		// cookie without HttpOnly, so a React app can read it and echo it in X-XSRF-TOKEN.
+		MvcResult result = this.mockMvc.perform(get("/api/v1/auth/csrf")).andReturn();
+
+		List<String> setCookies = result.getResponse().getHeaders("Set-Cookie");
+		assertThat(setCookies).as("a CSRF token cookie must be issued").anyMatch(cookie -> cookie.startsWith("XSRF-TOKEN="));
+		assertThat(setCookies.stream().filter(cookie -> cookie.startsWith("XSRF-TOKEN=")).findFirst().orElse(""))
+			.as("the CSRF cookie must not be HttpOnly")
+			.doesNotContain("HttpOnly");
+	}
+
+	@Test
+	@DisplayName("the installation status is readable before authentication")
+	void installationStatusIsPublic() throws Exception {
+		this.mockMvc.perform(get("/api/v1/auth/installation").accept(MediaType.APPLICATION_JSON))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.success").value(true))
+			.andExpect(jsonPath("$.data.bootstrapped").isBoolean());
 	}
 
 	@Test
