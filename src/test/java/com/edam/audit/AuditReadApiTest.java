@@ -575,8 +575,9 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 		 * deterministic and counts reflect only this test's state. Production-created rows
 		 * (CREATE/SUBMIT/workflow actions) are retained by the scope of tests that need them. */
 		private void clearSyntheticAuditEvents() {
+			// new_values is a JSONB column; cast to text for LIKE matching.
 			AuditReadApiTest.this.jdbc.update(
-					"delete from audit_events where action = 'UPDATE' and new_values like '{\"note\":\"synthetic-%'");
+					"delete from audit_events where action = 'UPDATE' and cast(new_values as text) like '%synthetic-%'");
 		}
 
 		/** Insert N synthetic UPDATE audit events for the given request, each one minute apart
