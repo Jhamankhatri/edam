@@ -149,10 +149,7 @@ public class ExpenseRequestService {
 				conversion.exchangeRateId(), conversion.baseAmount());
 
 		RequestValidationContext context = validationContext(payload.opex(), payload.capex(), request, configuration,
-				payload.quotations(), payload.items() == null ? 0 : payload.items().size(),
-				payload.staDetails() == null ? 0 : payload.staDetails().size(),
-				payload.previousSummaries() == null ? 0 : payload.previousSummaries().size(),
-				payload.allocations(), payload.documents());
+				payload.documents());
 		// A draft is validated for internal consistency only; submission applies the full rules.
 		RequestValidator.validate(request, context, false);
 
@@ -185,10 +182,7 @@ public class ExpenseRequestService {
 		this.assembler.applyUpdate(request, payload, configuration.baseCurrencyId(), conversion.exchangeRateId(),
 				conversion.baseAmount());
 		RequestValidationContext context = validationContext(payload.opex(), payload.capex(), request, configuration,
-				payload.quotations(), payload.items() == null ? 0 : payload.items().size(),
-				payload.staDetails() == null ? 0 : payload.staDetails().size(),
-				payload.previousSummaries() == null ? 0 : payload.previousSummaries().size(),
-				payload.allocations(), null);
+				null);
 		RequestValidator.validate(request, context, false);
 		this.audit.record(AuditAction.UPDATE, "ExpenseRequest", id);
 		return RequestResponse.from(request, configuration.classification());
@@ -451,53 +445,37 @@ public class ExpenseRequestService {
 	// Validation context
 	// ---------------------------------------------------------------------------------------------
 
+	/**
+	 * The configuration facts for a create or update, from the payload plus the resolved configuration.
+	 *
+	 * <p>Child-row counts are not collected: the validator reads them from the aggregate it is given, so the
+	 * two cannot disagree.
+	 */
 	private RequestValidationContext validationContext(
 			com.edam.expenserequest.dto.ExpenseRequestDtos.OpexDetailPayload opex,
 			com.edam.expenserequest.dto.ExpenseRequestDtos.CapexDetailPayload capex, ExpenseRequest request,
-			Configuration configuration, List<com.edam.expenserequest.dto.ExpenseRequestDtos.QuotationPayload> quotations,
-			int itemCount, int staCount, int previousSummaryCount,
-			List<com.edam.expenserequest.dto.ExpenseRequestDtos.AllocationPayload> allocations,
+			Configuration configuration,
 			List<com.edam.expenserequest.dto.ExpenseRequestDtos.DocumentReferencePayload> documentPayloads) {
 		boolean capexRequest = capex != null;
-		int quoteCount = (quotations == null) ? 0 : quotations.size();
 		boolean threeQuotations = opex != null && Boolean.TRUE.equals(opex.threeQuotationsSelected());
 		boolean alreadyApproved = opex != null && Boolean.TRUE.equals(opex.alreadyApproved());
 		boolean taxExempt = opex != null && Boolean.TRUE.equals(opex.taxExempt());
 		boolean grnRequired = opex != null && Boolean.TRUE.equals(opex.grnRequired());
-		return new RequestValidationContext(configuration.classification(),
-				capexRequest ? "CAPEX" : "OPEX", capexDepartmentEligible(request.getDepartmentId()),
-				configuration.baseCurrencyId(), request.getCurrencyId(), quoteCount, threeQuotations,
-				alreadyApproved, taxExempt, grnRequired, hasDocumentType(documentPayloads, "OTHER"),
-				hasDocumentType(documentPayloads, "TAX"), hasDocumentType(documentPayloads, "GRN"),
-				LocalDate.now(this.clock), itemCount,
-				allocationTotal(allocations), allocationPercentage(allocations), invoiceTotal(request), staCount,
-				previousSummaryCount);
+		return new RequestValidationContext(configuration.classification(), capexRequest ? "CAPEX" : "OPEX",
+				capexDepartmentEligible(request.getDepartmentId()), configuration.baseCurrencyId(),
+				request.getCurrencyId(), threeQuotations, alreadyApproved, taxExempt, grnRequired,
+				hasDocumentType(documentPayloads, "OTHER"), hasDocumentType(documentPayloads, "TAX"),
+				hasDocumentType(documentPayloads, "GRN"), LocalDate.now(this.clock));
 	}
 
+	/** The configuration facts for a submission, where the options are no longer in a payload. */
 	private RequestValidationContext validationContextForExisting(ExpenseRequest request, Configuration configuration,
 			List<RequestDocument> attached) {
 		boolean capexRequest = request.capexDetail() != null;
-		return new RequestValidationContext(configuration.classification(),
-				capexRequest ? "CAPEX" : "OPEX", capexDepartmentEligible(request.getDepartmentId()),
-				configuration.baseCurrencyId(), request.getCurrencyId(), request.getQuotations().size(),
-				false, false, false, false, hasType(attached, "OTHER"), hasType(attached, "TAX"),
-				hasType(attached, "GRN"), LocalDate.now(this.clock), request.getItems().size(),
-				allocationTotalOf(request), allocationPercentageOf(request), invoiceTotalOf(request),
-				request.getStaDetails().size(), request.getPreviousSummaries().size());
-	}
-
-	/**
-	 * Whether the payload itself carries a document of the given type.
-	 *
-	 * <p>Used for a create/update, where the documents are being supplied in the same call and have not
-	 * been persisted yet. The "OTHER" type is what the form uses for an approved-expense proof, matching the
-	 * schema's document-type vocabulary; the BRD does not name a distinct type for it.
-	 */
-	private static boolean hasDocumentType(
-			List<com.edam.expenserequest.dto.ExpenseRequestDtos.DocumentReferencePayload> payloads, String type) {
-		return payloads != null && payloads.stream()
-			.anyMatch(payload -> payload.documentType() != null
-					&& type.equalsIgnoreCase(payload.documentType().trim()));
+		return new RequestValidationContext(configuration.classification(), capexRequest ? "CAPEX" : "OPEX",
+				capexDepartmentEligible(request.getDepartmentId()), configuration.baseCurrencyId(),
+				request.getCurrencyId(), false, false, false, false, hasType(attached, "OTHER"),
+				hasType(attached, "TAX"), hasType(attached, "GRN"), LocalDate.now(this.clock));
 	}
 
 	private static boolean hasType(List<RequestDocument> documents, String type) {
@@ -517,45 +495,6 @@ public class ExpenseRequestService {
 		return true;
 	}
 
-	private static BigDecimal allocationTotal(
-			List<com.edam.expenserequest.dto.ExpenseRequestDtos.AllocationPayload> allocations) {
-		if (allocations == null) {
-			return BigDecimal.ZERO;
-		}
-		return allocations.stream().map(allocation -> allocation.allocationAmount()).filter(Objects::nonNull)
-			.reduce(BigDecimal.ZERO, BigDecimal::add);
-	}
-
-	private static BigDecimal allocationPercentage(
-			List<com.edam.expenserequest.dto.ExpenseRequestDtos.AllocationPayload> allocations) {
-		if (allocations == null) {
-			return BigDecimal.ZERO;
-		}
-		return allocations.stream().map(allocation -> allocation.allocationPercentage()).filter(Objects::nonNull)
-			.reduce(BigDecimal.ZERO, BigDecimal::add);
-	}
-
-	private static BigDecimal allocationTotalOf(ExpenseRequest request) {
-		return request.getAllocations().stream().map(allocation -> allocation.getAllocationAmount())
-			.filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
-	}
-
-	private static BigDecimal allocationPercentageOf(ExpenseRequest request) {
-		return request.getAllocations().stream().map(allocation -> allocation.getAllocationPercentage())
-			.filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
-	}
-
-	private static BigDecimal invoiceTotal(ExpenseRequest request) {
-		if (request.getInvoices().isEmpty()) {
-			return null;
-		}
-		return request.getInvoices().stream().map(invoice -> invoice.getInvoiceAmount()).filter(Objects::nonNull)
-			.reduce(BigDecimal.ZERO, BigDecimal::add);
-	}
-
-	private static BigDecimal invoiceTotalOf(ExpenseRequest request) {
-		return invoiceTotal(request);
-	}
 
 	// ---------------------------------------------------------------------------------------------
 	// Documents

@@ -16,6 +16,27 @@ import sys
 import xml.etree.ElementTree as ET
 
 
+def _escape_property(value: str) -> str:
+    """Escape a workflow-command property value.
+
+    GitHub terminates a property at the first colon and interprets %XX escapes inside it. A raw
+    ``$`` (as in a nested class name ``Foo$Inner``) or a space silently invalidates the whole
+    command, which is how a failing test ends up with no annotation at all.
+    """
+    text = str(value).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+    # A colon ends the property list and a comma separates properties; "" is not a safe rendition
+    # of either inside a title, so they are encoded. "$" is also stripped because a nested class
+    # name ("Foo$Inner") is the common case and its presence has been observed to drop the whole
+    # annotation; "Outer.Inner" is unambiguous for a human reader.
+    text = text.replace(":", "%3A").replace(",", "%2C").replace("$", ".")
+    return text
+
+
+def _escape_data(value: str) -> str:
+    """Escape workflow-command message data."""
+    return (str(value).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))
+
+
 def emit(kind: str, title: str, message: str) -> None:
     text = " ".join(str(message).split())
     # GitHub accepts up to 64000 chars per annotation but the runner truncates much earlier in
@@ -23,7 +44,7 @@ def emit(kind: str, title: str, message: str) -> None:
     for index in range(0, max(len(text), 1), 1200):
         chunk = text[index:index + 1200]
         suffix = f" [{index // 1200 + 1}]" if len(text) > 1200 else ""
-        print(f"::{kind} title={title}{suffix}::{chunk}")
+        print(f"::{kind} title={_escape_property(str(title) + suffix)}::{_escape_data(chunk)}")
 
 
 def report_test_results() -> None:

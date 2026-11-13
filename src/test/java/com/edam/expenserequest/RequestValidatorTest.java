@@ -90,24 +90,31 @@ class RequestValidatorTest {
 	/**
 	 * An OPEX context with nothing optional selected.
 	 *
-	 * <p>The invoice total is null, not zero: "no invoices supplied" and "invoices totalling zero" are
-	 * different states, and only the second is a rule violation. Passing zero here would make every OPEX
-	 * assertion fail for a reason unrelated to the rule under test.
+	 * <p>Child-row facts (quotation count, item count, invoice total) are deliberately not passed here: the
+	 * validator reads them from the request it is given. An earlier version duplicated those counts in the
+	 * context, and the tests caught the resulting contradiction — a request with its items cleared still
+	 * passed "items are mandatory" because the context still claimed one item.
 	 */
 	private static RequestValidationContext opexContext() {
-		return contextFor("OPEX", 1, 0, 0, null, BigDecimal.ZERO);
+		return contextOf("OPEX", "OPEX");
 	}
 
 	/** A CAPEX context for the eligible department. */
 	private static RequestValidationContext capexContext() {
-		return contextFor("CAPEX", 1, 1, 0, new BigDecimal("1000.0000"), new BigDecimal("100.0000"));
+		return contextOf("CAPEX", "CAPEX");
 	}
 
-	private static RequestValidationContext contextFor(String type, int quotes, int items, int sta,
-			BigDecimal invoiceTotal, BigDecimal allocatedPercentage) {
-		return new RequestValidationContext(type, type, true, CURRENCY, CURRENCY, quotes, false, false, false, false,
-				false, false, false, TODAY, items, new BigDecimal("1000.0000"), allocatedPercentage, invoiceTotal,
-				sta, 0);
+	/** A context with no options selected and no documents attached. */
+	private static RequestValidationContext contextOf(String expenseType, String requestTypeCode) {
+		return new RequestValidationContext(expenseType, requestTypeCode, true, CURRENCY, CURRENCY, false, false,
+				false, false, false, false, false, TODAY);
+	}
+
+	/** An OPEX context with the named conditional options selected. */
+	private static RequestValidationContext contextWithOptions(boolean threeQuotations, boolean alreadyApproved,
+			boolean taxExempt, boolean grnRequired) {
+		return new RequestValidationContext("OPEX", "OPEX", true, CURRENCY, CURRENCY, threeQuotations,
+				alreadyApproved, taxExempt, grnRequired, false, false, false, TODAY);
 	}
 
 	private static List<FieldErrorDetail> errorsOf(ExpenseRequest request, RequestValidationContext context) {
@@ -261,62 +268,67 @@ class RequestValidatorTest {
 		@Test
 		@DisplayName("no quotation is rejected: quotation 1 is always required")
 		void needsOneQuotation() {
-			assertThat(fieldsOf(validOpex(), contextFor("OPEX", 0, 0, 0, BigDecimal.ZERO, BigDecimal.ZERO)))
-				.contains("quotations");
+			ExpenseRequest request = validOpex();
+			request.replaceQuotations(List.of());
+			assertThat(fieldsOf(request, opexContext())).contains("quotations");
 		}
 
 		@Test
 		@DisplayName("declaring three quotations but supplying two is rejected")
 		void threeQuotationsDeclaredButTwoSupplied() {
-			RequestValidationContext context = new RequestValidationContext("OPEX", "OPEX", true, CURRENCY,
-					CURRENCY, 2, true, false, false, false, false, false, false, TODAY, 0,
-					new BigDecimal("1000.0000"), BigDecimal.ZERO, BigDecimal.ZERO, 0, 0);
-			assertThat(fieldsOf(validOpex(), context)).contains("quotations");
+			ExpenseRequest request = validOpex();
+			request.replaceQuotations(List.of(
+					new com.edam.expenserequest.model.ExpenseQuotation(null, "Q-1", TODAY,
+							new BigDecimal("1000.0000"), CURRENCY, null),
+					new com.edam.expenserequest.model.ExpenseQuotation(null, "Q-2", TODAY,
+							new BigDecimal("1000.0000"), CURRENCY, null)));
+			RequestValidationContext context = contextWithOptions(true, false, false, false);
+			assertThat(fieldsOf(request, context)).contains("quotations");
 		}
 
 		@Test
 		@DisplayName("declaring three quotations and supplying three is accepted")
 		void threeQuotationsSupplied() {
-			RequestValidationContext context = new RequestValidationContext("OPEX", "OPEX", true, CURRENCY,
-					CURRENCY, 3, true, false, false, false, false, false, false, TODAY, 0,
-					new BigDecimal("1000.0000"), BigDecimal.ZERO, BigDecimal.ZERO, 0, 0);
-			assertThat(fieldsOf(validOpex(), context)).doesNotContain("quotations");
+			ExpenseRequest request = validOpex();
+			request.replaceQuotations(List.of(
+					new com.edam.expenserequest.model.ExpenseQuotation(null, "Q-1", TODAY,
+							new BigDecimal("1000.0000"), CURRENCY, null),
+					new com.edam.expenserequest.model.ExpenseQuotation(null, "Q-2", TODAY,
+							new BigDecimal("1000.0000"), CURRENCY, null),
+					new com.edam.expenserequest.model.ExpenseQuotation(null, "Q-3", TODAY,
+							new BigDecimal("1000.0000"), CURRENCY, null)));
+			RequestValidationContext context = contextWithOptions(true, false, false, false);
+			assertThat(fieldsOf(request, context)).doesNotContain("quotations");
 		}
 
 		@Test
 		@DisplayName("an already-approved expense without its document is rejected")
 		void alreadyApprovedNeedsDocument() {
-			RequestValidationContext context = new RequestValidationContext("OPEX", "OPEX", true, CURRENCY,
-					CURRENCY, 1, false, true, false, false, false, false, false, TODAY, 0,
-					new BigDecimal("1000.0000"), BigDecimal.ZERO, BigDecimal.ZERO, 0, 0);
+			RequestValidationContext context = contextWithOptions(false, true, false, false);
 			assertThat(fieldsOf(validOpex(), context)).contains("documents");
 		}
 
 		@Test
 		@DisplayName("a tax exemption without its certificate is rejected")
 		void taxExemptNeedsCertificate() {
-			RequestValidationContext context = new RequestValidationContext("OPEX", "OPEX", true, CURRENCY,
-					CURRENCY, 1, false, false, true, false, false, false, false, TODAY, 0,
-					new BigDecimal("1000.0000"), BigDecimal.ZERO, BigDecimal.ZERO, 0, 0);
+			RequestValidationContext context = contextWithOptions(false, false, true, false);
 			assertThat(fieldsOf(validOpex(), context)).contains("documents");
 		}
 
 		@Test
 		@DisplayName("a required GRN that is missing is rejected")
 		void grnNeedsDocument() {
-			RequestValidationContext context = new RequestValidationContext("OPEX", "OPEX", true, CURRENCY,
-					CURRENCY, 1, false, false, false, true, false, false, false, TODAY, 0,
-					new BigDecimal("1000.0000"), BigDecimal.ZERO, BigDecimal.ZERO, 0, 0);
+			RequestValidationContext context = contextWithOptions(false, false, false, true);
 			assertThat(fieldsOf(validOpex(), context)).contains("documents");
 		}
 
 		@Test
 		@DisplayName("the conditional document rules do not block saving a draft")
 		void draftMayLackDocuments() {
-			RequestValidationContext context = new RequestValidationContext("OPEX", "OPEX", true, CURRENCY,
-					CURRENCY, 0, true, true, true, true, false, false, false, TODAY, 0,
-					new BigDecimal("1000.0000"), BigDecimal.ZERO, BigDecimal.ZERO, 0, 0);
 			ExpenseRequest request = validOpex();
+			request.replaceQuotations(List.of());
+			RequestValidationContext context = new RequestValidationContext("OPEX", "OPEX", true, CURRENCY,
+					CURRENCY, true, true, true, true, false, false, false, TODAY);
 			assertThatCode(() -> RequestValidator.validate(request, context, false)).doesNotThrowAnyException();
 		}
 	}
@@ -341,9 +353,8 @@ class RequestValidatorTest {
 		@DisplayName("a CAPEX request without a sales tax authority is rejected")
 		void staMandatory() {
 			ExpenseRequest request = validCapex();
-			RequestValidationContext noSta = contextFor("CAPEX", 0, 1, 0, new BigDecimal("1000.0000"),
-					new BigDecimal("100.0000"));
-			assertThat(fieldsOf(request, noSta)).contains("staDetails");
+			request.replaceStaDetails(List.of());
+			assertThat(fieldsOf(request, capexContext())).contains("staDetails");
 		}
 
 		@Test
@@ -434,8 +445,7 @@ class RequestValidatorTest {
 		@DisplayName("a department not configured for CAPEX is rejected")
 		void ineligibleDepartment() {
 			RequestValidationContext ineligible = new RequestValidationContext("CAPEX", "CAPEX", false, CURRENCY,
-					CURRENCY, 0, false, false, false, false, false, false, false, TODAY, 1,
-					new BigDecimal("1000.0000"), new BigDecimal("100.0000"), new BigDecimal("1000.0000"), 1, 0);
+					CURRENCY, false, false, false, false, false, false, false, TODAY);
 			assertThat(fieldsOf(validCapex(), ineligible)).contains("departmentId");
 		}
 	}
@@ -451,18 +461,14 @@ class RequestValidatorTest {
 		@Test
 		@DisplayName("a CAPEX category on an OPEX request type is rejected")
 		void categoryMustMatchRequestType() {
-			RequestValidationContext mismatch = new RequestValidationContext("CAPEX", "OPEX", true, CURRENCY,
-					CURRENCY, 1, false, false, false, false, false, false, false, TODAY, 0,
-					new BigDecimal("1000.0000"), BigDecimal.ZERO, BigDecimal.ZERO, 0, 0);
+			RequestValidationContext mismatch = contextOf("CAPEX", "OPEX");
 			assertThat(fieldsOf(validOpex(), mismatch)).contains("expenseCategoryId");
 		}
 
 		@Test
 		@DisplayName("a BOTH category is usable on either request type")
 		void bothCategoryMatches() {
-			RequestValidationContext both = new RequestValidationContext("BOTH", "OPEX", true, CURRENCY, CURRENCY,
-					1, false, false, false, false, false, false, false, TODAY, 0, new BigDecimal("1000.0000"),
-					BigDecimal.ZERO, BigDecimal.ZERO, 0, 0);
+			RequestValidationContext both = contextOf("BOTH", "OPEX");
 			assertThat(fieldsOf(validOpex(), both)).doesNotContain("expenseCategoryId");
 		}
 
@@ -499,15 +505,19 @@ class RequestValidatorTest {
 		@Test
 		@DisplayName("an invoice total that differs from the requested amount is rejected")
 		void invoiceTotalMustEqualRequest() {
-			assertThat(fieldsOf(validOpex(), contextFor("OPEX", 1, 0, 0, new BigDecimal("999.0000"),
-					BigDecimal.ZERO))).contains("invoices");
+			ExpenseRequest request = validOpex();
+			request.replaceInvoices(List.of(new com.edam.expenserequest.model.ExpenseInvoice("INV-1", TODAY,
+					new BigDecimal("999.0000"), CURRENCY, null, null)));
+			assertThat(fieldsOf(request, opexContext())).contains("invoices");
 		}
 
 		@Test
 		@DisplayName("an invoice total equal to the requested amount is accepted")
 		void invoiceTotalMatchingRequest() {
-			assertThat(fieldsOf(validOpex(), contextFor("OPEX", 1, 0, 0, new BigDecimal("1000.0000"),
-					BigDecimal.ZERO))).doesNotContain("invoices");
+			ExpenseRequest request = validOpex();
+			request.replaceInvoices(List.of(new com.edam.expenserequest.model.ExpenseInvoice("INV-1", TODAY,
+					new BigDecimal("1000.0000"), CURRENCY, null, null)));
+			assertThat(fieldsOf(request, opexContext())).doesNotContain("invoices");
 		}
 
 		@Test

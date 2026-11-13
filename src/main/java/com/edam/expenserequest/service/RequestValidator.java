@@ -108,11 +108,13 @@ public final class RequestValidator {
 		// FR-REQ-005/006: if invoices are supplied, their total must equal the requested amount. The BRD
 		// states this for CAPEX explicitly ("invoice total, approval amount and total charges must be
 		// positive and equal") and FR-REQ-006 states it generally.
-		if (context.invoiceTotal() != null && request.getRequestedAmount() != null) {
-			if (context.invoiceTotal().compareTo(request.getRequestedAmount()) != 0) {
-				errors.add(new FieldErrorDetail("invoices",
-						"The invoice total must equal the requested amount."));
-			}
+		BigDecimal invoiceTotal = request.getInvoices().isEmpty() ? null : request.getInvoices().stream()
+			.map(invoice -> invoice.getInvoiceAmount())
+			.filter(java.util.Objects::nonNull)
+			.reduce(BigDecimal.ZERO, BigDecimal::add);
+		if (invoiceTotal != null && request.getRequestedAmount() != null
+				&& invoiceTotal.compareTo(request.getRequestedAmount()) != 0) {
+			errors.add(new FieldErrorDetail("invoices", "The invoice total must equal the requested amount."));
 		}
 		// Schema: an item's quantity must be positive and its total must equal quantity x unit price. The
 		// entity computes the total, so this only checks the description, which is NOT NULL and blank-proof
@@ -190,10 +192,11 @@ public final class RequestValidator {
 		// BRD 8.2: "Quotation 1 is always required. Quotations 2 and 3 are required when Three Quotations
 		// Attached is selected; otherwise comments are required for missing optional quotations."
 		if (submit) {
-			if (context.quoteCount() == 0) {
+			int quoteCount = request.getQuotations().size();
+			if (quoteCount == 0) {
 				errors.add(new FieldErrorDetail("quotations", "At least one quotation is required."));
 			}
-			else if (context.threeQuotationsSelected() && context.quoteCount() < 3) {
+			else if (context.threeQuotationsSelected() && quoteCount < 3) {
 				errors.add(new FieldErrorDetail("quotations",
 						"Three quotations were declared but fewer than three were supplied."));
 			}
@@ -244,11 +247,11 @@ public final class RequestValidator {
 			errors.add(new FieldErrorDetail("capexDetail.requestType", "A CAPEX request type is required."));
 		}
 		// BRD 8.3: "Request type and Sales Tax Authority selection are required."
-		if (submit && context.staDetailCount() == 0) {
+		if (submit && request.getStaDetails().isEmpty()) {
 			errors.add(new FieldErrorDetail("staDetails", "At least one sales tax authority is required."));
 		}
 		// BRD 8.3: "Item-wise details are mandatory before proceeding."
-		if (submit && context.itemCount() == 0) {
+		if (submit && request.getItems().isEmpty()) {
 			errors.add(new FieldErrorDetail("items", "At least one item is required for a CAPEX request."));
 		}
 		// BRD 8.3: "Invoice total, approval amount and total charges must be positive and equal."
