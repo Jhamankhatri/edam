@@ -361,8 +361,20 @@ public class ApprovalService {
 		ExpenseRequest request = this.requests.findById(instance.getExpenseRequestId())
 			.orElseThrow(() -> new ResourceNotFoundException("ExpenseRequest", instance.getExpenseRequestId()));
 
+		// Capture a minimal BEFORE snapshot of the fields we will record as changed. Remarks are
+		// not part of the prior task state (they are input to this action), so before.remarks is
+		// omitted. The engine mutates instance/task state, so this snapshot must be taken before
+		// engine calls.
+		java.util.Map<String, Object> before = new java.util.LinkedHashMap<>();
+		before.put("taskStatus", task.getStatus().name());
+		before.put("requestStatus", request.getCurrentStatusCode().name());
+		if (instance.getCurrentStateId() != null) {
+			before.put("workflowStateId", instance.getCurrentStateId());
+		}
+		before.put("workflowCompleted", instance.getCompletedAt() != null);
+
 		WorkflowEngine.AssignmentContext context = new WorkflowEngine.AssignmentContext(request.getDepartmentId(),
-				request.getRequestedBy(), null);
+			request.getRequestedBy(), null);
 		String correlationId = CorrelationId.current();
 		WorkflowEngine.ActionOutcome outcome = switch (action) {
 			case APPROVE -> this.engine.approve(instance, task, caller.userId(), remarks.trim(), correlationId,
@@ -376,7 +388,20 @@ public class ApprovalService {
 
 		applyOutcomeToRequest(request, instance, outcome);
 		this.requests.save(request);
-		this.audit.record(auditActionFor(action), "WorkflowTask", taskId);
+		// Record the action with redacted remarks and resulting state. Workflow_actions remains the
+		// authoritative per-step history; this event is the link from the central audit trail to
+		// that history, and is what makes timeline construction for approvals reliable without
+		// joining every module. Remarks are passed through recordChange so they are redacted by
+		// the existing AuditValueRedactor.
+		java.util.Map<String, Object> after = new java.util.LinkedHashMap<>();
+		after.put("remarks", remarks.trim());
+		after.put("taskStatus", task.getStatus().name());
+		after.put("requestStatus", request.getCurrentStatusCode().name());
+		if (instance.getCurrentStateId() != null) {
+			after.put("workflowStateId", instance.getCurrentStateId());
+		}
+		after.put("workflowCompleted", outcome.workflowCompleted());
+		this.audit.recordChange(auditActionFor(action), "WorkflowTask", taskId, before, after);
 		log.info("approval.{} taskId={} instanceId={} requestId={} actor={} completed={}", action, taskId,
 				instance.getId(), request.getId(), caller.userId(), outcome.workflowCompleted());
 		return response(task, outcome, request);
@@ -413,9 +438,21 @@ public class ApprovalService {
 		ExpenseRequest request = this.requests.findById(instance.getExpenseRequestId())
 			.orElseThrow(() -> new ResourceNotFoundException("ExpenseRequest", instance.getExpenseRequestId()));
 
+		// BEFORE snapshot: the task being forwarded is currently PENDING and assigned to caller;
+		// after forward it is closed (FORWARDED) and new tasks are opened for the recipient.
+		java.util.Map<String, Object> before = new java.util.LinkedHashMap<>();
+		before.put("taskStatus", task.getStatus().name());
+		before.put("assignedUserId", task.getAssignedUserId());
+		before.put("assignedRoleId", task.getAssignedRoleId());
+
 		List<WorkflowTask> opened = this.engine.forward(instance, task, recipientUserId, caller.userId(),
 				remarks.trim(), CorrelationId.current());
-		this.audit.record(AuditAction.FORWARD, "WorkflowTask", taskId);
+		java.util.Map<String, Object> after = new java.util.LinkedHashMap<>();
+		after.put("remarks", remarks.trim());
+		after.put("taskStatus", task.getStatus().name());
+		after.put("forwardedToUserId", recipientUserId);
+		after.put("openedTaskIds", opened.stream().map(WorkflowTask::getId).toList());
+		this.audit.recordChange(AuditAction.FORWARD, "WorkflowTask", taskId, before, after);
 		log.info("approval.forward taskId={} to={} actor={}", taskId, recipientUserId, caller.userId());
 		WorkflowState state = instance.getCurrentStateId() == null ? null
 				: this.states.findById(instance.getCurrentStateId()).orElse(null);
