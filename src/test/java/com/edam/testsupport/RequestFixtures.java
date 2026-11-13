@@ -225,9 +225,9 @@ public final class RequestFixtures {
 	 * <p>The step is a single configured individual so that resolution is deterministic and needs no
 	 * department-hierarchy data. Tests that care about resolution strategies configure their own workflow.
 	 *
-	 * @return the published version, so a test can assert the request pinned it
+	 * @return the published version's id, so a test can assert the request pinned it
 	 */
-	public static com.edam.workflow.dto.WorkflowDtos.VersionResponse publishedWorkflow(
+	public static java.util.UUID publishedWorkflow(
 			com.edam.workflow.service.WorkflowConfigurationService configuration,
 			ExpenseRequestType requestType, java.util.UUID approverId, String codeSuffix) {
 		// Idempotent on purpose. Several tests share one request type, and two active definitions for the
@@ -236,7 +236,7 @@ public final class RequestFixtures {
 		// when the submission lookup would otherwise refuse keeps the fixture consistent with the rule it
 		// is satisfying.
 		try {
-			return configuration.requirePublishedForRequestType(requestType.getId());
+			return configuration.requirePublishedForRequestType(requestType.getId()).getId();
 		}
 		catch (com.edam.common.exception.BusinessException alreadyConfigured) {
 			// No published revision yet: fall through and create one.
@@ -254,7 +254,7 @@ public final class RequestFixtures {
 										approverId, null)))),
 						java.util.List.of(), null));
 		return configuration.publish(draft.id(),
-				new com.edam.workflow.dto.WorkflowDtos.PublishRequest(null), approverId);
+				new com.edam.workflow.dto.WorkflowDtos.PublishRequest(null), approverId).id();
 	}
 
 }
