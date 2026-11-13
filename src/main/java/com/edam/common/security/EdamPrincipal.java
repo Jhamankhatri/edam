@@ -107,9 +107,17 @@ public record EdamPrincipal(UUID userId, String employeeCode, String username, S
 					&& organizationUnitId.equals(scope.referenceId()));
 	}
 
-	/** True when the only scope the user holds is their own records. */
+	/**
+	 * True when the user's scopes exist and every one of them is their own records.
+	 *
+	 * <p>The {@code !isEmpty()} guard is load-bearing, not defensive: {@code allMatch} on an empty stream
+	 * returns {@code true}, so without it a user with <em>no</em> scopes would be reported as "self-scoped".
+	 * That is the opposite of the truth — an unscoped user has no access at all — and a caller using this
+	 * to decide whether to show a "my requests" shortcut would offer one to someone who cannot open it.
+	 */
 	public boolean isSelfScopedOnly() {
-		return !hasInstallationScope() && this.dataScopes.stream().allMatch(DataScope::isSelfOnly);
+		return !this.dataScopes.isEmpty() && !hasInstallationScope()
+				&& this.dataScopes.stream().allMatch(DataScope::isSelfOnly);
 	}
 
 	/** Grouping of permissions by module, used by the identity endpoint and the admin UI. */
