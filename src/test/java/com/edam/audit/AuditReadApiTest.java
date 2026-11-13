@@ -822,28 +822,25 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("events after boundedAt are excluded from the pagination session")
 		void eventsAfterBoundedAtAreExcluded() throws Exception {
-			
 			UUID requestId = createAndSubmitRequest();
-			// Insert an event whose timestamp is 1s in the future, take first page (fixes boundedAt).
-			// Wait for boundedAt to be in the past relative to the late event so the late event is
-			// definitely excluded.
-			Instant lateTs = Instant.now().plusSeconds(5);
-			// Busy-wait until wall clock is past lateTs - 2s, so the first page's boundedAt is
-			// strictly before lateTs. This uses Thread.sleep, but only because we need real time to
-			// pass for the boundedAt wall-clock to move.
-			Thread.sleep(2000L);
-			PageResult p1 = fetchPage(requestId, 5, null, requesterPrincipal());
-			Instant boundedAt = p1.boundedAt;
-			org.junit.jupiter.api.Assertions.assertTrue(boundedAt.isBefore(lateTs),
-					() -> "boundedAt " + boundedAt + " must be before lateTs " + lateTs);
+			// Save the late event first with a timestamp far enough in the future that the first
+			// page's boundedAt (captured as Instant.now() inside the service) will be strictly
+			// before lateTs. The row exists in the database; it must NOT be returned in this
+			// pagination session because its timestamp is past boundedAt.
+			Instant lateTs = Instant.now().plusSeconds(60);
 			AuditEvent late = AuditEvent.builder(AuditAction.UPDATE, "ExpenseRequest")
 					.entityId(requestId)
 					.performedBy(AuditReadApiTest.this.requester.getId())
 					.performedByUsername(AuditReadApiTest.this.requester.getUsername())
 					.createdAt(lateTs)
+					.newValues("{\"note\":\"late-event\"}")
 					.build();
 			String lateId = AuditReadApiTest.this.auditRepository.save(late).getId().toString();
-			// Walk every remaining page in this session — must not contain the late event.
+			PageResult p1 = fetchPage(requestId, 5, null, requesterPrincipal());
+			Instant boundedAt = p1.boundedAt;
+			org.junit.jupiter.api.Assertions.assertTrue(boundedAt.isBefore(lateTs),
+					() -> "boundedAt " + boundedAt + " must be before lateTs " + lateTs);
+			// Walk every page in this session — must not contain the late event.
 			String cursor = p1.nextCursor;
 			java.util.Set<String> seen = new java.util.HashSet<>(p1.eventIds);
 			while (cursor != null) {
@@ -854,8 +851,14 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 				cursor = p.nextCursor;
 			}
 			assertThat(seen).doesNotContain(lateId);
-			// A fresh pagination (no cursor) SHOULD include the late event (new boundedAt).
+			// Wait until wall-clock passes lateTs, then start a fresh pagination; the new boundedAt
+			// must be >= lateTs and the event must now appear. Uses Thread.sleep because the
+			// assertion depends on real wall-clock movement.
+			long sleepMs = Math.max(0, java.time.Duration.between(Instant.now(), lateTs).toMillis()) + 1000;
+			Thread.sleep(sleepMs);
 			PageResult fresh = fetchPage(requestId, 50, null, requesterPrincipal());
+			org.junit.jupiter.api.Assertions.assertFalse(fresh.boundedAt.isBefore(lateTs),
+					() -> "fresh boundedAt " + fresh.boundedAt + " must be >= lateTs " + lateTs);
 			assertThat(fresh.eventIds).contains(lateId);
 		}
 
