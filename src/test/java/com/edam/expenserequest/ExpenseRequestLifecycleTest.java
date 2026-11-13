@@ -483,7 +483,8 @@ class ExpenseRequestLifecycleTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("a failed create leaves no request behind")
 		void failedCreateLeavesNothingBehind() {
-			UUID media = RequestFixtures.mediaAsset(this.jdbc, this.requester.getId());
+			UUID media = RequestFixtures.mediaAsset(ExpenseRequestLifecycleTest.this.jdbc,
+					ExpenseRequestLifecycleTest.this.requester.getId());
 			CreateRequest payload = new CreateRequest(ExpenseRequestLifecycleTest.this.opexType.getId(), ExpenseRequestLifecycleTest.this.opexCategory.getId(), null,
 					ExpenseRequestLifecycleTest.this.nature.getId(), ExpenseRequestLifecycleTest.this.department.getId(), null, ExpenseRequestLifecycleTest.this.currency.getId(),
 					RequestFixtures.money("1000.0000"), "x", recurringOpex(), null,
