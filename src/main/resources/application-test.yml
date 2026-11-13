@@ -22,3 +22,17 @@ edam:
   security:
     dev-users:
       enabled: true
+    # The test suite must be able to complete the bootstrap path deliberately, and must be able to
+    # unlock nothing by accident. A fixed test token is safe here: it exists only in the test profile,
+    # the test database is ephemeral, and no deployment reads this file.
+    password:
+      min-length: 12
+    lockout:
+      threshold: 5
+      duration: PT15M
+    password-reset:
+      ttl: PT30M
+  installation:
+    bootstrap-token: test-installation-token-not-a-secret
+  cors:
+    allowed-origins: http://localhost:5173

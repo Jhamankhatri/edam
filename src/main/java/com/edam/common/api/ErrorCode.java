@@ -47,6 +47,23 @@ public enum ErrorCode {
 	UNAUTHENTICATED("EDAM-2001", "Sign in is required."),
 	/** The authenticated user lacks permission for the operation. */
 	ACCESS_DENIED("EDAM-2002", "You are not permitted to perform this operation."),
+	/**
+	 * Credentials were rejected. Deliberately identical for an unknown user, a wrong password and an
+	 * inactive account: any distinction lets an attacker enumerate accounts.
+	 */
+	INVALID_CREDENTIALS("EDAM-2006", "The username or password is incorrect."),
+	/** The account is temporarily locked after repeated failed sign-in attempts. */
+	ACCOUNT_LOCKED("EDAM-2007", "This account is temporarily locked after repeated failed sign-in attempts."),
+	/** The presented password does not satisfy the configured policy. */
+	WEAK_PASSWORD("EDAM-2008", "The password does not meet the required policy."),
+	/** A password-reset token is unknown, already used or expired. */
+	INVALID_RESET_TOKEN("EDAM-2009", "This reset link is invalid or has expired."),
+	/** Installation has already been completed, so bootstrap is closed. */
+	INSTALLATION_ALREADY_COMPLETED("EDAM-2010", "This installation has already been set up."),
+	/** The installation has not been bootstrapped yet, so no user can sign in. */
+	INSTALLATION_NOT_BOOTSTRAPPED("EDAM-2011", "This installation has not been set up yet."),
+	/** The caller tried to change a protected system role in a way that would break the product. */
+	SYSTEM_ROLE_PROTECTED("EDAM-3005", "This system role cannot be changed in that way."),
 	/** The addressed resource does not exist or is not visible to the caller. */
 	NOT_FOUND("EDAM-4001", "The requested resource was not found."),
 	/** Persistence layer rejected or failed the operation. */
