@@ -33,8 +33,7 @@ PHASE_3 = ["WORKFLOW_VIEW", "WORKFLOW_MANAGE", "WORKFLOW_PUBLISH", "APPROVAL_VIE
 # The module each unconsumed permission belongs to. Kept here rather than inferred,
 # because the point of the table is the human judgement about what is missing and why.
 PENDING = {
-    "AUDIT_VIEW": ("Audit log reading", "Not in Phase 1-3 scope"),
-    "AUDIT_EXPORT": ("Audit export", "Not in Phase 1-3 scope"),
+    "AUDIT_EXPORT": ("Audit export", "Not in Phase 4A Step 1 scope (AUD-03)"),
     "CONFIGURATION_VIEW": ("System configuration screen", "Not in Phase 1-3 scope"),
     "DASHBOARD_MANAGE": ("Dashboard widgets", "Not in Phase 1-3 scope"),
     "DOCUMENT_UPLOAD": ("Document management", "Phase 4"),

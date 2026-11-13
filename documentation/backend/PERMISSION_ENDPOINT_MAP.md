@@ -2,7 +2,7 @@
 
 Generated from the controllers by `tools/permission-map.py`, not maintained by hand. Every `@EdamPermission` below was read off a mapped method, and `EndpointAuthorizationArchitectureTest` fails the build if a mapped method carries no guard at all.
 
-**127 mapped methods. 58 permission constants exist; 36 are consumed by an endpoint; 22 are not.** The unused ones are listed at the end with the module each belongs to, because an unused permission is not a defect — it is a module that has not been built yet.
+**130 mapped methods. 58 permission constants exist; 37 are consumed by an endpoint; 21 are not.** The unused ones are listed at the end with the module each belongs to, because an unused permission is not a defect — it is a module that has not been built yet.
 
 ## Phase 3 — workflow and approvals
 
@@ -52,6 +52,7 @@ endpoint permission answers "may this user act on approvals at all"; the assignm
 | `APPROVAL_LIMIT_MANAGE` | 3 | `/approval-limits`, `/approval-limits/{id}`, `/approval-limits/{id}/activation` |
 | `APPROVAL_LIMIT_VIEW` | 3 | `/approval-limits`, `/approval-limits/{id}`, `/approval-limits/authority-check` |
 | `APPROVAL_VIEW` | 4 | `/approvals`, `/approvals/count`, `/approvals/tasks/{taskId}`, `/approvals/tasks/{taskId}/request` |
+| `AUDIT_VIEW` | 2 | `/audit-events`, `/audit-events/{id}` |
 | `COMMITTEE_MANAGE` | 7 | `/committees`, `/committees/{id}`, `/committees/{id}/deactivate`, `/committees/{id}/members`, `/committees/{id}/members/{memberId}/end`, `/committees/{id}/levels`, `/committees/{id}/levels/{levelId}/deactivate` |
 | `COMMITTEE_VIEW` | 3 | `/committees`, `/committees/{id}`, `/committees/coverage` |
 | `CONFIGURATION_MANAGE` | 1 | `/organization/profile` |
@@ -72,7 +73,7 @@ endpoint permission answers "may this user act on approvals at all"; the assignm
 | `REQUEST_CREATE` | 1 | `/expense-requests` |
 | `REQUEST_EDIT` | 1 | `/expense-requests/{id}` |
 | `REQUEST_SUBMIT` | 1 | `/expense-requests/{id}/submit` |
-| `REQUEST_VIEW_OWN` | 2 | `/expense-requests`, `/expense-requests/{id}` |
+| `REQUEST_VIEW_OWN` | 3 | `/expense-requests/{id}/activity`, `/expense-requests`, `/expense-requests/{id}` |
 | `ROLE_MANAGE` | 4 | `/roles`, `/roles/{id}`, `/roles/{id}/activation`, `/roles/{id}/permissions` |
 | `ROLE_VIEW` | 3 | `/roles`, `/roles/permissions`, `/roles/{id}` |
 | `TAX_AUTHORITY_MANAGE` | 1 | `/master-data/tax-authorities` |
@@ -93,8 +94,7 @@ A permission in the catalogue with no consumer is a module not yet built. Listin
 
 | Permission | Module it belongs to | Phase |
 |---|---|---|
-| `AUDIT_EXPORT` | Audit export | Not in Phase 1-3 scope |
-| `AUDIT_VIEW` | Audit log reading | Not in Phase 1-3 scope |
+| `AUDIT_EXPORT` | Audit export | Not in Phase 4A Step 1 scope (AUD-03) |
 | `CONFIGURATION_VIEW` | System configuration screen | Not in Phase 1-3 scope |
 | `DASHBOARD_MANAGE` | Dashboard widgets | Not in Phase 1-3 scope |
 | `DOCUMENT_DELETE` | Document management | Phase 4 |

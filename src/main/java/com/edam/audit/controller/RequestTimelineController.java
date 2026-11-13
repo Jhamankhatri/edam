@@ -48,7 +48,7 @@ public class RequestTimelineController {
 	}
 
 	@GetMapping("/{id}/activity")
-	@EdamPermission(value = Permissions.REQUEST_VIEW_OWN, ownershipMaySuffice = true)
+	@EdamPermission(Permissions.REQUEST_VIEW_OWN)
 	@Operation(summary = "Activity timeline for a request",
 			description = "Merges audit events (creation, updates, submission, cancellation) with workflow "
 					+ "actions (approve, reject, revert, forward, escalate) and task assignments, in "
