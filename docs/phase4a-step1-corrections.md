@@ -8,14 +8,18 @@
 | Branch | `feature/phase-4a-step1-audit-corrections` |
 | Target | `main` |
 | Base | `main @ 5073570a918eb6ce58ee67f1df47b35cfdb2b026` (PR #9 merge) |
-| **Final head SHA** | **`442f71bf51eb04d00b95572757bd65a17e03b394`** |
-| **Final CI (pull_request)** | **[`43517599318`](https://github.com/Jhamankhatri/edam/actions/runs/43517599318) — all green** |
+| **Final head SHA** | **`39f5614b88e3a2c8b32216e9ca80e3b5c47c442f`** |
+| **Final CI (pull_request)** | **[`43519615134`](https://github.com/Jhamankhatri/edam/actions/runs/43519615134) — all green** |
 | Test tally (final CI) | 24 classes, **321 tests, 0 failures, 0 errors, 3 skipped** |
 | CI jobs (final) | `build-and-test` ✓, `war-package-smoke-test` ✓, `prod-profile-smoke-test` ✓ |
 
 ## Historical verification note
 
-Earlier in this PR, an intermediate CI run [`43516091998`](https://github.com/Jhamankhatri/edam/actions/runs/43516091998) passed at commit `18532be7621dba18e4c76ff5abba8a1c22668b09` (code + H-1/H-2 fixes + tests, before the documentation-only commit). The documentation-only commit `442f71b` (this document) was then pushed and verified by run `43517599318` above, which is the authoritative green run for the final head. All test counts and job results are identical between the two runs because the documentation commit does not touch source code. The section 7 verification table and the test-evidence tables below reflect the final head `442f71b` and run `43517599318`.
+Earlier heads in this PR were also green:
+- `18532be7621dba18e4c76ff5abba8a1c22668b09` (code + H-1/H-2 fixes + tests) — CI [`43516091998`](https://github.com/Jhamankhatri/edam/actions/runs/43516091998) ✓.
+- `442f71bf51eb04d00b95572757bd65a17e03b394` (first documentation rewrite) — CI [`43517599318`](https://github.com/Jhamankhatri/edam/actions/runs/43517599318) ✓.
+
+Both documentation-only commits (`442f71b`, `39f5614`) change only `docs/phase4a-step1-corrections.md` and no source code; test tally and job results are therefore identical across all three runs. The section 7 verification table and test-evidence tables below reflect the final head `39f5614` and run `43519615134`.
 
 ## Summary of fixes (all review items closed)
 
@@ -150,8 +154,8 @@ No historical rows are modified. No passwords/tokens/secrets are included; all d
 
 | Check | Result |
 |---|---|
-| Commit (final head) | `442f71bf51eb04d00b95572757bd65a17e03b394` |
-| CI run (pull_request, matches final head) | [`43517599318`](https://github.com/Jhamankhatri/edam/actions/runs/43517599318) — **success** |
+| Commit (final head) | `39f5614b88e3a2c8b32216e9ca80e3b5c47c442f` |
+| CI run (pull_request, matches final head) | [`43519615134`](https://github.com/Jhamankhatri/edam/actions/runs/43519615134) — **success** |
 | Maven compile | ✅ zero errors |
 | `mvn verify` (Postgres Testcontainers) | ✅ 24 classes, **321 tests, 0 failures, 0 errors, 3 skipped** |
 | AuditReadApiTest (new + existing) | 32 tests, 0 failures, 0 errors — includes the authorization, timeline, and UUID ordering cases listed below. |
