@@ -144,8 +144,15 @@ class ApproverResolutionTest extends AbstractPostgreSqlIntegrationTest {
 				Set.of(new DataScope(DataScope.Type.DEPARTMENT, this.department.getId())));
 	}
 
-	private ExpenseRequestDtos.RequestResponse draft() {
-		return this.requests.create(new ExpenseRequestDtos.CreateRequest(this.requestType.getId(),
+	/**
+	 * A complete draft against the given request type.
+	 *
+	 * <p>It takes the type as a parameter rather than reading the field: the unresolvable-designation tests
+	 * deliberately work with a request whose own type is not the published one, and a helper that silently
+	 * used a stale field would make those tests assert against the wrong chain.
+	 */
+	private ExpenseRequestDtos.RequestResponse draft(ExpenseRequestType type) {
+		return this.requests.create(new ExpenseRequestDtos.CreateRequest(type.getId(),
 				this.category.getId(), null, this.nature.getId(), this.department.getId(), null,
 				this.currency.getId(), new java.math.BigDecimal("900.0000"), "Resolution test",
 				new ExpenseRequestDtos.OpexDetailPayload(true, "MONTHLY", null, null, null, null, null, null,
@@ -217,35 +224,35 @@ class ApproverResolutionTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("resolves to that user and creates a genuine task")
 		void resolvesToTheNamedUser() {
-			this.requestType = published(List.of(WorkflowStepApprover.ApproverType.USER), this.approver.getId());
+			ApproverResolutionTest.this.requestType = ApproverResolutionTest.this.published(List.of(WorkflowStepApprover.ApproverType.USER), ApproverResolutionTest.this.approver.getId());
 
-			UUID requestId = submitInto(this.requestType);
+			UUID requestId = ApproverResolutionTest.this.submitInto(ApproverResolutionTest.this.requestType);
 
-			WorkflowInstance instance = this.instances.findByExpenseRequestId(requestId).orElseThrow();
-			var open = this.tasks.findByWorkflowInstanceIdOrderByAssignedAtAsc(instance.getId());
+			WorkflowInstance instance = ApproverResolutionTest.this.instances.findByExpenseRequestId(requestId).orElseThrow();
+			var open = ApproverResolutionTest.this.tasks.findByWorkflowInstanceIdOrderByAssignedAtAsc(instance.getId());
 			assertThat(open).hasSize(1);
-			assertThat(open.get(0).getAssignedUserId()).isEqualTo(this.approver.getId());
+			assertThat(open.get(0).getAssignedUserId()).isEqualTo(ApproverResolutionTest.this.approver.getId());
 			// The task carries the real step it belongs to, not a synthetic one.
 			assertThat(open.get(0).getWorkflowStepId()).isNotNull();
-			assertThat(this.requestRows.findById(requestId).orElseThrow().getCurrentStatusCode())
+			assertThat(ApproverResolutionTest.this.requestRows.findById(requestId).orElseThrow().getCurrentStatusCode())
 				.isEqualTo(ExpenseRequest.Status.SUBMITTED);
 		}
 
 		@Test
 		@DisplayName("an inactive user is not an approver, and submission is refused")
 		void inactiveUserResolvesToNobody() {
-			this.requestType = published(List.of(WorkflowStepApprover.ApproverType.USER), this.approver.getId());
-			this.approver.setActive(false);
-			this.users.saveAndFlush(this.approver);
+			ApproverResolutionTest.this.requestType = ApproverResolutionTest.this.published(List.of(WorkflowStepApprover.ApproverType.USER), ApproverResolutionTest.this.approver.getId());
+			ApproverResolutionTest.this.approver.setActive(false);
+			ApproverResolutionTest.this.users.saveAndFlush(ApproverResolutionTest.this.approver);
 
-			UUID draftId = draft().id();
-			assertThatThrownBy(() -> this.requests.submit(draftId, owner()))
+			UUID draftId = ApproverResolutionTest.this.draft(ApproverResolutionTest.this.requestType).id();
+			assertThatThrownBy(() -> ApproverResolutionTest.this.requests.submit(draftId, ApproverResolutionTest.this.owner()))
 				.isInstanceOf(BusinessException.class)
 				.hasMessageContaining("First approval");
 
 			// Nothing was created: no half-submitted request, no orphan task.
-			assertThat(this.instances.findByExpenseRequestId(draftId)).isEmpty();
-			assertThat(this.requestRows.findById(draftId).orElseThrow().getCurrentStatusCode())
+			assertThat(ApproverResolutionTest.this.instances.findByExpenseRequestId(draftId)).isEmpty();
+			assertThat(ApproverResolutionTest.this.requestRows.findById(draftId).orElseThrow().getCurrentStatusCode())
 				.isEqualTo(ExpenseRequest.Status.DRAFT);
 		}
 	}
@@ -263,13 +270,13 @@ class ApproverResolutionTest extends AbstractPostgreSqlIntegrationTest {
 		void emptyCommitteeRefuses() {
 			// No seats exist, so the committee resolves to nobody. The requirement is that the request is
 			// refused rather than advanced to the next step or approved outright.
-			ExpenseRequestType type = RequestFixtures.requestType(this.requestTypes,
+			ExpenseRequestType type = RequestFixtures.requestType(ApproverResolutionTest.this.requestTypes,
 					"RSC-" + UUID.randomUUID().toString().substring(0, 8));
-			var definition = this.configuration
+			var definition = ApproverResolutionTest.this.configuration
 				.createDefinition(new com.edam.workflow.dto.WorkflowDtos.SaveDefinitionRequest(
 						"RSC-" + UUID.randomUUID().toString().substring(0, 8), "Committee chain", null,
 						type.getId()));
-			var draft = this.configuration.createDraft(definition.id(),
+			var draft = ApproverResolutionTest.this.configuration.createDraft(definition.id(),
 					new com.edam.workflow.dto.WorkflowDtos.SaveDraftRequest(
 							List.of(new com.edam.workflow.dto.WorkflowDtos.StepRequest("COMMITTEE",
 									"Committee approval", (short) 1, WorkflowStep.ApprovalMode.PARALLEL, (short) 1,
@@ -277,8 +284,8 @@ class ApproverResolutionTest extends AbstractPostgreSqlIntegrationTest {
 											WorkflowStepApprover.ApproverType.EXPENSE_COMMITTEE, null, null,
 											UUID.randomUUID())))),
 							List.of(), null));
-			assertThatThrownBy(() -> this.configuration.publish(draft.id(),
-					new com.edam.workflow.dto.WorkflowDtos.PublishRequest(null), this.approver.getId()))
+			assertThatThrownBy(() -> ApproverResolutionTest.this.configuration.publish(draft.id(),
+					new com.edam.workflow.dto.WorkflowDtos.PublishRequest(null), ApproverResolutionTest.this.approver.getId()))
 				.as("a committee step naming a level that does not exist must not be publishable")
 				.isInstanceOf(RuntimeException.class);
 		}
@@ -286,29 +293,29 @@ class ApproverResolutionTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("a CEO step with no office holder refuses submission rather than skipping")
 		void missingOfficeHolderRefuses() {
-			ExpenseRequestType type = published(List.of(WorkflowStepApprover.ApproverType.CEO), null);
+			ExpenseRequestType type = ApproverResolutionTest.this.published(List.of(WorkflowStepApprover.ApproverType.CEO), null);
 
-			UUID draftId = draft().id();
+			UUID draftId = ApproverResolutionTest.this.draft(type).id();
 			// This deployment has no CEO configured, which is the ordinary state of a fresh installation.
-			assertThatThrownBy(() -> this.requests.submit(draftId, owner()))
+			assertThatThrownBy(() -> ApproverResolutionTest.this.requests.submit(draftId, ApproverResolutionTest.this.owner()))
 				.isInstanceOf(BusinessException.class)
 				.hasMessageContaining("First approval");
 
-			assertThat(this.instances.findByExpenseRequestId(draftId)).isEmpty();
-			assertThat(this.requestRows.findById(draftId).orElseThrow().getCurrentStatusCode())
+			assertThat(ApproverResolutionTest.this.instances.findByExpenseRequestId(draftId)).isEmpty();
+			assertThat(ApproverResolutionTest.this.requestRows.findById(draftId).orElseThrow().getCurrentStatusCode())
 				.isEqualTo(ExpenseRequest.Status.DRAFT);
 		}
 
 		@Test
 		@DisplayName("a role held by nobody refuses submission rather than skipping")
 		void emptyRoleRefuses() {
-			ExpenseRequestType type = published(List.of(WorkflowStepApprover.ApproverType.ROLE), UUID.randomUUID());
+			ExpenseRequestType type = ApproverResolutionTest.this.published(List.of(WorkflowStepApprover.ApproverType.ROLE), UUID.randomUUID());
 
-			UUID draftId = draft().id();
-			assertThatThrownBy(() -> this.requests.submit(draftId, owner()))
+			UUID draftId = ApproverResolutionTest.this.draft(type).id();
+			assertThatThrownBy(() -> ApproverResolutionTest.this.requests.submit(draftId, ApproverResolutionTest.this.owner()))
 				.isInstanceOf(BusinessException.class);
 
-			assertThat(this.instances.findByExpenseRequestId(draftId)).isEmpty();
+			assertThat(ApproverResolutionTest.this.instances.findByExpenseRequestId(draftId)).isEmpty();
 		}
 	}
 
@@ -323,14 +330,14 @@ class ApproverResolutionTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("several designations resolving to the same person create one task, not duplicates")
 		void duplicateResolutionCreatesOneTask() {
-			this.requestType = published(
+			ApproverResolutionTest.this.requestType = ApproverResolutionTest.this.published(
 					List.of(WorkflowStepApprover.ApproverType.USER, WorkflowStepApprover.ApproverType.USER),
-					this.approver.getId());
+					ApproverResolutionTest.this.approver.getId());
 
-			UUID requestId = submitInto(this.requestType);
+			UUID requestId = ApproverResolutionTest.this.submitInto(ApproverResolutionTest.this.requestType);
 
-			WorkflowInstance instance = this.instances.findByExpenseRequestId(requestId).orElseThrow();
-			var open = this.tasks.findByWorkflowInstanceIdOrderByAssignedAtAsc(instance.getId());
+			WorkflowInstance instance = ApproverResolutionTest.this.instances.findByExpenseRequestId(requestId).orElseThrow();
+			var open = ApproverResolutionTest.this.tasks.findByWorkflowInstanceIdOrderByAssignedAtAsc(instance.getId());
 			// Two designations, one human: assigning twice would inflate the quorum's apparent size and
 			// let a single approval satisfy a two-approver minimum.
 			assertThat(open).hasSize(1);
@@ -348,30 +355,30 @@ class ApproverResolutionTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("a request type with no configured workflow cannot be submitted")
 		void noWorkflowRefuses() {
-			ExpenseRequestType unconfigured = RequestFixtures.requestType(this.requestTypes,
+			ExpenseRequestType unconfigured = RequestFixtures.requestType(ApproverResolutionTest.this.requestTypes,
 					"RSC-" + UUID.randomUUID().toString().substring(0, 8));
 
-			ExpenseRequestDtos.RequestResponse created = this.requests.create(
-					new ExpenseRequestDtos.CreateRequest(unconfigured.getId(), this.category.getId(), null,
-							this.nature.getId(), this.department.getId(), null, this.currency.getId(),
+			ExpenseRequestDtos.RequestResponse created = ApproverResolutionTest.this.requests.create(
+					new ExpenseRequestDtos.CreateRequest(unconfigured.getId(), ApproverResolutionTest.this.category.getId(), null,
+							ApproverResolutionTest.this.nature.getId(), ApproverResolutionTest.this.department.getId(), null, ApproverResolutionTest.this.currency.getId(),
 							new java.math.BigDecimal("900.0000"), "Resolution test",
 							new ExpenseRequestDtos.OpexDetailPayload(true, "MONTHLY", null, null, null, null,
 									null, null, null, null, null, null, null, null),
 							null,
-							List.of(new ExpenseRequestDtos.AllocationPayload(this.department.getId(), null,
+							List.of(new ExpenseRequestDtos.AllocationPayload(ApproverResolutionTest.this.department.getId(), null,
 									null, new java.math.BigDecimal("900.0000"), null)),
 							List.of(),
 							List.of(new ExpenseRequestDtos.QuotationPayload(null, "Q-RSN-3",
 									java.time.LocalDate.now(), new java.math.BigDecimal("900.0000"),
-									this.currency.getId(), null)),
+									ApproverResolutionTest.this.currency.getId(), null)),
 							List.of(), List.of(), List.of(), List.of(), List.of()),
-					owner());
+					ApproverResolutionTest.this.owner());
 
-			assertThatThrownBy(() -> this.requests.submit(created.id(), owner()))
+			assertThatThrownBy(() -> ApproverResolutionTest.this.requests.submit(created.id(), ApproverResolutionTest.this.owner()))
 				.isInstanceOf(BusinessException.class)
 				.hasMessageContaining("No active workflow is configured");
 
-			assertThat(this.requestRows.findById(created.id()).orElseThrow().getCurrentStatusCode())
+			assertThat(ApproverResolutionTest.this.requestRows.findById(created.id()).orElseThrow().getCurrentStatusCode())
 				.isEqualTo(ExpenseRequest.Status.DRAFT);
 		}
 	}
