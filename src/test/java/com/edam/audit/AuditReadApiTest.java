@@ -151,11 +151,22 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 				Set.of(new DataScope(DataScope.Type.ALL, null)), Permissions.AUDIT_VIEW);
 	}
 
-	private EdamPrincipal auditorNoScope() {
-		// auditor but with no ALL scope and no department scope: holds audit:view globally because
-		// audit search is installation-wide for auditors (the detail endpoint still enforces
-		// per-request visibility).
-		return principal(this.auditor, Set.of(), Permissions.AUDIT_VIEW);
+	private EdamPrincipal auditorDepartmentScoped() {
+		// Auditor with audit:view and department-level scope only: must be filtered to the
+		// department's requests (plus their own) for ExpenseRequest events; non-request events
+		// remain visible because configuration audit is installation-wide under AUD-01.
+		return principal(this.auditor,
+				Set.of(new DataScope(DataScope.Type.SELF, null),
+						new DataScope(DataScope.Type.DEPARTMENT, this.department.getId())),
+				Permissions.AUDIT_VIEW);
+	}
+
+	private EdamPrincipal auditorSelfScoped() {
+		// Auditor with audit:view and SELF scope: sees non-request configuration events plus
+		// request events where requested_by == caller.
+		return principal(this.auditor,
+				Set.of(new DataScope(DataScope.Type.SELF, null)),
+				Permissions.AUDIT_VIEW);
 	}
 
 	private EdamPrincipal noAuditPermission() {
@@ -385,13 +396,13 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 			String body = AuditReadApiTest.this.mockMvc
 					.perform(get(AUDIT_EVENTS + "?action=SUBMIT&entityType=ExpenseRequest&entityId={id}&from={from}&to={to}",
 							requestId.toString(), to.minus(1, ChronoUnit.HOURS), to)
-							.with(user(auditorNoScope())).accept(MediaType.APPLICATION_JSON))
+							.with(user(auditorSelfScoped())).accept(MediaType.APPLICATION_JSON))
 					.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
 			// The list returns the event (installation-wide metadata) but detail must 404 because
 			// the auditor has no request-scope.
 			String eventId = com.jayway.jsonpath.JsonPath.read(body, "$.data.items[0].id");
 			AuditReadApiTest.this.mockMvc
-					.perform(get(AUDIT_EVENTS + "/{id}", eventId).with(user(auditorNoScope()))
+					.perform(get(AUDIT_EVENTS + "/{id}", eventId).with(user(auditorSelfScoped()))
 							.accept(MediaType.APPLICATION_JSON))
 					.andExpect(status().isNotFound());
 		}
@@ -451,12 +462,15 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 							.accept(MediaType.APPLICATION_JSON))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.success").value(true))
+					.andExpect(jsonPath("$.data.size").isNumber())
+					.andExpect(jsonPath("$.data.boundedAt").exists())
 					.andReturn().getResponse().getContentAsString();
 			List<String> actions = com.jayway.jsonpath.JsonPath.read(body, "$.data.items[*].action");
 			assertThat(actions).contains("CREATE", "SUBMIT", "ASSIGNED", "APPROVE");
 			// Chronological order check.
-			List<Long> timestamps = com.jayway.jsonpath.JsonPath.read(body, "$.data.items[*].timestamp");
-			assertThat(timestamps).isSorted();
+			List<String> timestamps = com.jayway.jsonpath.JsonPath.read(body, "$.data.items[*].timestamp");
+			List<java.time.Instant> instants = timestamps.stream().map(java.time.Instant::parse).toList();
+			assertThat(instants).isSorted();
 		}
 
 		@Test
