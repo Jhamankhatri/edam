@@ -55,4 +55,43 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 	Page<User> search(@Param("search") String search, @Param("departmentId") UUID departmentId,
 			Pageable pageable);
 
+
+	/**
+	 * Data-scoped search, with the visibility predicate applied inside the query.
+	 *
+	 * <h2>Why the predicate is here and not in the service</h2>
+	 * Filtering after the query would break paging: the page would contain only the visible subset while
+	 * the count described every user, so a client would paginate onto empty pages and display an inflated
+	 * total. The count and the rows must describe the same set.
+	 *
+	 * <p>The "installation-wide" boolean short-circuits the scope predicates. That is a deliberate
+	 * simplification of an OR-chain: a caller scoped everywhere should not pay for three
+	 * {@code IN} lists, and the alternative — a dynamic Specification — would hide the predicate from
+	 * anyone reading this interface.
+	 *
+	 * @param installationWide when true, no scope narrowing is applied
+	 * @param departmentIds the caller's department scope; empty means none
+	 * @param branchIds the caller's branch scope; empty means none
+	 * @param callerId always visible to themselves, so they can see their own record
+	 */
+	@Query("""
+			select u from User u
+			where (:search is null
+			       or lower(u.username) like lower(concat('%', :search, '%'))
+			       or lower(u.firstName) like lower(concat('%', :search, '%'))
+			       or lower(u.lastName) like lower(concat('%', :search, '%'))
+			       or lower(u.email) like lower(concat('%', :search, '%'))
+			       or lower(u.employeeCode) like lower(concat('%', :search, '%')))
+			  and (:departmentId is null or u.departmentId = :departmentId)
+			  and (:active is null or u.active = :active)
+			  and (:installationWide = true
+			       or (u.departmentId in :departmentIds)
+			       or (u.branchId in :branchIds)
+			       or u.id = :callerId)
+			""")
+	Page<User> searchScoped(@Param("search") String search, @Param("departmentId") UUID departmentId,
+			@Param("active") Boolean active, @Param("installationWide") boolean installationWide,
+			@Param("departmentIds") List<UUID> departmentIds, @Param("branchIds") List<UUID> branchIds,
+			@Param("callerId") UUID callerId, Pageable pageable);
+
 }
