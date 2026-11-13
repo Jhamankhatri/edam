@@ -33,7 +33,9 @@ public interface ActionsRepository extends JpaRepository<WorkflowAction, UUID> {
 	 */
 	@Query(value = """
 			select a.* from workflow_actions a
-			where a.workflow_task_id = any (:taskIds)
+			where a.workflow_task_id in (
+				select t.id from workflow_tasks t where t.workflow_instance_id = :instanceId
+			)
 			  and a.action_at <= :boundedAt
 			  and (   cast(:afterTs as timestamptz) is null
 			       or a.action_at > cast(:afterTs as timestamptz)
@@ -42,7 +44,7 @@ public interface ActionsRepository extends JpaRepository<WorkflowAction, UUID> {
 			order by a.action_at asc, a.id asc
 			limit :fetchLimit
 			""", nativeQuery = true)
-	List<WorkflowAction> findForTasksAfter(@Param("taskIds") UUID[] taskIds,
+	List<WorkflowAction> findForInstanceAfter(@Param("instanceId") UUID instanceId,
 			@Param("boundedAt") Instant boundedAt,
 			@Param("afterTs") Instant afterTs,
 			@Param("afterId") UUID afterId,

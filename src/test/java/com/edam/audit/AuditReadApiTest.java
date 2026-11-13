@@ -753,6 +753,64 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 		}
 
 		@Test
+		@DisplayName("UUID tie-break is stable across pages and matches Java ordering")
+		void uuidTieBreakIsDeterministicAcrossPages() throws Exception {
+			// Insert N events with identical timestamp at a unique band. Page through them with
+			// size=1 and verify each subsequent id is greater than the previous (Java UUID order),
+			// which is what the > :afterId keyset relies on.
+			UUID requestId = createAndSubmitRequest();
+			Instant ts = TIMELINE_ANCHOR.plus(105, ChronoUnit.DAYS);
+			java.util.List<UUID> ids = new java.util.ArrayList<>();
+			for (int i = 0; i < 6; i++) {
+				AuditEvent e = AuditEvent.builder(AuditAction.UPDATE, "ExpenseRequest")
+						.entityId(requestId)
+						.performedBy(AuditReadApiTest.this.requester.getId())
+						.performedByUsername(AuditReadApiTest.this.requester.getUsername())
+						.createdAt(ts)
+						.newValues("{\"note\":\"uuid-order-" + i + "\"}")
+						.build();
+				ids.add(AuditReadApiTest.this.auditRepository.save(e).getId());
+			}
+			// Pull one big page that includes all our events at ts (size 50).
+			PageResult big = fetchPage(requestId, 50, null, requesterPrincipal());
+			List<UUID> orderOnPage = new ArrayList<>();
+			boolean capturing = false;
+			for (String idStr : big.eventIds) {
+				UUID id = UUID.fromString(idStr);
+				if (ids.contains(id)) {
+					capturing = true;
+					orderOnPage.add(id);
+				} else if (capturing) {
+					// Once we've seen one of our ids and then a non-matching id, stop (they are
+					// contiguous because they share a timestamp and AUDIT sourceOrder).
+					break;
+				}
+			}
+			assertThat(orderOnPage).containsExactlyInAnyOrderElementsOf(ids);
+			// The order returned must be strictly increasing by Java UUID.compareTo.
+			for (int i = 1; i < orderOnPage.size(); i++) {
+				assertThat(orderOnPage.get(i).compareTo(orderOnPage.get(i - 1)))
+						.as("UUID %s must compare greater than %s", orderOnPage.get(i), orderOnPage.get(i - 1))
+						.isGreaterThan(0);
+			}
+			// Walk with size=1 and confirm every step returns the expected UUID in that same order.
+			String cursor = null;
+			List<UUID> walkedIds = new ArrayList<>();
+			int matched = 0;
+			for (int step = 0; step < 200 && matched < orderOnPage.size(); step++) {
+				PageResult sp = fetchPage(requestId, 1, cursor, requesterPrincipal());
+				UUID id = UUID.fromString(sp.eventIds.get(0));
+				if (orderOnPage.contains(id)) {
+					walkedIds.add(id);
+					matched++;
+				}
+				cursor = sp.nextCursor;
+				if (cursor == null) break;
+			}
+			assertThat(walkedIds).containsExactlyElementsOf(orderOnPage);
+		}
+
+		@Test
 		@DisplayName("malformed cursor returns 400")
 		void malformedCursorIs400() throws Exception {
 			UUID requestId = createAndSubmitRequest();
@@ -779,6 +837,44 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 			AuditReadApiTest.this.mockMvc
 					.perform(get(REQUESTS + "/{id}/activity", requestId)
 							.queryParam("cursor", encoded)
+							.with(user(requesterPrincipal()))
+							.accept(MediaType.APPLICATION_JSON))
+					.andExpect(status().isBadRequest());
+		}
+
+		@Test
+		@DisplayName("tampered cursor (flipped boundedAt/requestId) is rejected with 400 even if request matches")
+		void tamperedCursorSignatureIsRejected() throws Exception {
+			UUID requestId = createAndSubmitRequest();
+			seedAuditEvents(requestId, TIMELINE_ANCHOR.plus(104, ChronoUnit.DAYS), 10, "tamp");
+			PageResult page = fetchPage(requestId, 5, null, requesterPrincipal());
+			assertThat(page.nextCursor).isNotNull();
+			// Decode and tamper: flip a byte in the middle of the Base64 (which corrupts the
+			// signature and possibly the payload).
+			String original = page.nextCursor;
+			byte[] raw = Base64.getUrlDecoder().decode(original);
+			raw[raw.length / 2] ^= (byte) 0x01;
+			String tampered = Base64.getUrlEncoder().withoutPadding().encodeToString(raw);
+			AuditReadApiTest.this.mockMvc
+					.perform(get(REQUESTS + "/{id}/activity", requestId)
+							.queryParam("size", "5")
+							.queryParam("cursor", tampered)
+							.with(user(requesterPrincipal()))
+							.accept(MediaType.APPLICATION_JSON))
+					.andExpect(status().isBadRequest());
+			// Also craft a structurally-valid cursor JSON (without any signature) and assert 400.
+			java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+			payload.put("v", 1);
+			payload.put("b", Instant.now().toString());
+			payload.put("r", requestId.toString());
+			payload.put("k", Map.of());
+			// Note: intentionally no "s" field.
+			byte[] unsignedBytes = AuditReadApiTest.this.jsonMapper.writeValueAsBytes(payload);
+			String unsigned = Base64.getUrlEncoder().withoutPadding().encodeToString(unsignedBytes);
+			AuditReadApiTest.this.mockMvc
+					.perform(get(REQUESTS + "/{id}/activity", requestId)
+							.queryParam("size", "5")
+							.queryParam("cursor", unsigned)
 							.with(user(requesterPrincipal()))
 							.accept(MediaType.APPLICATION_JSON))
 					.andExpect(status().isBadRequest());

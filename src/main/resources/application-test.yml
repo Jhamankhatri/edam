@@ -19,6 +19,8 @@ logging:
     org.springframework.web: INFO
 
 edam:
+  # Fixed HMAC key for deterministic cursor encoding/decoding tests.
+  cursor-hmac-key: "test-cursor-hmac-key-not-for-production-0123456789"
   security:
     dev-users:
       enabled: true

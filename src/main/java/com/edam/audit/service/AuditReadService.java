@@ -1,6 +1,9 @@
 package com.edam.audit.service;
 
 import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -10,6 +13,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 import com.edam.audit.dto.AuditDtos;
 import com.edam.audit.dto.AuditDtos.AuditEventDetail;
@@ -42,6 +47,7 @@ import com.edam.workflow.repository.TasksRepository;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -120,6 +126,7 @@ public class AuditReadService {
 
 	/** Cursor format version — bump on structural changes so stale cursors are rejected cleanly. */
 	private static final int CURSOR_VERSION = 1;
+	private static final String HMAC_ALGORITHM = "HmacSHA256";
 
 	/**
 	 * Per-source cursor keys and response-source strings. The encoding uses these exact keys
@@ -152,10 +159,12 @@ public class AuditReadService {
 	private final StatesRepository states;
 	private final UserRepository users;
 	private final JsonMapper jsonMapper;
+	private final byte[] cursorHmacKey;
 
 	public AuditReadService(AuditRepository audit, ExpenseRequestRepository requests,
 			ExpenseRequestService requestVisibility, InstancesRepository instances, TasksRepository tasks,
-			ActionsRepository actions, StatesRepository states, UserRepository users, JsonMapper jsonMapper) {
+			ActionsRepository actions, StatesRepository states, UserRepository users, JsonMapper jsonMapper,
+			@Value("${edam.cursor-hmac-key:}") String cursorHmacKeyProperty) {
 		this.audit = audit;
 		this.requests = requests;
 		this.requestVisibility = requestVisibility;
@@ -165,6 +174,28 @@ public class AuditReadService {
 		this.states = states;
 		this.users = users;
 		this.jsonMapper = jsonMapper;
+		this.cursorHmacKey = resolveCursorHmacKey(cursorHmacKeyProperty);
+	}
+
+	/**
+	 * Resolves the HMAC key used to sign timeline cursors. If no key is configured (e.g. in a
+	 * local dev environment), derive a deterministic per-process key from an ephemeral random so
+	 * cursors still cannot be forged across process restarts — a client that tampers with a
+	 * cursor in a single running server is still caught. Production deployments must set
+	 * {@code edam.cursor-hmac-key} (or {@code EDAM_CURSOR_HMAC_KEY}) to a stable secret.
+	 */
+	private static byte[] resolveCursorHmacKey(String configured) {
+		String key = (configured == null) ? "" : configured.trim();
+		if (key.isEmpty()) {
+			// Generate a random per-process key; cursors will not survive restart, which is fine
+			// for local development. We use 32 bytes for HS256.
+			byte[] ephemeral = new byte[32];
+			new java.security.SecureRandom().nextBytes(ephemeral);
+			key = Base64.getEncoder().encodeToString(ephemeral);
+			log.warn("edam.cursor-hmac-key is not configured; using an ephemeral per-process key. "
+					+ "Set EDAM_CURSOR_HMAC_KEY in production.");
+		}
+		return key.getBytes(StandardCharsets.UTF_8);
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -315,17 +346,9 @@ public class AuditReadService {
 		if (instance == null) {
 			return List.of();
 		}
-		// Only load task ids for this instance; keyset filtering happens in SQL so we do NOT
-		// materialise the full action history.
-		List<UUID> taskIds = this.tasks.findByWorkflowInstanceIdOrderByAssignedAtAsc(instance.getId())
-				.stream().map(WorkflowTask::getId).toList();
-		if (taskIds.isEmpty()) {
-			return List.of();
-		}
-		// Hibernate 6 does not always bind List<UUID> as uuid[] in native queries on Postgres,
-		// so create a java.sql.Array explicitly.
-		java.util.UUID[] ids = taskIds.toArray(java.util.UUID[]::new);
-		return this.actions.findForTasksAfter(ids, boundedAt, after.timestamp(), after.id(), fetchLimit);
+		// SQL-level join through workflow_tasks — we never materialise the full task list or the
+		// full action history; keyset predicate + LIMIT fetchLimit keeps the result bounded.
+		return this.actions.findForInstanceAfter(instance.getId(), boundedAt, after.timestamp(), after.id(), fetchLimit);
 	}
 
 	private Map<UUID, String> loadStateNames(ExpenseRequest request) {
@@ -506,10 +529,20 @@ public class AuditReadService {
 	// ---------------------------------------------------------------------------------------------
 
 	/**
-	 * An opaque continuation pointer. Format is versioned JSON, Base64-URL-encoded.
+	 * An opaque continuation pointer.
 	 *
-	 * <p>The cursor is not an authorization token — every request re-validates that the caller can
-	 * read the request — but it is bound to a request id to prevent reuse across requests.
+	 * <p>Wire format: {@code base64url( json({v,b,r,k,s}) )} where:
+	 * <ul>
+	 *   <li>{@code v} = cursor format version (1)</li>
+	 *   <li>{@code b} = boundedAt instant (ISO-8601)</li>
+	 *   <li>{@code r} = request id the cursor is bound to</li>
+	 *   <li>{@code k} = per-source last-emitted keys {@code {source: {t,i}}}</li>
+	 *   <li>{@code s} = HMAC-SHA256 over the canonical JSON of {@code {v,b,r,k}}, base64url-encoded</li>
+	 * </ul>
+	 * The signature prevents a client from tampering with boundedAt, request id, or per-source
+	 * keys; modification yields 400. The cursor is still NOT an authorization token — every
+	 * request re-validates visibility against the caller and ignores the request id inside the
+	 * cursor until it is compared to the URL.
 	 */
 	private record TimelineCursor(int version, Instant boundedAt, UUID requestId, Map<String, CursorKey> lastKeys) {
 	}
@@ -521,10 +554,25 @@ public class AuditReadService {
 		if (encoded == null || encoded.isBlank()) {
 			return new TimelineCursor(CURSOR_VERSION, Instant.now(), requestId, new LinkedHashMap<>());
 		}
+		byte[] raw;
 		try {
-			String json = new String(Base64.getUrlDecoder().decode(encoded), StandardCharsets.UTF_8);
-			JsonNode root = this.jsonMapper.readTree(json);
+			raw = Base64.getUrlDecoder().decode(encoded);
+		}
+		catch (IllegalArgumentException ex) {
+			throw new BusinessException(ErrorCode.INVALID_REQUEST, "The pagination cursor is not valid.");
+		}
+		try {
+			JsonNode root = this.jsonMapper.readTree(raw);
 			if (!root.isObject()) {
+				throw new BusinessException(ErrorCode.INVALID_REQUEST, "The pagination cursor is not valid.");
+			}
+			// Verify HMAC before trusting any field — signature covers v,b,r,k.
+			String providedSig = root.path("s").asText(null);
+			if (providedSig == null) {
+				throw new BusinessException(ErrorCode.INVALID_REQUEST, "The pagination cursor is not valid.");
+			}
+			String expectedSig = signPayload(root);
+			if (!constantTimeEquals(expectedSig, providedSig)) {
 				throw new BusinessException(ErrorCode.INVALID_REQUEST, "The pagination cursor is not valid.");
 			}
 			int version = root.path("v").asInt(-1);
@@ -582,13 +630,69 @@ public class AuditReadService {
 				keys.put(source, entry);
 			});
 			payload.put("k", keys);
-			byte[] bytes = this.jsonMapper.writeValueAsBytes(payload);
-			return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+			byte[] signable = this.jsonMapper.writeValueAsBytes(payload);
+			String signature = hmacHex(signable);
+			// Re-serialize with the signature appended, so parsing and verification use identical bytes.
+			// We build the signed JSON manually to preserve the key order used for signing (v,b,r,k,s).
+			String signedJson = new String(signable, StandardCharsets.UTF_8);
+			// Insert "s":"<sig>" before the closing brace.
+			int close = signedJson.lastIndexOf('}');
+			String withSig = signedJson.substring(0, close)
+					+ ",\"s\":" + this.jsonMapper.writeValueAsString(signature)
+					+ signedJson.substring(close);
+			return Base64.getUrlEncoder().withoutPadding().encodeToString(withSig.getBytes(StandardCharsets.UTF_8));
 		}
 		catch (Exception ex) {
 			throw new IllegalStateException("Failed to encode timeline cursor", ex);
 		}
 	}
+
+	/**
+	 * Computes the HMAC-SHA256 signature for the signed portion of the cursor (the {@code {v,b,r,k}}
+	 * JSON object, serialized via Jackson to guarantee field order matches {@link #encodeCursor}).
+	 */
+	private String signPayload(JsonNode root) throws Exception {
+		Map<String, Object> canonical = new LinkedHashMap<>();
+		canonical.put("v", root.get("v").asInt());
+		canonical.put("b", root.get("b").asText());
+		canonical.put("r", root.get("r").asText());
+		Map<String, Object> keys = new LinkedHashMap<>();
+		JsonNode keysNode = root.path("k");
+		for (String src : new String[] { CURSOR_KEY_AUDIT, CURSOR_KEY_TASK, CURSOR_KEY_ACTION }) {
+			JsonNode kv = keysNode.get(src);
+			if (kv == null || kv.isNull()) {
+				continue;
+			}
+			Map<String, Object> entry = new LinkedHashMap<>();
+			entry.put("t", kv.get("t").asText());
+			entry.put("i", kv.get("i").asText());
+			keys.put(src, entry);
+		}
+		canonical.put("k", keys);
+		byte[] signable = this.jsonMapper.writeValueAsBytes(canonical);
+		return hmacHex(signable);
+	}
+
+	private String hmacHex(byte[] data) throws NoSuchAlgorithmException, InvalidKeyException {
+		Mac mac = Mac.getInstance(HMAC_ALGORITHM);
+		mac.init(new SecretKeySpec(this.cursorHmacKey, HMAC_ALGORITHM));
+		byte[] digest = mac.doFinal(data);
+		return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+	}
+
+	/** Constant-time comparison to prevent timing attacks on the signature. */
+	private static boolean constantTimeEquals(String a, String b) {
+		if (a == null || b == null || a.length() != b.length()) {
+			return false;
+		}
+		int result = 0;
+		for (int i = 0; i < a.length(); i++) {
+			result |= a.charAt(i) ^ b.charAt(i);
+		}
+		return result == 0;
+	}
+
+
 
 	// ---------------------------------------------------------------------------------------------
 	// Input + scopes
