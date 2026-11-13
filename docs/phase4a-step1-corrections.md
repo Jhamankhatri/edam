@@ -8,7 +8,7 @@
 | Branch | `feature/phase-4a-step1-audit-corrections` |
 | Target | `main` |
 | Base | `main @ 5073570a918eb6ce58ee67f1df47b35cfdb2b026` (PR #9 merge) |
-| **Final head SHA** | **`9cafdef2d07354f38ad662260107e15be1f941c3`** |
+| Final PR head | See [PR #10](https://github.com/Jhamankhatri/edam/pull/10) (live head SHA shown by GitHub) |
 | **Last code+tests CI (pull_request)** | **[`43519615134`](https://github.com/Jhamankhatri/edam/actions/runs/43519615134) — all green** |
 | Test tally (last code+tests CI) | 24 classes, **321 tests, 0 failures, 0 errors, 3 skipped** |
 | CI jobs (last code+tests CI) | `build-and-test` ✓, `war-package-smoke-test` ✓, `prod-profile-smoke-test` ✓ |
