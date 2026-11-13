@@ -200,8 +200,8 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 				List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
 				List.of()),
 				owner());
-		// submit answers with the request envelope, whose id is the request's own UUID as text.
-		return UUID.fromString(this.requests.submit(UUID.fromString(created.id()), owner()).id());
+		// The envelope carries a UUID id, so no string round-trip is needed at either end.
+		return this.requests.submit(created.id(), owner()).id();
 	}
 
 	/** The single open task on a request, which every fixture workflow creates exactly one of. */
