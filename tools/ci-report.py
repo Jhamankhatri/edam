@@ -117,16 +117,19 @@ def report_error_lines(log: str) -> None:
 
 
 def report_summaries() -> None:
-    """Per-class totals, read from the XML rather than the .txt summary.
+    """One aggregate line naming every class that produced a report, then the red ones.
 
-    The .txt file beside a report describes only the outer class, so a class whose
-    tests all live in @Nested classes reports "Tests run: 0" there even though every
-    test executed. Reading the XML counts the nested test cases too, which is the
-    number a reviewer needs; without it a green build looks like a build that ran
-    nothing.
+    Totals are read from the XML rather than the .txt summary: the .txt beside a report
+    describes only the outer class, so a class whose tests all live in @Nested classes
+    reports "Tests run: 0" there even though every test executed.
+
+    The aggregate goes first and names every class, because GitHub discards annotations
+    past a per-run budget. A truncated list of per-class notices cannot be told from a
+    build that ran fewer classes; a total that names its own members can.
     """
     total = failures = errors = skipped = 0
-    classes = 0
+    names = []
+    red = []
     for report in sorted(glob.glob("target/surefire-reports/*.xml")):
         try:
             root = ET.parse(report).getroot()
@@ -135,7 +138,6 @@ def report_summaries() -> None:
         cases = list(root.iter("testcase"))
         if not cases:
             continue
-        classes += 1
         case_fail = sum(1 for c in cases if c.findall("failure"))
         case_err = sum(1 for c in cases if c.findall("error"))
         case_skip = sum(1 for c in cases if c.findall("skipped"))
@@ -144,12 +146,17 @@ def report_summaries() -> None:
         errors += case_err
         skipped += case_skip
         name = (root.get("name") or report.split("/")[-1][:-4]).split(".")[-1]
-        emit("notice", f"TEST {name}",
-             f"Tests run: {len(cases)}, Failures: {case_fail}, Errors: {case_err}, Skipped: {case_skip}")
-    # One aggregate, so a partial run is distinguishable from a complete one.
+        names.append(name)
+        if case_fail or case_err:
+            red.append((name, len(cases), case_fail, case_err, case_skip))
     emit("notice", "TEST TOTAL",
-         f"Classes: {classes}, Tests run: {total}, Failures: {failures}, Errors: {errors}, "
-         f"Skipped: {skipped}")
+         f"Classes: {len(names)}, Tests run: {total}, Failures: {failures}, Errors: {errors}, "
+         f"Skipped: {skipped} | {' '.join(names)}")
+    # A green class gets no line of its own: it is already counted above, and spending an
+    # annotation on "0 failures" is what used to push real failures past the budget.
+    for name, ran, case_fail, case_err, case_skip in red:
+        emit("notice", f"TEST {name}",
+             f"Tests run: {ran}, Failures: {case_fail}, Errors: {case_err}, Skipped: {case_skip}")
 
 
 def main() -> int:
