@@ -1,11 +1,21 @@
-# Phase 4A Step 1 — Post-merge Corrections (final)
+# Phase 4A Step 1 — Pre-merge Corrections (final report)
 
-Branch: `feature/phase-4a-step1-audit-corrections` (PR #10, **unmerged**)
-Base: `main @ 5073570a918eb6ce58ee67f1df47b35cfdb2b026` (PR #9 merge)
-Head: `18532be7621dba18e4c76ff5abba8a1c22668b09`
-Head CI: run [`43516091998`](https://github.com/Jhamankhatri/edam/actions/runs/43516091998) (pull_request) — **green**
-`Classes: 24, Tests run: 321, Failures: 0, Errors: 0, Skipped: 3`
-Jobs: `build-and-test` ✓, `war-package-smoke-test` ✓, `prod-profile-smoke-test` ✓.
+**PR #10 is OPEN and UNMERGED.** No part of this branch has been merged into `main`.
+
+| Field | Value |
+|---|---|
+| PR | [#10 Phase 4A Step 1 corrections](https://github.com/Jhamankhatri/edam/pull/10) — **OPEN / UNMERGED** |
+| Branch | `feature/phase-4a-step1-audit-corrections` |
+| Target | `main` |
+| Base | `main @ 5073570a918eb6ce58ee67f1df47b35cfdb2b026` (PR #9 merge) |
+| **Final head SHA** | **`442f71bf51eb04d00b95572757bd65a17e03b394`** |
+| **Final CI (pull_request)** | **[`43517599318`](https://github.com/Jhamankhatri/edam/actions/runs/43517599318) — all green** |
+| Test tally (final CI) | 24 classes, **321 tests, 0 failures, 0 errors, 3 skipped** |
+| CI jobs (final) | `build-and-test` ✓, `war-package-smoke-test` ✓, `prod-profile-smoke-test` ✓ |
+
+## Historical verification note
+
+Earlier in this PR, an intermediate CI run [`43516091998`](https://github.com/Jhamankhatri/edam/actions/runs/43516091998) passed at commit `18532be7621dba18e4c76ff5abba8a1c22668b09` (code + H-1/H-2 fixes + tests, before the documentation-only commit). The documentation-only commit `442f71b` (this document) was then pushed and verified by run `43517599318` above, which is the authoritative green run for the final head. All test counts and job results are identical between the two runs because the documentation commit does not touch source code. The section 7 verification table and the test-evidence tables below reflect the final head `442f71b` and run `43517599318`.
 
 ## Summary of fixes (all review items closed)
 
@@ -134,14 +144,14 @@ No historical rows are modified. No passwords/tokens/secrets are included; all d
 - No historical audit rows modified; `AuditRepository` extends `Repository` (not `JpaRepository`) with only `save`/reads exposed, so delete/update paths remain impossible from application code; the DB triggers `trg_audit_events_no_update` / `trg_audit_events_no_delete` (and matching triggers on `audit_event_details`) enforce append-only at the storage layer.
 - No export / SIEM / WORM / retention / legal-hold / idempotency / documents / notifications / reporting / business-rule / MFA/SSO work.
 - Phase 4A Step 2 not started.
-- PR **not merged**.
+- PR #10 **remains OPEN and UNMERGED** at the time of this report; nothing has been pushed to `main` from this branch.
 
 ### 7. Verification
 
 | Check | Result |
 |---|---|
-| Commit (head) | `18532be7621dba18e4c76ff5abba8a1c22668b09` |
-| CI run | [`43516091998`](https://github.com/Jhamankhatri/edam/actions/runs/43516091998) (pull_request) |
+| Commit (final head) | `442f71bf51eb04d00b95572757bd65a17e03b394` |
+| CI run (pull_request, matches final head) | [`43517599318`](https://github.com/Jhamankhatri/edam/actions/runs/43517599318) — **success** |
 | Maven compile | ✅ zero errors |
 | `mvn verify` (Postgres Testcontainers) | ✅ 24 classes, **321 tests, 0 failures, 0 errors, 3 skipped** |
 | AuditReadApiTest (new + existing) | 32 tests, 0 failures, 0 errors — includes the authorization, timeline, and UUID ordering cases listed below. |
@@ -152,7 +162,9 @@ No historical rows are modified. No passwords/tokens/secrets are included; all d
 | Endpoints | unchanged at 130 (no new endpoints, no removals). |
 | Entities / migrations | unchanged (52 mapped entities, 0 new tables). |
 
-### Test evidence (from the green CI run at head)
+Intermediate code-only head `18532be7621dba18e4c76ff5abba8a1c22668b09` was also green at [`43516091998`](https://github.com/Jhamankhatri/edam/actions/runs/43516091998) with the same test tally; see the historical note above.
+
+### Test evidence (from the green CI run at the final head)
 
 **Audit search authorization:**
 
