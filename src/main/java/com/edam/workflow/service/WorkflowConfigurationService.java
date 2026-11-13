@@ -103,8 +103,12 @@ public class WorkflowConfigurationService {
 
 	@Transactional(readOnly = true)
 	public List<DefinitionResponse> listDefinitions(boolean includeInactive) {
-		List<WorkflowDefinition> found = includeInactive ? this.definitions.findAllByOrderByName() : this.definitions
+		List<WorkflowDefinition> found = includeInactive ? this.definitions.findAll() : this.definitions
 			.findByActiveTrueOrderByNameAsc();
+		found = found.stream()
+			.sorted(java.util.Comparator.comparing(WorkflowDefinition::getName,
+					java.util.Comparator.nullsLast(String::compareToIgnoreCase)))
+			.toList();
 		return found.stream()
 			.map(definition -> DefinitionResponse.from(definition,
 					this.versions.findByWorkflowDefinitionIdOrderByVersionNumberDesc(definition.getId())))

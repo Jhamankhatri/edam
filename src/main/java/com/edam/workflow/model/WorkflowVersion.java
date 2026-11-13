@@ -247,7 +247,7 @@ public class WorkflowVersion extends AuditableEntity {
 		if (this.status == Status.DRAFT) {
 			throw new IllegalStateException("A draft version was never in use and cannot be retired");
 		}
-		if (replacement != null && replacement.equals(this.id)) {
+		if (replacement != null && replacement.equals(getId())) {
 			throw new IllegalArgumentException("A version cannot supersede itself");
 		}
 		this.status = Status.RETIRED;

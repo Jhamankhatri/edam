@@ -33,8 +33,6 @@ public interface DefinitionsRepository extends JpaRepository<WorkflowDefinition,
 
 	List<WorkflowDefinition> findByActiveTrueOrderByNameAsc();
 
-	List<WorkflowDefinition> findAllByOrderByNameAsc();
-
 	Optional<WorkflowDefinition> findFirstByRequestTypeIdAndActiveTrue(UUID requestTypeId);
 
 
