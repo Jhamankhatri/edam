@@ -15,7 +15,7 @@ carried over from an earlier document.
 | Between | Compile and test corrections — each one a real defect or a wrong expectation, listed in §5 |
 | `d75f8a9` | Documentation close-out: permission map, migration report, audit revision, test-coverage and CI sections |
 
-`git diff --stat main..HEAD` → **34 files changed, 6,559 insertions, 31 deletions.**
+`git diff --stat main..HEAD` → **35 files changed, 6,774 insertions, 31 deletions.**
 
 None of the 31 deletions removed a test or an assertion. They are the two lines of `ExpenseRequestService.submit`
 that used to record a request as submitted with no workflow, the `manager()`/`viewer()` helpers rewritten when
@@ -32,7 +32,8 @@ Development was **not** based on `arena/79b46ab7-edam`, as instructed.
 | Run | Result | Detail |
 |---|---|---|
 | [43426368171](https://github.com/Jhamankhatri/edam/actions/runs/43426368171) | **success** | Headline green run for the test work |
-| [43427399978](https://github.com/Jhamankhatri/edam/actions/runs/43427399978) | **success** | Branch tip. All three jobs: `build-and-test`, `war-package-smoke-test`, `prod-profile-smoke-test` |
+| [43427399978](https://github.com/Jhamankhatri/edam/actions/runs/43427399978) | **success** | Push trigger on the tip. All three jobs |
+| [43428118299](https://github.com/Jhamankhatri/edam/actions/runs/43428118299) | **success** | Pull-request trigger for [PR #7](https://github.com/Jhamankhatri/edam/pull/7). All three jobs |
 
 The two smoke jobs are evidence the test job cannot give: the packaged WAR boots and renders, and the production
 profile starts. Neither is implied by a test-context pass.
