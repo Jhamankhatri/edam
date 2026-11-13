@@ -363,7 +363,7 @@ public class ExpenseRequestService {
 		return request;
 	}
 
-	boolean isVisible(ExpenseRequest request, EdamPrincipal caller) {
+	public boolean isVisible(ExpenseRequest request, EdamPrincipal caller) {
 		if (caller == null || caller.hasInstallationScope()) {
 			return true;
 		}

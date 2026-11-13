@@ -32,6 +32,8 @@ public interface AuditRepository extends Repository<AuditEvent, UUID> {
 
 	Optional<AuditEvent> findById(UUID id);
 
+	long count();
+
 	Page<AuditEvent> findByEntityTypeAndEntityIdOrderByCreatedAtDesc(String entityType, String entityId,
 			Pageable pageable);
 
