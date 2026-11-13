@@ -208,26 +208,40 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		EdamPrincipal caller = owner();
 		MvcResult first = createDraft(opexBody("100.0000", "original"), key, caller, HttpStatus.CREATED.value());
 		CreatedEnvelope firstEnv = parseCreated(first);
-		// Look up the record directly by iterating and find a COMPLETED row for our actor/operation.
+		// Look up the record directly to understand what was actually persisted.
 		java.util.List<IdempotencyRecord> mine = this.idempotencyRecords.findAll().stream()
 				.filter(r -> r.getActorId().equals(caller.userId()))
 				.filter(r -> "POST /api/v1/expense-requests".equals(r.getOperationType()))
-				.filter(r -> r.getStatus() == IdempotencyRecord.Status.COMPLETED)
 				.toList();
+		StringBuilder diag = new StringBuilder();
+		diag.append("actor=").append(caller.userId());
+		diag.append(" recordsFound=").append(mine.size());
+		for (IdempotencyRecord r : mine) {
+			diag.append(" [status=").append(r.getStatus())
+				.append(" keyHash=").append(r.getKeyHash(), 0, 12)
+				.append(" fp=").append(r.getRequestHash(), 0, 12)
+				.append("]");
+		}
 		org.junit.jupiter.api.Assertions.assertFalse(mine.isEmpty(),
-				"Expected a COMPLETED idempotency record for caller " + caller.userId()
-						+ " after first create; found none. Total records: "
-						+ this.idempotencyRecords.count() + ", first requestId=" + firstEnv.data().id());
+				"Expected an idempotency record for caller after first create. " + diag
+						+ " total=" + this.idempotencyRecords.count() + " requestId=" + firstEnv.data().id());
+		IdempotencyRecord theRecord = mine.get(mine.size() - 1);
+		diag.append(" ourRecord.status=").append(theRecord.getStatus());
+		org.junit.jupiter.api.Assertions.assertEquals(IdempotencyRecord.Status.COMPLETED, theRecord.getStatus(),
+				"Record should be COMPLETED, not " + theRecord.getStatus() + "; " + diag);
+		// Now compute the fp of the second body manually and confirm it differs from stored.
+		String secondBody = opexBody("200.0000", "tampered");
+		diag.append(" storedFp=").append(theRecord.getRequestHash(), 0, 16);
 		MvcResult conflict = this.mockMvc.perform(post(BASE).with(user(caller)).with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
 						.accept(MediaType.APPLICATION_JSON)
-						.content(opexBody("200.0000", "tampered"))
+						.content(secondBody)
 						.header("Idempotency-Key", key))
 				.andReturn();
 		String body = conflict.getResponse().getContentAsString();
 		org.junit.jupiter.api.Assertions.assertEquals(400, conflict.getResponse().getStatus(),
-				"expected 400 IDEMPOTENCY_CONFLICT but got status " + conflict.getResponse().getStatus()
-						+ " body=" + body);
+				"expected 400 but got status " + conflict.getResponse().getStatus()
+						+ " diag=" + diag + " body=" + body);
 	}
 
 	@Test
