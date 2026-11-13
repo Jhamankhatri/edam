@@ -192,11 +192,12 @@ class ExpenseRequestLifecycleTest extends AbstractPostgreSqlIntegrationTest {
 						RequestFixtures.money("5000.0000"), RequestFixtures.money("100.0000"))),
 				List.of(new ItemPayload("Server", RequestFixtures.money("1.0000"),
 						RequestFixtures.money("5000.0000"), null)),
-				null, null, null, null,
+				// quotations, invoices, previous summaries, sales tax, budget summaries, documents
+				null, null, null,
 				// BRD 8.3: at least one sales tax authority is required before submission.
 				List.of(new StaPayload(this.taxAuthority.getId(), "STA-1", RequestFixtures.money("250.0000"),
 						"Sales tax at 5%")),
-				null);
+				null, null);
 	}
 
 	// ---------------------------------------------------------------------------------------------
