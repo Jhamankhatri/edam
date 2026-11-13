@@ -207,4 +207,54 @@ public final class RequestFixtures {
 		return new BigDecimal(value);
 	}
 
+	/**
+	 * Publishes a one-step workflow for a request type, through the real configuration service.
+	 *
+	 * <h2>Why tests need this now</h2>
+	 * Phase 3 made submission refuse a request type with no published workflow, which is the behaviour
+	 * BRD 24.1 asks for. Before that, a Phase 2 test could submit without configuring anything. The correct
+	 * response is to give the tests a configured workflow, not to relax the rule.
+	 *
+	 * <h2>Why it goes through the service rather than SQL</h2>
+	 * A workflow inserted with hand-written SQL would not prove that the configuration path produces something
+	 * submittable. Driving {@code createDefinition → createDraft → publish} means every test that submits a
+	 * request also exercises the real publication rules — the derived states, the validation pass and the
+	 * single-published index. If configuration regresses, every submission test fails with it, which is the
+	 * coupling the BRD describes.
+	 *
+	 * <p>The step is a single configured individual so that resolution is deterministic and needs no
+	 * department-hierarchy data. Tests that care about resolution strategies configure their own workflow.
+	 *
+	 * @return the published version, so a test can assert the request pinned it
+	 */
+	public static com.edam.workflow.model.WorkflowVersion publishedWorkflow(
+			com.edam.workflow.service.WorkflowConfigurationService configuration,
+			ExpenseRequestType requestType, java.util.UUID approverId, String codeSuffix) {
+		// Idempotent on purpose. Several tests share one request type, and two active definitions for the
+		// same request type would make the lookup that selects a workflow ambiguous — it returns the first
+		// match, so the second test would silently route through the first test's chain. Publishing only
+		// when the submission lookup would otherwise refuse keeps the fixture consistent with the rule it
+		// is satisfying.
+		try {
+			return configuration.requirePublishedForRequestType(requestType.getId());
+		}
+		catch (com.edam.common.exception.BusinessException alreadyConfigured) {
+			// No published revision yet: fall through and create one.
+		}
+		com.edam.workflow.dto.WorkflowDtos.DefinitionResponse definition = configuration.createDefinition(
+				new com.edam.workflow.dto.WorkflowDtos.SaveDefinitionRequest("WF-" + codeSuffix,
+						"Fixture workflow " + codeSuffix, "Created by RequestFixtures", requestType.getId()));
+		com.edam.workflow.dto.WorkflowDtos.VersionResponse draft = configuration.createDraft(definition.id(),
+				new com.edam.workflow.dto.WorkflowDtos.SaveDraftRequest(
+						java.util.List.of(new com.edam.workflow.dto.WorkflowDtos.StepRequest("ANY-APPROVER",
+								"Any approver", (short) 1,
+								com.edam.workflow.model.WorkflowStep.ApprovalMode.ANY_ONE, (short) 1,
+								java.util.List.of(new com.edam.workflow.dto.WorkflowDtos.ApproverRequest(
+										com.edam.workflow.model.WorkflowStepApprover.ApproverType.USER, null,
+										approverId, null)))),
+						java.util.List.of(), null));
+		return configuration.publish(draft.id(),
+				new com.edam.workflow.dto.WorkflowDtos.PublishRequest(null), approverId);
+	}
+
 }

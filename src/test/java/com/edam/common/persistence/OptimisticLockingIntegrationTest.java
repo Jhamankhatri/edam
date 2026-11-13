@@ -86,6 +86,16 @@ class OptimisticLockingIntegrationTest extends AbstractPostgreSqlIntegrationTest
 	@Autowired
 	private TransactionTemplate transactionTemplate;
 
+	/** A template that commits independently of whatever transaction is currently in progress. */
+	private TransactionTemplate requiredNew;
+
+	@BeforeEach
+	void configureRequiredNewTemplate() {
+		this.requiredNew = new TransactionTemplate(
+				java.util.Objects.requireNonNull(this.transactionTemplate.getTransactionManager()));
+		this.requiredNew.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+	}
+
 	private Department department;
 
 	private Currency currency;
@@ -211,7 +221,9 @@ class OptimisticLockingIntegrationTest extends AbstractPostgreSqlIntegrationTest
 		assertThatThrownBy(() -> this.transactionTemplate.execute(status -> {
 			DepartmentApprovalLimit stale = this.limits.findById(id).orElseThrow();
 			// Another actor's committed change, made while our transaction still holds the old version.
-			this.transactionTemplate.execute(inner -> {
+			// This must be REQUIRES_NEW: with the default propagation it would join the outer transaction,
+			// the "other" write would never commit independently, and no conflict would ever arise.
+			this.requiredNew.execute(inner -> {
 				DepartmentApprovalLimit fresh = this.limits.findById(id).orElseThrow();
 				fresh.setLimit(new BigDecimal("6000.0000"));
 				return this.limits.saveAndFlush(fresh);

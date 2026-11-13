@@ -85,6 +85,9 @@ class ExpenseRequestLifecycleTest extends AbstractPostgreSqlIntegrationTest {
 	private ExpenseRequestTypeRepository requestTypes;
 
 	@Autowired
+	private com.edam.workflow.service.WorkflowConfigurationService workflowConfiguration;
+
+	@Autowired
 	private ExpenseCategoryRepository categories;
 
 	@Autowired
@@ -119,6 +122,8 @@ class ExpenseRequestLifecycleTest extends AbstractPostgreSqlIntegrationTest {
 
 	private ExpenseRequestType capexType;
 
+	private User approver;
+
 	private ExpenseCategory opexCategory;
 
 	private ExpenseCategory capexCategory;
@@ -139,6 +144,13 @@ class ExpenseRequestLifecycleTest extends AbstractPostgreSqlIntegrationTest {
 		this.requester = RequestFixtures.user(this.users, this.department.getId());
 		this.opexType = RequestFixtures.requestType(this.requestTypes, "OPEX");
 		this.capexType = RequestFixtures.requestType(this.requestTypes, "CAPEX");
+		// Submission requires a published workflow per request type from Phase 3 onwards. Both types get
+		// one because this class exercises OPEX and CAPEX side by side.
+		this.approver = RequestFixtures.user(this.users, this.department.getId());
+		RequestFixtures.publishedWorkflow(this.workflowConfiguration, this.opexType, this.approver.getId(),
+				"LC-OPEX");
+		RequestFixtures.publishedWorkflow(this.workflowConfiguration, this.capexType, this.approver.getId(),
+				"LC-CAPEX");
 		String suffix = UUID.randomUUID().toString().substring(0, 6);
 		this.opexCategory = RequestFixtures.category(this.categories, "OP-" + suffix, ExpenseCategory.ExpenseType.OPEX);
 		this.capexCategory = RequestFixtures.category(this.categories, "CP-" + suffix,
