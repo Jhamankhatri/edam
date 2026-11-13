@@ -463,7 +463,7 @@ public class ExpenseRequestService {
 		boolean grnRequired = opex != null && Boolean.TRUE.equals(opex.grnRequired());
 		return new RequestValidationContext(configuration.classification(), capexRequest ? "CAPEX" : "OPEX",
 				capexDepartmentEligible(request.getDepartmentId()), configuration.baseCurrencyId(),
-				request.getCurrencyId(), threeQuotations, alreadyApproved, taxExempt, grnRequired,
+				threeQuotations, alreadyApproved, taxExempt, grnRequired,
 				hasDocumentType(documentPayloads, "OTHER"), hasDocumentType(documentPayloads, "TAX"),
 				hasDocumentType(documentPayloads, "GRN"), LocalDate.now(this.clock));
 	}
@@ -474,8 +474,21 @@ public class ExpenseRequestService {
 		boolean capexRequest = request.capexDetail() != null;
 		return new RequestValidationContext(configuration.classification(), capexRequest ? "CAPEX" : "OPEX",
 				capexDepartmentEligible(request.getDepartmentId()), configuration.baseCurrencyId(),
-				request.getCurrencyId(), false, false, false, false, hasType(attached, "OTHER"),
+				false, false, false, false, hasType(attached, "OTHER"),
 				hasType(attached, "TAX"), hasType(attached, "GRN"), LocalDate.now(this.clock));
+	}
+
+	/**
+	 * Whether the payload carries a document of the given type.
+	 *
+	 * <p>Used for a create or an update, where the documents are being supplied in the same call and are not
+	 * yet persisted, so the validator cannot see them in the aggregate.
+	 */
+	private static boolean hasDocumentType(
+			List<com.edam.expenserequest.dto.ExpenseRequestDtos.DocumentReferencePayload> payloads, String type) {
+		return payloads != null && payloads.stream()
+			.anyMatch(payload -> payload.documentType() != null
+					&& type.equalsIgnoreCase(payload.documentType().trim()));
 	}
 
 	private static boolean hasType(List<RequestDocument> documents, String type) {

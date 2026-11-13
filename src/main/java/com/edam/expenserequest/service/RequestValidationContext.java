@@ -27,7 +27,6 @@ import java.util.UUID;
  * @param requestTypeCode the configured request-type code, used to decide OPEX-vs-CAPEX detail
  * @param capexDepartmentEligible whether the requesting department may raise CAPEX (OD-P2-07)
  * @param baseCurrencyId the installation's base currency
- * @param localCurrencyId the currency the request is stated in
  * @param threeQuotationsSelected whether the requester attested that three quotations are attached
  * @param alreadyApproved whether the expense was already approved elsewhere
  * @param taxExempt whether a tax exemption is claimed
@@ -38,7 +37,7 @@ import java.util.UUID;
  * @param today the validation date, injected so "the past" is testable
  */
 public record RequestValidationContext(String expenseType, String requestTypeCode, boolean capexDepartmentEligible,
-		UUID baseCurrencyId, UUID localCurrencyId, boolean threeQuotationsSelected, boolean alreadyApproved,
+		UUID baseCurrencyId, boolean threeQuotationsSelected, boolean alreadyApproved,
 		boolean taxExempt, boolean grnRequired, boolean hasApprovedDocument, boolean hasTaxExemptionDocument,
 		boolean hasGrnDocument, LocalDate today) {
 

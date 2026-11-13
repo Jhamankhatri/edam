@@ -106,15 +106,15 @@ class RequestValidatorTest {
 
 	/** A context with no options selected and no documents attached. */
 	private static RequestValidationContext contextOf(String expenseType, String requestTypeCode) {
-		return new RequestValidationContext(expenseType, requestTypeCode, true, CURRENCY, CURRENCY, false, false,
-				false, false, false, false, false, TODAY);
+		return new RequestValidationContext(expenseType, requestTypeCode, true, CURRENCY, false, false, false,
+				false, false, false, false, TODAY);
 	}
 
 	/** An OPEX context with the named conditional options selected. */
 	private static RequestValidationContext contextWithOptions(boolean threeQuotations, boolean alreadyApproved,
 			boolean taxExempt, boolean grnRequired) {
-		return new RequestValidationContext("OPEX", "OPEX", true, CURRENCY, CURRENCY, threeQuotations,
-				alreadyApproved, taxExempt, grnRequired, false, false, false, TODAY);
+		return new RequestValidationContext("OPEX", "OPEX", true, CURRENCY, threeQuotations, alreadyApproved,
+				taxExempt, grnRequired, false, false, false, TODAY);
 	}
 
 	private static List<FieldErrorDetail> errorsOf(ExpenseRequest request, RequestValidationContext context) {
@@ -328,7 +328,7 @@ class RequestValidatorTest {
 			ExpenseRequest request = validOpex();
 			request.replaceQuotations(List.of());
 			RequestValidationContext context = new RequestValidationContext("OPEX", "OPEX", true, CURRENCY,
-					CURRENCY, true, true, true, true, false, false, false, TODAY);
+					true, true, true, true, false, false, false, TODAY);
 			assertThatCode(() -> RequestValidator.validate(request, context, false)).doesNotThrowAnyException();
 		}
 	}
@@ -445,7 +445,7 @@ class RequestValidatorTest {
 		@DisplayName("a department not configured for CAPEX is rejected")
 		void ineligibleDepartment() {
 			RequestValidationContext ineligible = new RequestValidationContext("CAPEX", "CAPEX", false, CURRENCY,
-					CURRENCY, false, false, false, false, false, false, false, TODAY);
+					false, false, false, false, false, false, false, TODAY);
 			assertThat(fieldsOf(validCapex(), ineligible)).contains("departmentId");
 		}
 	}
