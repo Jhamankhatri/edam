@@ -32,7 +32,10 @@ Development was **not** based on `arena/79b46ab7-edam`, as instructed.
 | Run | Result | Detail |
 |---|---|---|
 | [43426368171](https://github.com/Jhamankhatri/edam/actions/runs/43426368171) | **success** | Headline green run for the test work |
-| Final run on the tip (`d75f8a9`) | see the PR checks | Documentation-only change; no source touched |
+| [43427399978](https://github.com/Jhamankhatri/edam/actions/runs/43427399978) | **success** | Branch tip. All three jobs: `build-and-test`, `war-package-smoke-test`, `prod-profile-smoke-test` |
+
+The two smoke jobs are evidence the test job cannot give: the packaged WAR boots and renders, and the production
+profile starts. Neither is implied by a test-context pass.
 
 Every intermediate run and its failure reason is in the commit history. **No test was weakened and no assertion
 was removed to obtain a green build.** Where a test failed, one of two things was true, and both were resolved by

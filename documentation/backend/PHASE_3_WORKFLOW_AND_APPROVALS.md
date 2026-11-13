@@ -259,6 +259,10 @@ Actions, not from a local build. What that does and does not establish:
 | Run | Commit subject | Result |
 |---|---|---|
 | [43426368171](https://github.com/Jhamankhatri/edam/actions/runs/43426368171) | Qualify the withdrawal test's outer references | **success** — 23 classes, 287 tests, 0F, 0E |
+| [43427399978](https://github.com/Jhamankhatri/edam/actions/runs/43427399978) | Add the Phase 3 delivery report | **success on the branch tip** — all three jobs: `build-and-test`, `war-package-smoke-test`, `prod-profile-smoke-test` |
+
+The war and prod jobs matter separately from the test job: they prove the packaged WAR boots and serves, and
+that the production profile starts, which the test context with its test profile does not exercise.
 
 Every earlier run on the branch and the reason it failed is in the commit history; the failures were compile
 errors, import paths moved in Boot 4, `@Nested` `this` qualification, record-vs-entity accessors, and four
