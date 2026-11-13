@@ -200,48 +200,48 @@ class SubmissionIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("submission creates one instance, one task and marks the request submitted")
 		void submissionStartsRealWorkflow() {
-			UUID versionId = publishChain(1);
+			UUID versionId = SubmissionIntegrationTest.this.publishChain(1);
 
-			ExpenseRequestDtos.RequestResponse submitted = this.requests.submit(draft().id(), owner());
+			ExpenseRequestDtos.RequestResponse submitted = SubmissionIntegrationTest.this.requests.submit(SubmissionIntegrationTest.this.draft().id(), SubmissionIntegrationTest.this.owner());
 
-			ExpenseRequest reloaded = this.requestRows.findById(submitted.id()).orElseThrow();
+			ExpenseRequest reloaded = SubmissionIntegrationTest.this.requestRows.findById(submitted.id()).orElseThrow();
 			assertThat(reloaded.getCurrentStatusCode()).isEqualTo(ExpenseRequest.Status.SUBMITTED);
 			assertThat(reloaded.getCurrentWorkflowInstanceId()).isNotNull();
 
-			WorkflowInstance instance = this.instances.findById(reloaded.getCurrentWorkflowInstanceId())
+			WorkflowInstance instance = SubmissionIntegrationTest.this.instances.findById(reloaded.getCurrentWorkflowInstanceId())
 				.orElseThrow();
 			assertThat(instance.getWorkflowVersionId()).isEqualTo(versionId);
 			assertThat(instance.getExpenseRequestId()).isEqualTo(reloaded.getId());
-			assertThat(this.tasks.findByWorkflowInstanceIdOrderByAssignedAtAsc(instance.getId())).hasSize(1);
+			assertThat(SubmissionIntegrationTest.this.tasks.findByWorkflowInstanceIdOrderByAssignedAtAsc(instance.getId())).hasSize(1);
 		}
 
 		@Test
 		@DisplayName("a draft with no published workflow stays a draft and gains no instance")
 		void failedStartLeavesAnEditableDraft() {
 			// No workflow is published for this request type at all.
-			UUID draftId = draft().id();
+			UUID draftId = SubmissionIntegrationTest.this.draft().id();
 
-			assertThatThrownBy(() -> this.requests.submit(draftId, owner())).isInstanceOf(RuntimeException.class);
+			assertThatThrownBy(() -> SubmissionIntegrationTest.this.requests.submit(draftId, SubmissionIntegrationTest.this.owner())).isInstanceOf(RuntimeException.class);
 
-			ExpenseRequest reloaded = this.requestRows.findById(draftId).orElseThrow();
+			ExpenseRequest reloaded = SubmissionIntegrationTest.this.requestRows.findById(draftId).orElseThrow();
 			assertThat(reloaded.getCurrentStatusCode()).isEqualTo(ExpenseRequest.Status.DRAFT);
 			assertThat(reloaded.getCurrentWorkflowInstanceId()).isNull();
 			assertThat(reloaded.isEditable()).isTrue();
-			assertThat(this.instances.findByExpenseRequestId(draftId)).isEmpty();
+			assertThat(SubmissionIntegrationTest.this.instances.findByExpenseRequestId(draftId)).isEmpty();
 		}
 
 		@Test
 		@DisplayName("submitting the same request twice does not start a second workflow")
 		void doubleSubmissionRefused() {
-			publishChain(1);
-			UUID draftId = draft().id();
-			this.requests.submit(draftId, owner());
+			SubmissionIntegrationTest.this.publishChain(1);
+			UUID draftId = SubmissionIntegrationTest.this.draft().id();
+			SubmissionIntegrationTest.this.requests.submit(draftId, SubmissionIntegrationTest.this.owner());
 
-			assertThatThrownBy(() -> this.requests.submit(draftId, owner())).isInstanceOf(RuntimeException.class);
+			assertThatThrownBy(() -> SubmissionIntegrationTest.this.requests.submit(draftId, SubmissionIntegrationTest.this.owner())).isInstanceOf(RuntimeException.class);
 
 			// One instance, not two: a duplicate would give the same request two independent approval
 			// tracks, and whichever finished second would overwrite the first.
-			assertThat(this.instances.findByExpenseRequestId(draftId)).isPresent();
+			assertThat(SubmissionIntegrationTest.this.instances.findByExpenseRequestId(draftId)).isPresent();
 		}
 	}
 
@@ -256,33 +256,33 @@ class SubmissionIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("publishing a new revision does not move an in-flight request onto it")
 		void inFlightKeepsItsVersion() {
-			UUID firstVersion = publishChain(1);
-			ExpenseRequestDtos.RequestResponse submitted = this.requests.submit(draft().id(), owner());
+			UUID firstVersion = SubmissionIntegrationTest.this.publishChain(1);
+			ExpenseRequestDtos.RequestResponse submitted = SubmissionIntegrationTest.this.requests.submit(SubmissionIntegrationTest.this.draft().id(), SubmissionIntegrationTest.this.owner());
 
 			// A new revision is published while the request is in approval.
-			UUID secondVersion = publishChain(1);
+			UUID secondVersion = SubmissionIntegrationTest.this.publishChain(1);
 			assertThat(secondVersion).isNotEqualTo(firstVersion);
 
-			WorkflowInstance instance = this.instances.findByExpenseRequestId(submitted.id()).orElseThrow();
+			WorkflowInstance instance = SubmissionIntegrationTest.this.instances.findByExpenseRequestId(submitted.id()).orElseThrow();
 			assertThat(instance.getWorkflowVersionId())
 				.as("the in-flight instance must stay on the revision it started under")
 				.isEqualTo(firstVersion);
 
 			// And the published pointer has genuinely moved, so the assertion above is not vacuous.
-			assertThat(this.configuration.requirePublishedForRequestType(this.requestType.getId()).getId())
+			assertThat(SubmissionIntegrationTest.this.configuration.requirePublishedForRequestType(SubmissionIntegrationTest.this.requestType.getId()).getId())
 				.isEqualTo(secondVersion);
 		}
 
 		@Test
 		@DisplayName("a request submitted after republication uses the new revision")
 		void newSubmissionUsesNewRevision() {
-			publishChain(1);
-			this.requests.submit(draft().id(), owner());
+			SubmissionIntegrationTest.this.publishChain(1);
+			SubmissionIntegrationTest.this.requests.submit(SubmissionIntegrationTest.this.draft().id(), SubmissionIntegrationTest.this.owner());
 
-			UUID secondVersion = publishChain(1);
-			ExpenseRequestDtos.RequestResponse later = this.requests.submit(draft().id(), owner());
+			UUID secondVersion = SubmissionIntegrationTest.this.publishChain(1);
+			ExpenseRequestDtos.RequestResponse later = SubmissionIntegrationTest.this.requests.submit(SubmissionIntegrationTest.this.draft().id(), SubmissionIntegrationTest.this.owner());
 
-			assertThat(this.instances.findByExpenseRequestId(later.id()).orElseThrow().getWorkflowVersionId())
+			assertThat(SubmissionIntegrationTest.this.instances.findByExpenseRequestId(later.id()).orElseThrow().getWorkflowVersionId())
 				.isEqualTo(secondVersion);
 		}
 	}
@@ -298,36 +298,36 @@ class SubmissionIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("cancelling ends the workflow and leaves no open task in any inbox")
 		void cancelEndsTheWorkflow() {
-			publishChain(1);
-			ExpenseRequestDtos.RequestResponse submitted = this.requests.submit(draft().id(), owner());
-			WorkflowInstance instance = this.instances.findByExpenseRequestId(submitted.id()).orElseThrow();
+			SubmissionIntegrationTest.this.publishChain(1);
+			ExpenseRequestDtos.RequestResponse submitted = SubmissionIntegrationTest.this.requests.submit(SubmissionIntegrationTest.this.draft().id(), SubmissionIntegrationTest.this.owner());
+			WorkflowInstance instance = SubmissionIntegrationTest.this.instances.findByExpenseRequestId(submitted.id()).orElseThrow();
 
-			this.requests.cancel(submitted.id(), "No longer required", owner());
+			SubmissionIntegrationTest.this.requests.cancel(submitted.id(), "No longer required", SubmissionIntegrationTest.this.owner());
 
-			ExpenseRequest reloaded = this.requestRows.findById(submitted.id()).orElseThrow();
+			ExpenseRequest reloaded = SubmissionIntegrationTest.this.requestRows.findById(submitted.id()).orElseThrow();
 			assertThat(reloaded.getCurrentStatusCode()).isEqualTo(ExpenseRequest.Status.CANCELLED);
 
 			// No task remains that an approver could still act on. A cancelled request with pending tasks
 			// would keep appearing in an inbox and could still be approved.
-			assertThat(this.tasks.findByWorkflowInstanceIdOrderByAssignedAtAsc(instance.getId()))
+			assertThat(SubmissionIntegrationTest.this.tasks.findByWorkflowInstanceIdOrderByAssignedAtAsc(instance.getId()))
 				.allMatch(task -> task.getStatus() != com.edam.workflow.model.WorkflowTask.TaskStatus.PENDING);
 		}
 
 		@Test
 		@DisplayName("cancellation is recorded as an action, not just a status change")
 		void cancelIsAudited() {
-			publishChain(1);
-			ExpenseRequestDtos.RequestResponse submitted = this.requests.submit(draft().id(), owner());
-			WorkflowInstance instance = this.instances.findByExpenseRequestId(submitted.id()).orElseThrow();
+			SubmissionIntegrationTest.this.publishChain(1);
+			ExpenseRequestDtos.RequestResponse submitted = SubmissionIntegrationTest.this.requests.submit(SubmissionIntegrationTest.this.draft().id(), SubmissionIntegrationTest.this.owner());
+			WorkflowInstance instance = SubmissionIntegrationTest.this.instances.findByExpenseRequestId(submitted.id()).orElseThrow();
 
 			// Actions are keyed by task, not by instance, so the instance's own task ids are the join.
-			Set<UUID> taskIds = this.tasks.findByWorkflowInstanceIdOrderByAssignedAtAsc(instance.getId()).stream()
+			Set<UUID> taskIds = SubmissionIntegrationTest.this.tasks.findByWorkflowInstanceIdOrderByAssignedAtAsc(instance.getId()).stream()
 				.map(com.edam.workflow.model.WorkflowTask::getId).collect(java.util.stream.Collectors.toSet());
-			long before = this.actions.findAll().stream()
+			long before = SubmissionIntegrationTest.this.actions.findAll().stream()
 				.filter(action -> action.getWorkflowTaskId() != null && taskIds.contains(action.getWorkflowTaskId()))
 				.count();
-			this.requests.cancel(submitted.id(), "Budget withdrawn", owner());
-			long after = this.actions.findAll().stream()
+			SubmissionIntegrationTest.this.requests.cancel(submitted.id(), "Budget withdrawn", SubmissionIntegrationTest.this.owner());
+			long after = SubmissionIntegrationTest.this.actions.findAll().stream()
 				.filter(action -> action.getWorkflowTaskId() != null && taskIds.contains(action.getWorkflowTaskId()))
 				.count();
 
