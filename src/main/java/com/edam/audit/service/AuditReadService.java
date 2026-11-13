@@ -246,12 +246,14 @@ public class AuditReadService {
 	// ---------------------------------------------------------------------------------------------
 
 	private List<AuditEvent> fetchAuditEventsFor(UUID requestId, Instant boundedAt, CursorKey after) {
-		Pageable pageable = PageRequest.of(0, SOURCE_FETCH_CHUNK,
-				Sort.by(Sort.Direction.ASC, "createdAt", "id"));
-		// The repository's finder is ordered DESC; we ask for it DESC then reverse.
+		// The repository's finder is ordered DESC; fetch a generous chunk and reverse it.
+		// Unpaged returns List but returns all rows for the request; for timeline pagination we
+		// cap at SOURCE_FETCH_CHUNK which is enough to satisfy any single page given the merge
+		// algorithm takes size entries.
 		List<AuditEvent> rows = this.audit
 				.findByEntityTypeAndEntityIdOrderByCreatedAtDesc(ENTITY_TYPE_REQUEST, requestId.toString(),
-						Pageable.unpaged());
+						PageRequest.of(0, SOURCE_FETCH_CHUNK + size, Sort.by(Sort.Direction.DESC, "createdAt", "id")))
+				.getContent();
 		// Filter to the bounded window and after-key in Java; the volume per request is bounded
 		// by request depth, and we already load only one request's events.
 		List<AuditEvent> picked = new ArrayList<>();
@@ -532,8 +534,8 @@ public class AuditReadService {
 			JsonNode keys = root.path("k");
 			keys.fields().forEachRemaining(entry -> {
 				Instant ts = Instant.parse(entry.getValue().get("t").asText());
-				UUID id = UUID.fromString(entry.getValue().get("i").asText());
-				lastKeys.put(entry.getKey(), new CursorKey(ts, id));
+				UUID keyId = UUID.fromString(entry.getValue().get("i").asText());
+				lastKeys.put(entry.getKey(), new CursorKey(ts, keyId));
 			});
 			return new TimelineCursor(version, boundedAt, requestId, lastKeys);
 		}
