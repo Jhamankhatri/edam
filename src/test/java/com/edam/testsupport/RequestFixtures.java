@@ -207,4 +207,107 @@ public final class RequestFixtures {
 		return new BigDecimal(value);
 	}
 
+	/**
+	 * A role with no holder, created if the code is new.
+	 *
+	 * <p>{@code workflow_step_approvers.role_id} is a foreign key, so a step naming a role that does not
+	 * exist cannot be stored at all. To test "the role exists but nobody holds it" — the case where the
+	 * designation is legitimate and the staffing is not — the role must be real.
+	 */
+	public static com.edam.rolemanagement.model.Role emptyRole(
+			com.edam.rolemanagement.repository.RoleRepository roles, String code) {
+		// The schema constrains role codes to ^[A-Z][A-Z0-9_]{1,99}$, so a fixture that passed a
+		// random UUID would be rejected by the database rather than testing what it meant to.
+		String normalised = code.toUpperCase(java.util.Locale.ROOT).replaceAll("[^A-Z0-9_]", "_");
+		if (!normalised.matches("[A-Z][A-Z0-9_]{1,99}")) {
+			normalised = "FIXTURE_" + normalised;
+		}
+		String finalCode = normalised;
+		return roles.findByCode(finalCode).orElseGet(() -> {
+			com.edam.rolemanagement.model.Role role = new com.edam.rolemanagement.model.Role();
+			role.setCode(finalCode);
+			role.setName("Fixture role " + finalCode);
+			return roles.save(role);
+		});
+	}
+
+	/**
+	 * A committee level with nobody seated on it.
+	 *
+	 * <p>Same reasoning as {@link #emptyRole}: the level must exist for the step to reference it, and the
+	 * absence of seats is exactly the condition under test. A committee that resolves to nobody must stop
+	 * the submission, never be skipped.
+	 */
+	public static UUID emptyCommitteeLevel(com.edam.committee.repository.CommitteeRepository committees,
+			JdbcTemplate jdbc, String code, UUID currencyId) {
+		com.edam.committee.model.ExpenseCommittee committee = committees.findByCommitteeCode(code)
+			.orElseGet(() -> committees.saveAndFlush(new com.edam.committee.model.ExpenseCommittee(code,
+					"Fixture committee " + code, "Created by RequestFixtures")));
+		// A level with no members, which the committee service will not create: its request record
+		// requires at least one member, because a band nobody sits on is not a usable configuration.
+		// That is exactly the state under test here — a level that exists and is unstaffed — so the row
+		// is built directly and then attached to the managed committee.
+		com.edam.committee.model.CommitteeLevel level = new com.edam.committee.model.CommitteeLevel(committee,
+				(short) 1, "Fixture level " + code, new BigDecimal("0.0000"),
+				new BigDecimal("999999999.0000"), currencyId, (short) 1);
+		committee.getLevels().add(level);
+		committees.saveAndFlush(committee);
+		// The id is assigned by the database (@Generated(event = INSERT)) and is not back-filled onto the
+		// instance that was handed in. Re-reading through the repository would touch a lazy collection
+		// outside a transaction, so the single value needed is read directly through JDBC, which is what
+		// this fixture style already does for media assets.
+		return jdbc.queryForObject("select id from committee_levels where committee_id = ? and level_number = ?",
+				UUID.class, committee.getId(), (short) 1);
+	}
+
+	/**
+	 * Publishes a one-step workflow for a request type, through the real configuration service.
+	 *
+	 * <h2>Why tests need this now</h2>
+	 * Phase 3 made submission refuse a request type with no published workflow, which is the behaviour
+	 * BRD 24.1 asks for. Before that, a Phase 2 test could submit without configuring anything. The correct
+	 * response is to give the tests a configured workflow, not to relax the rule.
+	 *
+	 * <h2>Why it goes through the service rather than SQL</h2>
+	 * A workflow inserted with hand-written SQL would not prove that the configuration path produces something
+	 * submittable. Driving {@code createDefinition → createDraft → publish} means every test that submits a
+	 * request also exercises the real publication rules — the derived states, the validation pass and the
+	 * single-published index. If configuration regresses, every submission test fails with it, which is the
+	 * coupling the BRD describes.
+	 *
+	 * <p>The step is a single configured individual so that resolution is deterministic and needs no
+	 * department-hierarchy data. Tests that care about resolution strategies configure their own workflow.
+	 *
+	 * @return the published version's id, so a test can assert the request pinned it
+	 */
+	public static java.util.UUID publishedWorkflow(
+			com.edam.workflow.service.WorkflowConfigurationService configuration,
+			ExpenseRequestType requestType, java.util.UUID approverId, String codeSuffix) {
+		// Idempotent on purpose. Several tests share one request type, and two active definitions for the
+		// same request type would make the lookup that selects a workflow ambiguous — it returns the first
+		// match, so the second test would silently route through the first test's chain. Publishing only
+		// when the submission lookup would otherwise refuse keeps the fixture consistent with the rule it
+		// is satisfying.
+		try {
+			return configuration.requirePublishedForRequestType(requestType.getId()).getId();
+		}
+		catch (com.edam.common.exception.BusinessException alreadyConfigured) {
+			// No published revision yet: fall through and create one.
+		}
+		com.edam.workflow.dto.WorkflowDtos.DefinitionResponse definition = configuration.createDefinition(
+				new com.edam.workflow.dto.WorkflowDtos.SaveDefinitionRequest("WF-" + codeSuffix,
+						"Fixture workflow " + codeSuffix, "Created by RequestFixtures", requestType.getId()));
+		com.edam.workflow.dto.WorkflowDtos.VersionResponse draft = configuration.createDraft(definition.id(),
+				new com.edam.workflow.dto.WorkflowDtos.SaveDraftRequest(
+						java.util.List.of(new com.edam.workflow.dto.WorkflowDtos.StepRequest("ANY-APPROVER",
+								"Any approver", (short) 1,
+								com.edam.workflow.model.WorkflowStep.ApprovalMode.PARALLEL, (short) 1,
+								java.util.List.of(new com.edam.workflow.dto.WorkflowDtos.ApproverRequest(
+										com.edam.workflow.model.WorkflowStepApprover.ApproverType.USER, null,
+										approverId, null)))),
+						java.util.List.of(), null));
+		return configuration.publish(draft.id(),
+				new com.edam.workflow.dto.WorkflowDtos.PublishRequest(null), approverId).id();
+	}
+
 }

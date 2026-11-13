@@ -23,6 +23,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
@@ -78,8 +79,8 @@ public class SecurityConfig {
 
 	@Bean
 	SecurityFilterChain securityFilterChain(HttpSecurity http, JsonMapper jsonMapper,
-			@org.springframework.beans.factory.annotation.Qualifier("corsConfigurationSource") org.springframework.web.cors.CorsConfigurationSource corsSource)
-			throws Exception {
+			@org.springframework.beans.factory.annotation.Qualifier("corsConfigurationSource") org.springframework.web.cors.CorsConfigurationSource corsSource,
+			CsrfTokenRepository csrfTokenRepository) throws Exception {
 		RequestMatcher[] publicMatchers = {
 				// The container's error dispatch re-enters the filter chain. Without this,
 				// an authenticated 500 would turn into a 302 to the login page.
@@ -120,7 +121,7 @@ public class SecurityConfig {
 			// browser must echo back in a header, and a cross-origin attacker can neither read it
 			// (same-origin policy) nor guess it.
 			.csrf(csrf -> csrf
-				.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+				.csrfTokenRepository(csrfTokenRepository)
 				// A JS client sends the token in a header, not as a request parameter. This handler is
 				// what makes header-based checking work for a client that never renders a form.
 				.csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
@@ -159,6 +160,25 @@ public class SecurityConfig {
 	@Bean
 	SecurityContextRepository securityContextRepository() {
 		return new HttpSessionSecurityContextRepository();
+	}
+
+	/**
+	 * The CSRF token repository, exposed as a bean so the token endpoint can persist the token itself.
+	 *
+	 * <h2>Why this is a bean rather than a lambda inside the chain</h2>
+	 * Spring Security 6 defers CSRF token creation: {@code CsrfFilter} installs a supplier and only
+	 * materialises the token when something dereferences it. For an unsafe method the filter does
+	 * dereference it, which saves the cookie as a side effect. For a {@code GET} it does not — so an SPA
+	 * that asks {@code GET /auth/csrf} for a token before its first write receives the token in the body
+	 * and no cookie, and its next request has nothing to send. That is the documented deferred-loading
+	 * behaviour, not a misconfiguration.
+	 *
+	 * <p>Sharing the instance means the endpoint and the filter cannot drift: the cookie written by
+	 * {@code saveToken} is by construction one the filter will accept.
+	 */
+	@Bean
+	CsrfTokenRepository csrfTokenRepository() {
+		return CookieCsrfTokenRepository.withHttpOnlyFalse();
 	}
 
 	/**

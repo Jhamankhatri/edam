@@ -17,6 +17,7 @@ import com.edam.workflow.repository.InstancesRepository;
 import com.edam.workflow.repository.StatesRepository;
 import com.edam.workflow.repository.StepsRepository;
 import com.edam.workflow.repository.TasksRepository;
+import com.edam.workflow.repository.TransitionsRepository;
 import com.edam.workflow.repository.VersionsRepository;
 
 import org.slf4j.Logger;
@@ -70,16 +71,20 @@ public class WorkflowEngine {
 
 	private final ActionsRepository actions;
 
+	private final TransitionsRepository transitions;
+
 	private final WorkflowAssignmentResolver assignmentResolver;
 
 	public WorkflowEngine(InstancesRepository instances, VersionsRepository versions, StatesRepository states, StepsRepository steps, TasksRepository tasks,
-			ActionsRepository actions, WorkflowAssignmentResolver assignmentResolver) {
+			ActionsRepository actions, TransitionsRepository transitions,
+			WorkflowAssignmentResolver assignmentResolver) {
 		this.instances = instances;
 		this.versions = versions;
 		this.states = states;
 		this.steps = steps;
 		this.tasks = tasks;
 		this.actions = actions;
+		this.transitions = transitions;
 		this.assignmentResolver = assignmentResolver;
 	}
 
@@ -117,6 +122,33 @@ public class WorkflowEngine {
 		return new StartedInstance(instance, opened);
 	}
 
+	/**
+	 * Re-opens the first step of a running instance whose request was returned for correction.
+	 *
+	 * <p>Used on resubmission. The instance keeps the version it started under, so the approval path does not
+	 * change because the request was sent back once. Refuses when the instance is not sitting at its initial
+	 * state, which is where a revert leaves it: resuming from anywhere else would let a resubmission skip
+	 * steps approvers had already cleared.
+	 */
+	public List<WorkflowTask> resumeAtFirstStep(WorkflowInstance instance, WorkflowVersion version,
+			AssignmentContext context) {
+		if (!instance.isRunning()) {
+			throw new BusinessException(ErrorCode.PRECONDITION_FAILED,
+					"This workflow has already been completed.");
+		}
+		WorkflowState current = requireCurrentState(instance);
+		if (current.getStateType() != WorkflowState.StateType.INITIAL) {
+			throw new BusinessException(ErrorCode.PRECONDITION_FAILED,
+					"This workflow is not awaiting resubmission; it is " + current.getStateCode() + ".");
+		}
+		// Any task left open at this point belongs to an approval nobody is waiting for any more.
+		closeAllOpenTasks(instance.getId(), WorkflowTask.TaskStatus.CANCELLED);
+		List<WorkflowTask> opened = advanceToFirstStep(instance, version, context);
+		log.info("workflow.resumed instanceId={} versionId={} tasks={}", instance.getId(), version.getId(),
+				opened.size());
+		return opened;
+	}
+
 	// ------------------------------------------------------------------
 	// Actions
 	// ------------------------------------------------------------------
@@ -132,6 +164,10 @@ public class WorkflowEngine {
 		WorkflowVersion version = requireVersion(instance);
 		WorkflowStep step = requireStep(task);
 		WorkflowState previous = requireCurrentState(instance);
+		// Consulted for its refusal, not its target: the step machine decides where an approval leads, but
+		// a revision that removed APPROVE from this state must not still accept one.
+		resolveTarget(version, previous.getId(), com.edam.workflow.model.WorkflowTransition.ActionCode.APPROVE,
+				previous);
 
 		task.complete(WorkflowTask.TaskStatus.APPROVED);
 		this.tasks.save(task);
@@ -166,9 +202,15 @@ public class WorkflowEngine {
 		requireOpen(instance, task);
 		WorkflowVersion version = requireVersion(instance);
 		WorkflowState previous = requireCurrentState(instance);
-		WorkflowState rejected = this.states.findByType(version.getId(), WorkflowState.StateType.REJECTED)
+		WorkflowState builtInRejected = this.states.findByType(version.getId(), WorkflowState.StateType.REJECTED)
 			.orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CONFIGURATION,
 					"The workflow defines no rejection state."));
+		WorkflowState rejected = resolveTarget(version, previous.getId(),
+				com.edam.workflow.model.WorkflowTransition.ActionCode.REJECT, builtInRejected);
+		if (rejected == null) {
+			throw new BusinessException(ErrorCode.INVALID_CONFIGURATION,
+					"A rejection must lead to a state, but this workflow declares none.");
+		}
 
 		task.complete(WorkflowTask.TaskStatus.REJECTED);
 		this.tasks.save(task);
@@ -195,9 +237,18 @@ public class WorkflowEngine {
 		requireOpen(instance, task);
 		WorkflowVersion version = requireVersion(instance);
 		WorkflowState previous = requireCurrentState(instance);
-		WorkflowState initial = this.states.findInitial(version.getId())
+		WorkflowState builtInInitial = this.states.findInitial(version.getId())
 			.orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CONFIGURATION,
 					"The workflow has no initial state to revert to."));
+		// BRD 7.4: an EC-stage revert returns the request to the last Phase-1 approver. That destination is
+		// configuration, so a revision that declares where a revert goes is honoured; the initial state is
+		// the built-in behaviour for revisions that declare nothing.
+		WorkflowState initial = resolveTarget(version, previous.getId(),
+				com.edam.workflow.model.WorkflowTransition.ActionCode.REVERT, builtInInitial);
+		if (initial == null) {
+			throw new BusinessException(ErrorCode.INVALID_CONFIGURATION,
+					"A revert must lead to a state, but this workflow declares none.");
+		}
 
 		task.complete(WorkflowTask.TaskStatus.REVERTED);
 		this.tasks.save(task);
@@ -249,9 +300,15 @@ public class WorkflowEngine {
 	public ActionOutcome cancel(WorkflowInstance instance, UUID actor, String remarks, String correlationId) {
 		WorkflowVersion version = requireVersion(instance);
 		WorkflowState previous = requireCurrentState(instance);
-		WorkflowState cancelled = this.states.findByType(version.getId(), WorkflowState.StateType.CANCELLED)
+		WorkflowState builtInCancelled = this.states.findByType(version.getId(), WorkflowState.StateType.CANCELLED)
 			.orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CONFIGURATION,
 					"The workflow defines no cancellation state."));
+		WorkflowState cancelled = resolveTarget(version, previous.getId(),
+				com.edam.workflow.model.WorkflowTransition.ActionCode.CANCEL, builtInCancelled);
+		if (cancelled == null) {
+			throw new BusinessException(ErrorCode.INVALID_CONFIGURATION,
+					"A cancellation must lead to a state, but this workflow declares none.");
+		}
 		closeAllOpenTasks(instance.getId(), WorkflowTask.TaskStatus.CANCELLED);
 		instance.setCurrentStateId(cancelled.getId());
 		instance.complete();
@@ -399,6 +456,60 @@ public class WorkflowEngine {
 	/** Reads the instance's current state for callers that need to render a case file. */
 	public WorkflowState currentState(WorkflowInstance instance) {
 		return requireCurrentState(instance);
+	}
+
+	// ------------------------------------------------------------------
+	// Declared transitions
+	// ------------------------------------------------------------------
+
+	/**
+	 * Resolves the state an action leads to, consulting the revision's declared transitions.
+	 *
+	 * <h2>Two regimes, and why the switch is not silent</h2>
+	 * A revision that declares <em>no</em> transitions at all is treated as using the engine's built-in
+	 * semantics. Every revision created before this table was consulted is in that position, and refusing
+	 * their actions outright would break every workflow already in production.
+	 *
+	 * <p>Once a revision declares <em>any</em> transition for a state, that state's permitted actions are
+	 * exactly what it declares. An action it does not declare is refused, with a message naming the action.
+	 * Falling back would let a workflow that was deliberately narrowed silently regain the actions someone
+	 * removed from it — the opposite of what configuring it was for.
+	 *
+	 * @param version the pinned revision
+	 * @param fromStateId the state the instance is in
+	 * @param action the action being attempted
+	 * @param fallback the state the built-in semantics would produce, used only when the revision declares
+	 * nothing for this state
+	 * @return the state to move to, or {@code null} when the action ends the instance without one
+	 * @throws BusinessException when the revision declares transitions for this state but not this action
+	 */
+	private WorkflowState resolveTarget(WorkflowVersion version, UUID fromStateId,
+			com.edam.workflow.model.WorkflowTransition.ActionCode action, WorkflowState fallback) {
+		List<com.edam.workflow.model.WorkflowTransition> declared = this.transitions
+			.findByWorkflowVersionId(version.getId());
+		boolean stateIsConfigured = declared.stream()
+			.anyMatch(transition -> transition.getFromStateId().equals(fromStateId));
+		if (!stateIsConfigured) {
+			return fallback;
+		}
+		var transition = declared.stream()
+			.filter(candidate -> candidate.matches(fromStateId, action))
+			.findFirst()
+			.orElseThrow(() -> new BusinessException(ErrorCode.INVALID_STATE_TRANSITION,
+					"This workflow does not permit " + action + " from its current state."));
+		if (transition.getConditionRuleId() != null) {
+			// The rule is stored and a foreign key guarantees it exists, but the evaluator that would
+			// interpret it is not part of this phase. Refusing is the only honest option: silently ignoring
+			// a configured condition would apply an approval route the bank did not intend.
+			throw new BusinessException(ErrorCode.INVALID_CONFIGURATION,
+					"This transition is conditional, and conditional transitions cannot be evaluated yet.");
+		}
+		if (transition.getToStateId() == null) {
+			return null;
+		}
+		return this.states.findById(transition.getToStateId())
+			.orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CONFIGURATION,
+					"This transition points at a state that does not exist."));
 	}
 
 	// ------------------------------------------------------------------

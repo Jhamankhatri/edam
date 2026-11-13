@@ -132,10 +132,17 @@ class WebLayerSecurityTest extends AbstractPostgreSqlIntegrationTest {
 		// Spring's default CSRF repository marks XSRF-TOKEN HttpOnly, which silently breaks every
 		// mutating request from a browser client. This asserts the configured repository writes the
 		// cookie without HttpOnly, so a React app can read it and echo it in X-XSRF-TOKEN.
-		MvcResult result = this.mockMvc.perform(get("/api/v1/auth/csrf")).andReturn();
+		// The status is asserted first on purpose. Without it, a 500 from the controller and a working
+		// endpoint that merely omitted the cookie produce the same message ("no Set-Cookie"), and the
+		// two have completely different causes.
+		MvcResult result = this.mockMvc.perform(get("/api/v1/auth/csrf")).andExpect(status().isOk()).andReturn();
 
 		List<String> setCookies = result.getResponse().getHeaders("Set-Cookie");
-		assertThat(setCookies).as("a CSRF token cookie must be issued").anyMatch(cookie -> cookie.startsWith("XSRF-TOKEN="));
+		assertThat(setCookies)
+			.as("a CSRF token cookie must be issued; status=%s body=%s allHeaders=%s",
+					result.getResponse().getStatus(), result.getResponse().getContentAsString(),
+					result.getResponse().getHeaderNames().stream().toList())
+			.anyMatch(cookie -> cookie.startsWith("XSRF-TOKEN="));
 		assertThat(setCookies.stream().filter(cookie -> cookie.startsWith("XSRF-TOKEN=")).findFirst().orElse(""))
 			.as("the CSRF cookie must not be HttpOnly")
 			.doesNotContain("HttpOnly");

@@ -82,6 +82,9 @@ class ExpenseRequestApiTest extends AbstractPostgreSqlIntegrationTest {
 	private ExpenseRequestTypeRepository requestTypes;
 
 	@Autowired
+	private com.edam.workflow.service.WorkflowConfigurationService workflowConfiguration;
+
+	@Autowired
 	private ExpenseCategoryRepository categories;
 
 	@Autowired
@@ -108,6 +111,8 @@ class ExpenseRequestApiTest extends AbstractPostgreSqlIntegrationTest {
 
 	private ExpenseRequestType opexType;
 
+	private User approver;
+
 	private ExpenseCategory opexCategory;
 
 	private ExpenseNature nature;
@@ -121,6 +126,11 @@ class ExpenseRequestApiTest extends AbstractPostgreSqlIntegrationTest {
 		this.department = RequestFixtures.department(this.departments, this.units, this.unitTypes);
 		this.requester = RequestFixtures.user(this.users, this.department.getId());
 		this.opexType = RequestFixtures.requestType(this.requestTypes, "OPEX");
+		// Phase 3 makes submission refuse a request type with no published workflow (BRD 24.1), so the
+		// fixture publishes one through the real configuration service rather than pre-creating rows.
+		this.approver = RequestFixtures.user(this.users, this.department.getId());
+		RequestFixtures.publishedWorkflow(this.workflowConfiguration, this.opexType, this.approver.getId(),
+				"API-OPEX");
 		String suffix = UUID.randomUUID().toString().substring(0, 6);
 		this.opexCategory = RequestFixtures.category(this.categories, "AOP-" + suffix,
 				ExpenseCategory.ExpenseType.OPEX);
