@@ -170,9 +170,13 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 	}
 
 	private EdamPrincipal outsiderPrincipal() {
+		// REQUEST_VIEW_OWN is the code the request-list endpoint checks; scopes (SELF, department,
+		// ALL) then decide which requests are visible. An out-of-department user still needs the
+		// base code to reach the service at all — the 404 comes from isVisible, not from the aspect.
 		return principal(this.outsider,
 				Set.of(new DataScope(DataScope.Type.DEPARTMENT, this.otherDepartment.getId())),
-				Permissions.REQUEST_VIEW_SCOPE, Permissions.APPROVAL_VIEW, Permissions.APPROVAL_ACT);
+				Permissions.REQUEST_VIEW_OWN, Permissions.REQUEST_VIEW_SCOPE,
+				Permissions.APPROVAL_VIEW, Permissions.APPROVAL_ACT);
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -251,23 +255,28 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("search by actor id returns only their events")
 		void filterByActor() throws Exception {
-			UUID requestId = createAndSubmitRequest();
-			Instant now = Instant.now();
+			createAndSubmitRequest();
+			Instant now = Instant.now().plusSeconds(5);
+			Instant from = now.minus(1, ChronoUnit.HOURS);
 			String url = AUDIT_EVENTS + "?actorId={actorId}&from={from}&to={to}";
-			AuditReadApiTest.this.mockMvc
-					.perform(get(url, AuditReadApiTest.this.requester.getId(),
-							now.minus(1, ChronoUnit.HOURS), now.plus(1, ChronoUnit.HOURS))
+			String body = AuditReadApiTest.this.mockMvc
+					.perform(get(url, AuditReadApiTest.this.requester.getId(), from, now)
 							.with(user(auditor())).accept(MediaType.APPLICATION_JSON))
 					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.data.items[?(@.performedBy=='%s')]",
-							AuditReadApiTest.this.requester.getId().toString()).exists());
+					.andReturn().getResponse().getContentAsString();
+			// Every returned row must be by the filtered actor; and at least the CREATE/SUBMIT
+			// events should match.
+			com.jayway.jsonpath.DocumentContext parsed = com.jayway.jsonpath.JsonPath.parse(body);
+			List<String> actors = parsed.read("$.data.items[*].performedBy");
+			assertThat(actors).isNotEmpty();
+			assertThat(actors).allMatch(id -> id.equals(AuditReadApiTest.this.requester.getId().toString()));
 		}
 
 		@Test
 		@DisplayName("search by action filter")
 		void filterByAction() throws Exception {
 			createAndSubmitRequest();
-			Instant now = Instant.now();
+			Instant now = Instant.now().plusSeconds(5);
 			AuditReadApiTest.this.mockMvc
 					.perform(get(AUDIT_EVENTS + "?action=SUBMIT&from={from}&to={to}",
 							now.minus(1, ChronoUnit.HOURS), now.plus(1, ChronoUnit.HOURS))
@@ -279,7 +288,7 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("date range: from >= to is rejected")
 		void invalidRange() throws Exception {
-			Instant now = Instant.now();
+			Instant now = Instant.now().plusSeconds(5);
 			AuditReadApiTest.this.mockMvc
 					.perform(get(AUDIT_EVENTS + "?from={to}&to={from}", now, now.minusSeconds(1))
 							.with(user(auditor())).accept(MediaType.APPLICATION_JSON))
@@ -289,7 +298,7 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("date range exceeding 31 days is rejected")
 		void rangeTooWide() throws Exception {
-			Instant now = Instant.now();
+			Instant now = Instant.now().plusSeconds(5);
 			AuditReadApiTest.this.mockMvc
 					.perform(get(AUDIT_EVENTS + "?from={from}&to={to}", now.minus(32, ChronoUnit.DAYS), now)
 							.with(user(auditor())).accept(MediaType.APPLICATION_JSON))
@@ -297,12 +306,25 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 		}
 
 		@Test
-		@DisplayName("page size is capped at 200")
-		void pageSizeCap() throws Exception {
+		@DisplayName("page size above MAX_SIZE is rejected with EDAM-1003")
+		void pageSizeRejectedWhenOverMax() throws Exception {
 			createAndSubmitRequest();
+			Instant to = Instant.now().plusSeconds(5);
 			AuditReadApiTest.this.mockMvc
 					.perform(get(AUDIT_EVENTS + "?size=500&from={from}&to={to}",
-							Instant.now().minus(1, ChronoUnit.HOURS), Instant.now().plus(1, ChronoUnit.HOURS))
+							to.minus(1, ChronoUnit.HOURS), to)
+							.with(user(auditor())).accept(MediaType.APPLICATION_JSON))
+					.andExpect(status().isBadRequest());
+		}
+
+		@Test
+		@DisplayName("page size at MAX_SIZE is accepted")
+		void pageSizeAtMaxIsAccepted() throws Exception {
+			createAndSubmitRequest();
+			Instant to = Instant.now().plusSeconds(5);
+			AuditReadApiTest.this.mockMvc
+					.perform(get(AUDIT_EVENTS + "?size=200&from={from}&to={to}",
+							to.minus(1, ChronoUnit.HOURS), to)
 							.with(user(auditor())).accept(MediaType.APPLICATION_JSON))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.size").value(200));
@@ -321,9 +343,10 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 		@DisplayName("list rows do not expose old/new values or ip address")
 		void listIsSummaryOnly() throws Exception {
 			createAndSubmitRequest();
+			Instant to = Instant.now().plusSeconds(5);
 			String body = AuditReadApiTest.this.mockMvc
 					.perform(get(AUDIT_EVENTS + "?action=SUBMIT&from={from}&to={to}",
-							Instant.now().minus(1, ChronoUnit.HOURS), Instant.now().plus(1, ChronoUnit.HOURS))
+							to.minus(1, ChronoUnit.HOURS), to)
 							.with(user(auditor())).accept(MediaType.APPLICATION_JSON))
 					.andExpect(status().isOk())
 					.andReturn().getResponse().getContentAsString();
@@ -343,10 +366,11 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 		@DisplayName("request-scoped event is not visible to an auditor who cannot see the request")
 		void requestEventEnforcesVisibility() throws Exception {
 			UUID requestId = createAndSubmitRequest();
+			Instant to = Instant.now().plusSeconds(5);
 			// Find the SUBMIT event id from search.
 			String body = AuditReadApiTest.this.mockMvc
 					.perform(get(AUDIT_EVENTS + "?action=SUBMIT&entityType=ExpenseRequest&entityId={id}&from={from}&to={to}",
-							requestId.toString(), Instant.now().minus(1, ChronoUnit.HOURS), Instant.now().plus(1, ChronoUnit.HOURS))
+							requestId.toString(), to.minus(1, ChronoUnit.HOURS), to)
 							.with(user(auditorNoScope())).accept(MediaType.APPLICATION_JSON))
 					.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
 			// The list returns the event (installation-wide metadata) but detail must 404 because
