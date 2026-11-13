@@ -227,7 +227,7 @@ public final class RequestFixtures {
 	 *
 	 * @return the published version, so a test can assert the request pinned it
 	 */
-	public static com.edam.workflow.model.WorkflowVersion publishedWorkflow(
+	public static com.edam.workflow.dto.WorkflowDtos.VersionResponse publishedWorkflow(
 			com.edam.workflow.service.WorkflowConfigurationService configuration,
 			ExpenseRequestType requestType, java.util.UUID approverId, String codeSuffix) {
 		// Idempotent on purpose. Several tests share one request type, and two active definitions for the
@@ -248,7 +248,7 @@ public final class RequestFixtures {
 				new com.edam.workflow.dto.WorkflowDtos.SaveDraftRequest(
 						java.util.List.of(new com.edam.workflow.dto.WorkflowDtos.StepRequest("ANY-APPROVER",
 								"Any approver", (short) 1,
-								com.edam.workflow.model.WorkflowStep.ApprovalMode.ANY_ONE, (short) 1,
+								com.edam.workflow.model.WorkflowStep.ApprovalMode.PARALLEL, (short) 1,
 								java.util.List.of(new com.edam.workflow.dto.WorkflowDtos.ApproverRequest(
 										com.edam.workflow.model.WorkflowStepApprover.ApproverType.USER, null,
 										approverId, null)))),
