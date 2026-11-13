@@ -6,6 +6,7 @@ import java.util.UUID;
 import com.edam.identity.model.PasswordResetToken;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -21,6 +22,7 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
 	 * earlier link could still redeem it after the legitimate user had already reset — so the older
 	 * grant must die with the change it was issued for.
 	 */
+	@Modifying
 	@Query("update PasswordResetToken t set t.usedAt = :when where t.userId = :userId and t.usedAt is null")
 	int invalidateOutstanding(@Param("userId") UUID userId, @Param("when") java.time.Instant when);
 
