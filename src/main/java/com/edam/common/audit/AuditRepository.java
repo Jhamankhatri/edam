@@ -47,6 +47,10 @@ public interface AuditRepository extends Repository<AuditEvent, UUID> {
 	 * string-to-UUID cast cleanly across Hibernate versions, and the filter must run at the
 	 * database to keep {@code totalElements} honest.
 	 *
+	 * <p>String and enum parameters are cast to {@code text} and arrays to {@code uuid[]} to
+	 * keep Postgres from inferring a {@code smallint} or other mismatch against the table's
+	 * textual columns when Hibernate binds through the native-query type inference.
+	 *
 	 * <p>Parameters {@code deptIds} and {@code branchIds} are required to be non-null (empty
 	 * means no department/branch scope). When both are empty and {@code installationWide} is
 	 * false, the caller can see only their own requests.
@@ -58,20 +62,21 @@ public interface AuditRepository extends Repository<AuditEvent, UUID> {
 			      and e.entity_id    = r.id::text
 			where e.created_at >= :from
 			  and e.created_at <  :to
-			  and (:action        is null or e.action        = :action)
-			  and (:entityType    is null or e.entity_type   = :entityType)
-			  and (:entityId      is null or e.entity_id     = :entityId)
-			  and (:performedBy   is null or e.performed_by  = :performedBy)
-			  and (:correlationId is null or e.correlation_id = :correlationId)
+			  and (cast(:action as text) is null or e.action         = cast(:action as text))
+			  and (cast(:entityType as text) is null or e.entity_type = cast(:entityType as text))
+			  and (cast(:entityId as text) is null or e.entity_id     = cast(:entityId as text))
+			  and (:performedBy   is null or e.performed_by           = :performedBy)
+			  and (cast(:correlationId as text) is null
+			       or e.correlation_id = cast(:correlationId as text))
 			  and (cast(:search as text) = ''
 			       or lower(e.performed_by_username) like lower(concat('%', cast(:search as text), '%')))
 			  and (
 			        e.entity_type <> 'ExpenseRequest'
 			     or r.id is null
-			     or :installationWide = true
+			     or cast(:installationWide as boolean) = true
 			     or r.requested_by = :callerId
-			     or r.department_id = any (:deptIds)
-			     or (r.branch_id is not null and r.branch_id = any (:branchIds))
+			     or r.department_id = any (cast(:deptIds as uuid[]))
+			     or (r.branch_id is not null and r.branch_id = any (cast(:branchIds as uuid[])))
 			  )
 			order by e.created_at desc, e.id desc
 			""",
@@ -82,20 +87,21 @@ public interface AuditRepository extends Repository<AuditEvent, UUID> {
 			      and e.entity_id    = r.id::text
 			where e.created_at >= :from
 			  and e.created_at <  :to
-			  and (:action        is null or e.action        = :action)
-			  and (:entityType    is null or e.entity_type   = :entityType)
-			  and (:entityId      is null or e.entity_id     = :entityId)
-			  and (:performedBy   is null or e.performed_by  = :performedBy)
-			  and (:correlationId is null or e.correlation_id = :correlationId)
+			  and (cast(:action as text) is null or e.action         = cast(:action as text))
+			  and (cast(:entityType as text) is null or e.entity_type = cast(:entityType as text))
+			  and (cast(:entityId as text) is null or e.entity_id     = cast(:entityId as text))
+			  and (:performedBy   is null or e.performed_by           = :performedBy)
+			  and (cast(:correlationId as text) is null
+			       or e.correlation_id = cast(:correlationId as text))
 			  and (cast(:search as text) = ''
 			       or lower(e.performed_by_username) like lower(concat('%', cast(:search as text), '%')))
 			  and (
 			        e.entity_type <> 'ExpenseRequest'
 			     or r.id is null
-			     or :installationWide = true
+			     or cast(:installationWide as boolean) = true
 			     or r.requested_by = :callerId
-			     or r.department_id = any (:deptIds)
-			     or (r.branch_id is not null and r.branch_id = any (:branchIds))
+			     or r.department_id = any (cast(:deptIds as uuid[]))
+			     or (r.branch_id is not null and r.branch_id = any (cast(:branchIds as uuid[])))
 			  )
 			""",
 			nativeQuery = true)
