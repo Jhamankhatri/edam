@@ -1,7 +1,5 @@
 package com.edam.expenseconfiguration.dto;
 
-import java.math.BigDecimal;
-import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -9,16 +7,17 @@ import com.edam.expenseconfiguration.model.ExpenseCategory.ExpenseType;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
- * Request and response bodies for expense configuration and the delegation matrix (Module E).
+ * Request and response bodies for the expense catalogue (Module E).
+ *
+ * <p>The delegation matrix has its own DTOs in {@code com.edam.delegation.dto}. They were initially
+ * declared here, which made two packages own the same wire format; keeping them with the module that
+ * resolves them is what lets the matrix change without touching the catalogue's contract.
  */
 public final class ExpenseConfigurationDtos {
 
@@ -70,55 +69,6 @@ public final class ExpenseConfigurationDtos {
 	public record SaveLookupRequest(
 			@NotBlank @Size(max = 64) @Pattern(regexp = "^[A-Za-z0-9._-]+$") String code,
 			@NotBlank @Size(max = 200) String name, @Size(max = 2000) String description) {
-	}
-
-	// ------------------------------------------------------------------
-	// Delegation matrix
-	// ------------------------------------------------------------------
-
-	/**
-	 * One approval step as configured.
-	 *
-	 * <p>{@code requiredRoleId} is present only for a {@code ROLE} step, and {@code roleCode} is resolved for
-	 * display so an operator can read the chain without a second lookup.
-	 */
-	@Schema(name = "ApproverStepResponse")
-	public record ApproverStepResponse(short stepOrder, String approverType, UUID requiredRoleId, String roleCode,
-			String departmentScope, boolean mandatory) {
-	}
-
-	@Schema(name = "DelegationRuleResponse")
-	public record DelegationRuleResponse(UUID id, UUID categoryId, String categoryName, UUID subcategoryId,
-			String subcategoryName, UUID natureId, String natureName, UUID requestTypeId, String requestTypeName,
-			BigDecimal minimumAmount, BigDecimal maximumAmount, UUID currencyId, String currencyCode,
-			Instant effectiveFrom, Instant effectiveTo, boolean active, List<ApproverStepResponse> steps) {
-	}
-
-	/**
-	 * Step definition on a write.
-	 *
-	 * <p>{@code approverType} is a string, validated in the service against the closed enum, rather than the
-	 * enum itself: a JSON binding failure on an unknown constant produces a message from the framework that
-	 * does not tell the caller which values are accepted.
-	 */
-	@Schema(name = "SaveApproverStepRequest")
-	public record SaveApproverStepRequest(@NotNull String approverType, UUID requiredRoleId,
-			@Size(max = 64) String departmentScope, boolean mandatory) {
-	}
-
-	@Schema(name = "SaveDelegationRuleRequest")
-	public record SaveDelegationRuleRequest(@NotNull UUID categoryId, UUID subcategoryId, @NotNull UUID natureId,
-			UUID requestTypeId,
-			@NotNull @DecimalMin(value = "0.0", message = "must not be negative") BigDecimal minimumAmount,
-			@DecimalMin(value = "0.0", message = "must not be negative") BigDecimal maximumAmount,
-			@NotNull UUID currencyId, Instant effectiveFrom, Instant effectiveTo,
-			@NotEmpty(message = "an approval chain needs at least one step") @Valid List<SaveApproverStepRequest> steps) {
-	}
-
-	@Schema(name = "DelegationResolutionResponse",
-			description = "The route that would apply to a hypothetical request, for configuration testing")
-	public record DelegationResolutionResponse(UUID ruleId, String bandDescription, int stepCount,
-			List<ApproverStepResponse> steps, String message) {
 	}
 
 }
