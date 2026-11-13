@@ -109,6 +109,12 @@ class ApproverResolutionTest extends AbstractPostgreSqlIntegrationTest {
 	@Autowired
 	private UserRepository users;
 
+	@Autowired
+	private com.edam.rolemanagement.repository.RoleRepository roles;
+
+	@Autowired
+	private com.edam.committee.repository.CommitteeRepository committees;
+
 	private Department department;
 
 	private Currency currency;
@@ -268,6 +274,42 @@ class ApproverResolutionTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("a committee level with nobody seated refuses submission and names the step")
 		void emptyCommitteeRefuses() {
+			// The level must exist for the step to reference it — the foreign key guarantees that — and it
+			// must have no seats, which is the condition under test.
+			ExpenseRequestType type = RequestFixtures.requestType(ApproverResolutionTest.this.requestTypes,
+					"RSC-" + UUID.randomUUID().toString().substring(0, 8));
+			UUID levelId = RequestFixtures.emptyCommitteeLevel(ApproverResolutionTest.this.committees,
+					"RSC-" + UUID.randomUUID().toString().substring(0, 8),
+					ApproverResolutionTest.this.currency.getId());
+			var definition = ApproverResolutionTest.this.configuration
+				.createDefinition(new com.edam.workflow.dto.WorkflowDtos.SaveDefinitionRequest(
+						"RSC-" + UUID.randomUUID().toString().substring(0, 8), "Committee chain", null,
+						type.getId()));
+			var draft = ApproverResolutionTest.this.configuration.createDraft(definition.id(),
+					new com.edam.workflow.dto.WorkflowDtos.SaveDraftRequest(
+							List.of(new com.edam.workflow.dto.WorkflowDtos.StepRequest("COMMITTEE",
+									"Committee approval", (short) 1, WorkflowStep.ApprovalMode.PARALLEL, (short) 1,
+									List.of(new com.edam.workflow.dto.WorkflowDtos.ApproverRequest(
+											WorkflowStepApprover.ApproverType.EXPENSE_COMMITTEE, null, null,
+											levelId)))),
+							List.of(), null));
+			ApproverResolutionTest.this.configuration.publish(draft.id(),
+					new com.edam.workflow.dto.WorkflowDtos.PublishRequest(null),
+					ApproverResolutionTest.this.approver.getId());
+
+			UUID draftId = ApproverResolutionTest.this.draft(type).id();
+			// A committee with no members is not a committee that approves by default. The submission is
+			// refused, and it names the step so an administrator knows what to staff.
+			assertThatThrownBy(
+					() -> ApproverResolutionTest.this.requests.submit(draftId, ApproverResolutionTest.this.owner()))
+				.isInstanceOf(BusinessException.class)
+				.hasMessageContaining("Committee approval");
+
+			assertThat(ApproverResolutionTest.this.instances.findByExpenseRequestId(draftId)).isEmpty();
+			assertThat(ApproverResolutionTest.this.requestRows.findById(draftId).orElseThrow()
+				.getCurrentStatusCode()).isEqualTo(ExpenseRequest.Status.DRAFT);
+		}
+		void emptyCommitteeRefuses() {
 			// No seats exist, so the committee resolves to nobody. The requirement is that the request is
 			// refused rather than advanced to the next step or approved outright.
 			ExpenseRequestType type = RequestFixtures.requestType(ApproverResolutionTest.this.requestTypes,
@@ -309,7 +351,13 @@ class ApproverResolutionTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("a role held by nobody refuses submission rather than skipping")
 		void emptyRoleRefuses() {
-			ExpenseRequestType type = ApproverResolutionTest.this.published(List.of(WorkflowStepApprover.ApproverType.ROLE), UUID.randomUUID());
+			// The role must exist for the step to reference it; what is missing is a holder.
+			UUID emptyRoleId = RequestFixtures
+				.emptyRole(ApproverResolutionTest.this.roles,
+						"RSC-" + UUID.randomUUID().toString().substring(0, 8))
+				.getId();
+			ExpenseRequestType type = ApproverResolutionTest.this
+				.published(List.of(WorkflowStepApprover.ApproverType.ROLE), emptyRoleId);
 
 			UUID draftId = ApproverResolutionTest.this.draft(type).id();
 			assertThatThrownBy(() -> ApproverResolutionTest.this.requests.submit(draftId, ApproverResolutionTest.this.owner()))

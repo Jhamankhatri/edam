@@ -208,6 +208,44 @@ public final class RequestFixtures {
 	}
 
 	/**
+	 * A role with no holder, created if the code is new.
+	 *
+	 * <p>{@code workflow_step_approvers.role_id} is a foreign key, so a step naming a role that does not
+	 * exist cannot be stored at all. To test "the role exists but nobody holds it" — the case where the
+	 * designation is legitimate and the staffing is not — the role must be real.
+	 */
+	public static com.edam.rolemanagement.model.Role emptyRole(
+			com.edam.rolemanagement.repository.RoleRepository roles, String code) {
+		return roles.findByCode(code).orElseGet(() -> {
+			com.edam.rolemanagement.model.Role role = new com.edam.rolemanagement.model.Role();
+			role.setCode(code);
+			role.setName("Fixture role " + code);
+			return roles.save(role);
+		});
+	}
+
+	/**
+	 * A committee level with nobody seated on it.
+	 *
+	 * <p>Same reasoning as {@link #emptyRole}: the level must exist for the step to reference it, and the
+	 * absence of seats is exactly the condition under test. A committee that resolves to nobody must stop
+	 * the submission, never be skipped.
+	 */
+	public static UUID emptyCommitteeLevel(com.edam.committee.repository.CommitteeRepository committees,
+			String code, UUID currencyId) {
+		com.edam.committee.model.ExpenseCommittee committee = committees.findByCommitteeCode(code)
+			.orElseGet(() -> committees.save(new com.edam.committee.model.ExpenseCommittee(code,
+					"Fixture committee " + code, "Created by RequestFixtures")));
+		// A level with no members. Adding one here would defeat the purpose of the fixture.
+		com.edam.committee.model.CommitteeLevel level = new com.edam.committee.model.CommitteeLevel(committee,
+				(short) 1, "Fixture level " + code, new BigDecimal("0.0000"),
+				new BigDecimal("999999999.0000"), currencyId, (short) 1);
+		committee.getLevels().add(level);
+		committees.saveAndFlush(committee);
+		return level.getId();
+	}
+
+	/**
 	 * Publishes a one-step workflow for a request type, through the real configuration service.
 	 *
 	 * <h2>Why tests need this now</h2>
