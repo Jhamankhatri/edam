@@ -1,8 +1,9 @@
 package com.edam.identity;
 
 import com.edam.common.security.EdamUserDetailsService;
-import com.edam.iam.UserMembershipRepository;
-import com.edam.institution.InstitutionRepository;
+import com.edam.rolemanagement.repository.RoleRepository;
+import com.edam.usermanagement.repository.UserDataScopeRepository;
+import com.edam.usermanagement.repository.UserRepository;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,7 +16,7 @@ import org.springframework.core.env.Environment;
  *
  * <h2>Why precedence is explicit</h2>
  * Two adapters exist: the development fixture store ({@code edam.security.dev-users.enabled}) and
- * the database-backed adapter. Expressing that as two {@code @ConditionalOnMissingBean} beans lets
+ * the database-backed adapter (users, roles, data scopes). Expressing that as two {@code @ConditionalOnMissingBean} beans lets
  * their outcome depend on bean-definition ordering, which is not a contract — it produced a
  * duplicate-definition startup failure and, worse, could have selected the fixture store in a
  * profile that merely left it enabled by accident.
@@ -26,7 +27,7 @@ import org.springframework.core.env.Environment;
  *       in the {@code local} profile, and a named demo account must log in as documented even if the
  *       database also holds memberships.</li>
  *   <li><strong>Otherwise the database adapter is used.</strong></li>
- *   <li><strong>If the database has no memberships</strong>, every login still fails uniformly —
+ *   <li><strong>If the database has no users</strong>, every login still fails uniformly —
  *       authentication is never bypassed just because an adapter is present.</li>
  * </ol>
  *
@@ -39,8 +40,8 @@ public class IdentityConfiguration {
 	private static final Logger log = LoggerFactory.getLogger(IdentityConfiguration.class);
 
 	@Bean
-	EdamUserDetailsService edamUserDetailsService(Environment environment, UserMembershipRepository memberships,
-			InstitutionRepository institutions, InMemoryEdamUserDetailsService developmentStore,
+	EdamUserDetailsService edamUserDetailsService(Environment environment, UserRepository users,
+			RoleRepository roles, UserDataScopeRepository dataScopes, InMemoryEdamUserDetailsService developmentStore,
 			org.springframework.security.crypto.password.PasswordEncoder passwordEncoder) {
 		boolean developmentUsersEnabled = environment.getProperty("edam.security.dev-users.enabled", Boolean.class,
 				false);
@@ -49,8 +50,8 @@ public class IdentityConfiguration {
 					+ "reason=edam.security.dev-users.enabled=true — development credentials are active");
 			return developmentStore.userDetailsService(passwordEncoder);
 		}
-		log.info("security.identity_provider=database_memberships");
-		return new DatabaseEdamUserDetailsService(memberships, institutions);
+		log.info("security.identity_provider=database_users");
+		return new DatabaseEdamUserDetailsService(users, roles, dataScopes);
 	}
 
 }

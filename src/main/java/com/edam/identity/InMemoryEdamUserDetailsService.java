@@ -1,11 +1,11 @@
 package com.edam.identity;
 
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.UUID;
 
+import com.edam.common.security.DataScope;
 import com.edam.common.security.EdamPrincipal;
 import com.edam.common.security.EdamUserDetailsService;
 import com.edam.common.security.Permissions;
@@ -16,57 +16,57 @@ import org.springframework.stereotype.Component;
 /**
  * Development-only identity store.
  *
- * <p>Activated solely by {@code edam.security.dev-users.enabled=true}, which is set only in the
- * {@code local} profile. It exists so the platform can be exercised end to end without
- * committing real credentials or pretending an authentication protocol has been chosen (OD-24).
- * Production profiles must leave it disabled; with no {@link EdamUserDetailsService} bean,
- * authentication fails closed.
+ * <p>Activated solely by {@code edam.security.dev-users.enabled=true}, which is set only by the
+ * {@code local} profile. It exists so the platform can be exercised end to end without committing real
+ * credentials or pretending an authentication protocol has been chosen.
  *
- * <p>Users model <strong>institution membership as a set</strong>: {@code admin} belongs to two
- * institutions to prove that the application never assumes a single-tenant user, and its
- * permissions differ per institution so that the tenant-scoped permission model is exercised
- * rather than assumed.
+ * <h2>Why the fixtures are shaped the way they are</h2>
+ * <ul>
+ *   <li>{@code admin} holds every catalogue permission with the <strong>ALL</strong> data scope, which is
+ *       what a first administrator configured through the bootstrap actually looks like.</li>
+ *   <li>{@code ho-admin} holds the same permissions but a <strong>department</strong> scope. This pair is
+ *       the whole point: the two users have identical capabilities and different reach, which is exactly
+ *       the distinction the requirement draws between a role and a global administrator.</li>
+ *   <li>{@code requester} holds only request-creation permissions with a <strong>SELF</strong> scope, so a
+ *       missing permission check cannot hide behind a wide scope.</li>
+ * </ul>
  *
- * <p>The raw passwords below are development fixtures, not secrets. They are never logged and
- * must never be copied into a deployed environment.
+ * <p>These are development fixtures, not seed data: they are never inserted into the database, never ship
+ * in a migration, and are absent from every non-local profile.
  */
 @Component
 public class InMemoryEdamUserDetailsService {
 
-	private static Set<String> allPermissions() {
-		return Permissions.all();
-	}
-
 	/**
-	 * Builds the fixture store. Exposed as a factory rather than a {@code @Bean} so that
-	 * {@code IdentityConfiguration} is the only place that decides whether it is used — a conditional
-	 * bean here would race the database adapter's definition.
+	 * Builds the fixture store.
+	 *
+	 * <p>A factory rather than a {@code @Bean} so that {@code IdentityConfiguration} is the single place
+	 * that decides whether it is used; a conditional bean here would race the database adapter's
+	 * definition and could be selected by accident in a profile that merely left a property enabled.
 	 */
 	public EdamUserDetailsService userDetailsService(
 			org.springframework.security.crypto.password.PasswordEncoder encoder) {
 		Map<String, DemoUser> users = new HashMap<>();
 
-		// Full administrator in both institutions: memberships are a set, not a single tenant.
 		users.put("admin", new DemoUser("admin", "Administrator", "admin-change-me",
-				Map.of("albaraka", Set.of("ADMINISTRATOR"), "demo-bank", Set.of("ADMINISTRATOR")),
-				Map.of("albaraka", allPermissions(), "demo-bank", allPermissions())));
+				Set.of("SYSTEM_ADMINISTRATOR"), Permissions.all(), Set.of(new DataScope(DataScope.Type.ALL, null))));
 
-		// Approver: only in albaraka. Holding no role in demo-bank must make demo-bank invisible.
-		users.put("approver", new DemoUser("approver", "Approver", "approver-change-me",
-				Map.of("albaraka", Set.of("APPROVER")),
-				Map.of("albaraka", Set.of(Permissions.REQUEST_VIEW_OWN, Permissions.APPROVAL_ACT,
-						Permissions.REPORTING_VIEW))));
+		// Same capabilities as `admin`, narrower reach. Proves scope is enforced independently of role.
+		UUID headOfficeDepartment = UUID.fromString("00000000-0000-0000-0000-0000000000aa");
+		users.put("ho-admin", new DemoUser("ho-admin", "Head Office Administrator", "ho-admin-change-me",
+				Set.of("EXPENSE_CONFIGURATION_ADMINISTRATOR"), Set.of(Permissions.EXPENSE_CONFIGURATION_VIEW,
+						Permissions.EXPENSE_CONFIGURATION_MANAGE, Permissions.DELEGATION_VIEW),
+				Set.of(new DataScope(DataScope.Type.DEPARTMENT, headOfficeDepartment))));
 
-		// Requester: only in albaraka, no approval authority and no configuration authority.
-		users.put("requester", new DemoUser("requester", "Requester", "requester-change-me",
-				Map.of("albaraka", Set.of("REQUESTER")),
-				Map.of("albaraka", Set.of(Permissions.REQUEST_VIEW_OWN, Permissions.REQUEST_CREATE))));
+		users.put("requester", new DemoUser("requester", "Requester", "requester-change-me", Set.of("REQUESTER"),
+				Set.of(Permissions.REQUEST_CREATE, Permissions.REQUEST_VIEW_OWN, Permissions.REQUEST_SUBMIT,
+						Permissions.DOCUMENT_UPLOAD, Permissions.NOTIFICATION_VIEW),
+				Set.of(new DataScope(DataScope.Type.SELF, null))));
 
-		// Cross-tenant fixture: an institution administrator in demo-bank only. Used by the
-		// isolation tests to prove that demo-bank authority does not reach albaraka data.
-		users.put("demo-admin", new DemoUser("demo-admin", "Demo Administrator", "demo-change-me",
-				Map.of("demo-bank", Set.of("INSTITUTION_ADMINISTRATOR")),
-				Map.of("demo-bank", allPermissions())));
+		users.put("approver", new DemoUser("approver", "Approver", "approver-change-me", Set.of("DEPARTMENT_HEAD"),
+				Set.of(Permissions.APPROVAL_VIEW, Permissions.APPROVAL_ACT, Permissions.REQUEST_VIEW_SCOPE,
+						Permissions.NOTIFICATION_VIEW),
+				Set.of(new DataScope(DataScope.Type.DEPARTMENT, headOfficeDepartment))));
 
 		return username -> {
 			DemoUser user = users.get(username);
@@ -79,31 +79,20 @@ public class InMemoryEdamUserDetailsService {
 	}
 
 	/** Development fixture; see the class Javadoc before reusing this anywhere. */
-	private record DemoUser(String username, String displayName, String rawPassword,
-			Map<String, Set<String>> institutionRoles, Map<String, Set<String>> permissionsByInstitution) {
+	private record DemoUser(String username, String displayName, String rawPassword, Set<String> roleCodes,
+			Set<String> permissions, Set<DataScope> dataScopes) {
 
 		/**
 		 * Wraps the application principal with the encoded credential required by
-		 * {@code DaoAuthenticationProvider}. The password is hashed on first use with the
-		 * configured encoder and never leaves this object.
+		 * {@code DaoAuthenticationProvider}. The password is hashed on first use with the configured
+		 * encoder and never leaves this object.
 		 */
 		EdamUserDetails toPrincipal(org.springframework.security.crypto.password.PasswordEncoder encoder) {
-			Map<String, Set<String>> immutablePermissions = new LinkedHashMap<>();
-			this.permissionsByInstitution
-				.forEach((institution, permissions) -> immutablePermissions.put(institution, Set.copyOf(permissions)));
-			EdamPrincipal principal = new EdamPrincipal(this.username, this.username, this.displayName,
-					this.institutionRoles, immutablePermissions, this.institutionRoles.keySet());
+			EdamPrincipal principal = new EdamPrincipal(UUID.randomUUID(), null, this.username, this.displayName,
+					this.roleCodes, this.permissions, this.dataScopes);
 			return new EdamUserDetails(principal, encoder.encode(this.rawPassword));
 		}
 
-	}
-
-	/** Sorted human-readable description of the fixtures, used by the local startup log. */
-	static String describe(Map<String, Set<String>> institutionRoles) {
-		return institutionRoles.entrySet()
-			.stream()
-			.map(entry -> entry.getKey() + "=" + entry.getValue().stream().sorted().collect(Collectors.joining("|")))
-			.collect(Collectors.joining(","));
 	}
 
 }

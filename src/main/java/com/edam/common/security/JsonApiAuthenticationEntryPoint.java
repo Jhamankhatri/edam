@@ -20,9 +20,10 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 /**
  * Authentication failure at the filter level.
  *
- * <p>API callers receive the standard JSON envelope; browser navigations are redirected to
- * the login page. The two audiences are distinguished explicitly so that an unauthenticated
- * AJAX call never receives a redirect to an HTML page.
+ * <p>Every unauthenticated request receives the standard JSON envelope with {@code 401}. A redirect to
+ * a login page was correct when EDAM shipped server-rendered views; now that it is an API with a
+ * separately deployed React client, a redirect would break the client's error handling and, worse, hide
+ * an authentication failure inside a navigation that a fetch wrapper may not even follow.
  */
 public class JsonApiAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
@@ -35,11 +36,9 @@ public class JsonApiAuthenticationEntryPoint implements AuthenticationEntryPoint
 	@Override
 	public void commence(HttpServletRequest request, HttpServletResponse response,
 			AuthenticationException authException) throws IOException {
-		if (ApiPaths.wantsApiResponse(request)) {
-			writeEnvelope(request, response, HttpStatus.UNAUTHORIZED, ErrorCode.UNAUTHENTICATED);
-			return;
-		}
-		response.sendRedirect(request.getContextPath() + "/login");
+		// Every caller gets the same 401 envelope. There is no HTML sign-in page to redirect to,
+		// and a 302 to one would hide an authentication failure behind a navigation.
+		writeEnvelope(request, response, HttpStatus.UNAUTHORIZED, ErrorCode.UNAUTHENTICATED);
 	}
 
 	private void writeEnvelope(HttpServletRequest request, HttpServletResponse response, HttpStatus status,

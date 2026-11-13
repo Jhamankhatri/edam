@@ -31,7 +31,7 @@ public class Auditor {
 
 	/** Employee id of the authenticated user, or {@link #SYSTEM}. */
 	public String actor() {
-		return this.institutionContext.currentPrincipal().map(EdamPrincipal::employeeId).orElse(SYSTEM);
+		return this.institutionContext.currentPrincipal().map(principal -> principal.employeeCode() == null ? principal.getUsername() : principal.employeeCode()).orElse(SYSTEM);
 	}
 
 	/** Login name of the authenticated user, or {@link #SYSTEM}. */

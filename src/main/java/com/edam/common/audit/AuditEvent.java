@@ -1,119 +1,115 @@
 package com.edam.common.audit;
 
 import java.time.Instant;
+import java.util.UUID;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 /**
- * An immutable audit event (BRD AUD-01, AUD-02, §26).
+ * One immutable audit record (Module K).
  *
- * <h2>Append-only by construction</h2>
- * This entity deliberately does not extend {@link AuditableEntity}: it has no updater columns and
- * no optimistic-lock version, because an audit record must never be modified. Immutability is
- * also enforced in the database by a trigger that rejects {@code UPDATE} and {@code DELETE}
- * (see migration {@code V3}), so an application bug or a careless repository method cannot
- * rewrite history. BRD §26 requires exactly this: "protected from ordinary application-user
- * modification and deletion".
+ * <h2>Append-only in three layers</h2>
+ * <ol>
+ *   <li>This entity has no setters and no {@code @Version}: it cannot be updated through JPA
+ *       because there is no state to change and no version to bump.</li>
+ *   <li>The repository is append-only: it extends {@code Repository} rather than
+ *       {@code JpaRepository}, so {@code save} on an existing instance is not even reachable.</li>
+ *   <li>PostgreSQL triggers reject {@code UPDATE} and {@code DELETE} outright (migration V10).
+ *       A maintenance script, a careless migration or a future ORM feature cannot rewrite
+ *       history.</li>
+ * </ol>
+ * The third layer is what makes "administrators must not be able to modify or delete audit
+ * history" a property of the system rather than a promise about the application.
  *
- * <h2>What is recorded, and what is not</h2>
- * Actor, action, resource, timestamp, correlation id and before/after values. Sensitive values are
- * redacted <em>before</em> they reach this entity (see {@link AuditValueRedactor}); the entity
- * itself never sees a secret. BRD AUD-02 and §28.4 both forbid recording credential values.
+ * <h2>before/after as JSONB</h2>
+ * An audit diff is genuinely heterogeneous — a currency change, a workflow transition and a
+ * permission grant share no columns. A JSONB pair is the correct shape here, unlike the business
+ * entities where a JSONB catch-all would hide the model. Values are redacted by
+ * {@link AuditValueRedactor} <em>before</em> they reach this entity: this class never sees a
+ * password, token or secret reference.
  *
- * <h2>Tenant context</h2>
- * {@code institutionId} is nullable because platform-level events (institution onboarding) are not
- * owned by a tenant. Every tenant-owned event carries it, and queries always filter on it.
+ * <h2>Why the actor is stored twice</h2>
+ * {@code performedBy} is the foreign key, used for joins and for "everything this user did".
+ * {@code performedByUsername} is a snapshot, so the trail still reads correctly after a user is
+ * renamed or deactivated. An audit record that becomes unreadable when an account is retired is not
+ * an audit record.
  */
 @Entity
-@Table(name = "audit_event")
+@Table(name = "audit_events")
 public class AuditEvent {
 
-	/** Largest serialised payload accepted per side; a runaway diff must not break the write path. */
+	/** Largest serialised payload per side; a runaway diff must not break the write path. */
 	static final int MAX_PAYLOAD_LENGTH = 8000;
 
 	@Id
-	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	private Long id;
+	@Column(name = "id", nullable = false, updatable = false)
+	private UUID id;
 
-	@Column(name = "institution_id")
-	private Long institutionId;
+	@Column(name = "entity_type", nullable = false, updatable = false, length = 100)
+	private String entityType;
 
-	@Column(name = "occurred_at", nullable = false, updatable = false)
-	private Instant occurredAt;
-
-	@Column(name = "actor", nullable = false, updatable = false, length = 64)
-	private String actor;
-
-	@Column(name = "actor_username", length = 64, updatable = false)
-	private String actorUsername;
-
-	/** Free-form role context at the time of the action, for compliance evidence. */
-	@Column(name = "actor_roles", length = 500, updatable = false)
-	private String actorRoles;
+	@Column(name = "entity_id", updatable = false, length = 100)
+	private String entityId;
 
 	@Enumerated(EnumType.STRING)
-	@Column(name = "action", nullable = false, updatable = false, length = 32)
+	@Column(name = "action", nullable = false, updatable = false, length = 60)
 	private AuditAction action;
 
-	/** Logical resource type, e.g. {@code OpexRequest}, {@code Currency}. */
-	@Column(name = "resource_type", nullable = false, updatable = false, length = 64)
-	private String resourceType;
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(name = "old_values", updatable = false, length = MAX_PAYLOAD_LENGTH)
+	private String oldValues;
 
-	/** Identifier of the affected record, as text so it can address any entity. */
-	@Column(name = "resource_id", length = 64, updatable = false)
-	private String resourceId;
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(name = "new_values", updatable = false, length = MAX_PAYLOAD_LENGTH)
+	private String newValues;
 
-	/** Human-readable summary; never contains a secret or a full financial document. */
-	@Column(name = "summary", length = 500, updatable = false)
-	private String summary;
+	@Column(name = "performed_by", updatable = false)
+	private UUID performedBy;
 
-	/** JSON snapshot before the change. Redacted. */
-	@Column(name = "before_state", length = MAX_PAYLOAD_LENGTH, updatable = false)
-	private String beforeState;
+	@Column(name = "performed_by_username", updatable = false, length = 100)
+	private String performedByUsername;
 
-	/** JSON snapshot after the change. Redacted. */
-	@Column(name = "after_state", length = MAX_PAYLOAD_LENGTH, updatable = false)
-	private String afterState;
+	@Column(name = "ip_address", updatable = false, length = 64)
+	private String ipAddress;
 
-	@Column(name = "correlation_id", length = 64, updatable = false)
+	@Column(name = "user_agent", updatable = false, length = 500)
+	private String userAgent;
+
+	@Column(name = "correlation_id", updatable = false, length = 64)
 	private String correlationId;
 
-	/** Source address, stored only where law and bank policy permit it (BRD §12.4). */
-	@Column(name = "source_ip", length = 64, updatable = false)
-	private String sourceIp;
+	@Column(name = "created_at", nullable = false, updatable = false)
+	private Instant createdAt;
 
 	protected AuditEvent() {
 		// JPA
 	}
 
-	private AuditEvent(Long institutionId, Instant occurredAt, String actor, String actorUsername, String actorRoles,
-			AuditAction action, String resourceType, String resourceId, String summary, String beforeState,
-			String afterState, String correlationId, String sourceIp) {
-		this.institutionId = institutionId;
-		this.occurredAt = occurredAt;
-		this.actor = actor;
-		this.actorUsername = actorUsername;
-		this.actorRoles = actorRoles;
-		this.action = action;
-		this.resourceType = resourceType;
-		this.resourceId = resourceId;
-		this.summary = truncate(summary, 500);
-		this.beforeState = truncate(beforeState, MAX_PAYLOAD_LENGTH);
-		this.afterState = truncate(afterState, MAX_PAYLOAD_LENGTH);
-		this.correlationId = correlationId;
-		this.sourceIp = sourceIp;
+	private AuditEvent(Builder builder) {
+		this.id = (builder.id == null) ? java.util.UUID.randomUUID() : builder.id;
+		this.entityType = builder.entityType;
+		this.entityId = truncate(builder.entityId, 100);
+		this.action = builder.action;
+		this.oldValues = truncate(builder.oldValues, MAX_PAYLOAD_LENGTH);
+		this.newValues = truncate(builder.newValues, MAX_PAYLOAD_LENGTH);
+		this.performedBy = builder.performedBy;
+		this.performedByUsername = truncate(builder.performedByUsername, 100);
+		this.ipAddress = truncate(builder.ipAddress, 64);
+		this.userAgent = truncate(builder.userAgent, 500);
+		this.correlationId = truncate(builder.correlationId, 64);
+		this.createdAt = (builder.createdAt == null) ? Instant.now() : builder.createdAt;
 	}
 
-	/** Fluent factory; the recorder supplies the actor/institution context. */
-	public static Builder builder(AuditAction action, String resourceType) {
-		return new Builder(action, resourceType);
+	public static Builder builder(AuditAction action, String entityType) {
+		return new Builder(action, entityType);
 	}
 
 	private static String truncate(String value, int max) {
@@ -123,60 +119,52 @@ public class AuditEvent {
 		return value.length() <= max ? value : value.substring(0, max);
 	}
 
-	public Long getId() {
+	public UUID getId() {
 		return this.id;
 	}
 
-	public Long getInstitutionId() {
-		return this.institutionId;
+	public String getEntityType() {
+		return this.entityType;
 	}
 
-	public Instant getOccurredAt() {
-		return this.occurredAt;
-	}
-
-	public String getActor() {
-		return this.actor;
-	}
-
-	public String getActorUsername() {
-		return this.actorUsername;
-	}
-
-	public String getActorRoles() {
-		return this.actorRoles;
+	public String getEntityId() {
+		return this.entityId;
 	}
 
 	public AuditAction getAction() {
 		return this.action;
 	}
 
-	public String getResourceType() {
-		return this.resourceType;
+	public String getOldValues() {
+		return this.oldValues;
 	}
 
-	public String getResourceId() {
-		return this.resourceId;
+	public String getNewValues() {
+		return this.newValues;
 	}
 
-	public String getSummary() {
-		return this.summary;
+	public UUID getPerformedBy() {
+		return this.performedBy;
 	}
 
-	public String getBeforeState() {
-		return this.beforeState;
+	public String getPerformedByUsername() {
+		return this.performedByUsername;
 	}
 
-	public String getAfterState() {
-		return this.afterState;
+	public String getIpAddress() {
+		return this.ipAddress;
+	}
+
+	public String getUserAgent() {
+		return this.userAgent;
 	}
 
 	public String getCorrelationId() {
 		return this.correlationId;
 	}
 
-	public String getSourceIp() {
-		return this.sourceIp;
+	public Instant getCreatedAt() {
+		return this.createdAt;
 	}
 
 	/** Mutable builder used by {@link AuditRecorder}; not part of the public surface. */
@@ -184,77 +172,76 @@ public class AuditEvent {
 
 		private final AuditAction action;
 
-		private final String resourceType;
+		private final String entityType;
 
-		private Long institutionId;
+		private UUID id;
 
-		private Instant occurredAt = Instant.now();
+		private String entityId;
 
-		private String actor;
+		private String oldValues;
 
-		private String actorUsername;
+		private String newValues;
 
-		private String actorRoles;
+		private UUID performedBy;
 
-		private String resourceId;
+		private String performedByUsername;
 
-		private String summary;
+		private String ipAddress;
 
-		private String beforeState;
-
-		private String afterState;
+		private String userAgent;
 
 		private String correlationId;
 
-		private String sourceIp;
+		private Instant createdAt = Instant.now();
 
-		private Builder(AuditAction action, String resourceType) {
+		private Builder(AuditAction action, String entityType) {
+			if (action == null) {
+				throw new IllegalArgumentException("An audit event requires an action");
+			}
+			if (entityType == null || entityType.isBlank()) {
+				throw new IllegalArgumentException("An audit event requires an entity type");
+			}
 			this.action = action;
-			this.resourceType = resourceType;
+			this.entityType = entityType;
 		}
 
-		public Builder institutionId(Long institutionId) {
-			this.institutionId = institutionId;
+		public Builder id(UUID id) {
+			this.id = id;
 			return this;
 		}
 
-		public Builder occurredAt(Instant occurredAt) {
-			this.occurredAt = occurredAt;
+		public Builder entityId(Object entityId) {
+			this.entityId = (entityId == null) ? null : String.valueOf(entityId);
 			return this;
 		}
 
-		public Builder actor(String actor) {
-			this.actor = actor;
+		public Builder oldValues(String oldValues) {
+			this.oldValues = oldValues;
 			return this;
 		}
 
-		public Builder actorUsername(String actorUsername) {
-			this.actorUsername = actorUsername;
+		public Builder newValues(String newValues) {
+			this.newValues = newValues;
 			return this;
 		}
 
-		public Builder actorRoles(String actorRoles) {
-			this.actorRoles = actorRoles;
+		public Builder performedBy(UUID performedBy) {
+			this.performedBy = performedBy;
 			return this;
 		}
 
-		public Builder resourceId(Object resourceId) {
-			this.resourceId = (resourceId == null) ? null : String.valueOf(resourceId);
+		public Builder performedByUsername(String performedByUsername) {
+			this.performedByUsername = performedByUsername;
 			return this;
 		}
 
-		public Builder summary(String summary) {
-			this.summary = summary;
+		public Builder ipAddress(String ipAddress) {
+			this.ipAddress = ipAddress;
 			return this;
 		}
 
-		public Builder beforeState(String beforeState) {
-			this.beforeState = beforeState;
-			return this;
-		}
-
-		public Builder afterState(String afterState) {
-			this.afterState = afterState;
+		public Builder userAgent(String userAgent) {
+			this.userAgent = userAgent;
 			return this;
 		}
 
@@ -263,15 +250,13 @@ public class AuditEvent {
 			return this;
 		}
 
-		public Builder sourceIp(String sourceIp) {
-			this.sourceIp = sourceIp;
+		public Builder createdAt(Instant createdAt) {
+			this.createdAt = createdAt;
 			return this;
 		}
 
 		public AuditEvent build() {
-			return new AuditEvent(this.institutionId, this.occurredAt, this.actor, this.actorUsername, this.actorRoles,
-					this.action, this.resourceType, this.resourceId, this.summary, this.beforeState, this.afterState,
-					this.correlationId, this.sourceIp);
+			return new AuditEvent(this);
 		}
 
 	}

@@ -1,57 +1,33 @@
 package com.edam.config;
 
-import com.edam.common.security.InstitutionContext;
-import com.edam.institution.InstitutionProperties;
-import com.edam.institution.InstitutionService;
-import com.edam.web.InstitutionViewAttributesInterceptor;
-
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
-import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.view.InternalResourceViewResolver;
 
 /**
- * MVC wiring for the JSP UI.
+ * MVC view wiring for the container error page.
  *
- * <p>Spring MVC 7 renders {@code redirect:} views as plain relative URLs by default. EDAM is
- * deployed under an arbitrary servlet context path, so redirects must be context-relative
- * or the browser is sent outside the application. The resolver is therefore declared with
- * the {@code defaultViewResolver} bean name — the exact name Spring Boot's auto-configuration
- * uses — which both overrides it and keeps the prefix/suffix in one reviewable place.
+ * <h2>Why this class is now this small</h2>
+ * EDAM's earlier revision shipped a server-rendered JSP interface. The scope has since been fixed:
+ * this delivery is <strong>backend only</strong>, with REST APIs that a React client consumes. The
+ * JSP pages, the theme interceptor and the institution view attributes were therefore removed —
+ * keeping a second, unreviewed presentation layer alive would be dead code that still has to be
+ * secured.
  *
- * <p>{@link InstitutionViewAttributesInterceptor} is registered for every path so that pages
- * rendered by view controllers (login, access denied) receive the same model attributes as
- * controller-rendered pages. See that class for why an interceptor rather than a
- * {@code @ControllerAdvice} is required.
+ * <p>One view remains, and deliberately so: the servlet container's error dispatch needs a page to
+ * render when a request fails <em>before</em> it reaches a {@code @RestController} (a malformed URL, a
+ * filter exception). Returning JSON for that path would be wrong for a browser navigation and would
+ * also mask the real status; the container's own error page, with the safe message resolved by
+ * {@code MvcExceptionHandler}, is the correct fallback.
  *
- * <p>Localisation is intentionally not enabled yet: supported languages, number formats and
- * RTL support remain open decisions (NFR-10). The UI renders in the institution's configured
- * language tag until that is approved.
+ * <p>{@code redirectContextRelative} keeps redirects inside an arbitrary servlet context path, which
+ * matters because EDAM is packaged as a WAR deployed under a context path such as {@code /edam}.
  */
 @Configuration(proxyBeanMethods = false)
 public class WebMvcConfig implements WebMvcConfigurer {
 
-	private final InstitutionProperties institutionProperties;
-
-	private final InstitutionService institutionService;
-
-	private final InstitutionContext institutionContext;
-
-	public WebMvcConfig(InstitutionProperties institutionProperties, InstitutionService institutionService,
-			InstitutionContext institutionContext) {
-		this.institutionProperties = institutionProperties;
-		this.institutionService = institutionService;
-		this.institutionContext = institutionContext;
-	}
-
-	/**
-	 * JSP resolver. {@code redirectContextRelative} prepends the context path to redirect
-	 * locations; {@code exposeContextBeansAsAttributes} stays disabled so JSPs cannot reach
-	 * arbitrary Spring beans.
-	 */
 	@Bean
 	InternalResourceViewResolver defaultViewResolver(@Value("${spring.mvc.view.prefix:/WEB-INF/jsp/}") String prefix,
 			@Value("${spring.mvc.view.suffix:.jsp}") String suffix) {
@@ -61,19 +37,6 @@ public class WebMvcConfig implements WebMvcConfigurer {
 		resolver.setRedirectContextRelative(true);
 		resolver.setRedirectHttp10Compatible(false);
 		return resolver;
-	}
-
-	@Override
-	public void addInterceptors(InterceptorRegistry registry) {
-		registry.addInterceptor(new InstitutionViewAttributesInterceptor(this.institutionProperties,
-				this.institutionService, this.institutionContext)).addPathPatterns("/**");
-	}
-
-	@Override
-	public void addViewControllers(ViewControllerRegistry registry) {
-		// Spring Security handles the login POST; this mapping renders the form.
-		registry.addViewController("/login").setViewName("login");
-		registry.addViewController("/access-denied").setViewName("access-denied");
 	}
 
 }

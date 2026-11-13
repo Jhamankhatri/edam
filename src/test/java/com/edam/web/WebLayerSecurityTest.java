@@ -1,8 +1,9 @@
 package com.edam.web;
 
-import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
+import com.edam.common.security.DataScope;
 import com.edam.common.security.EdamPrincipal;
 import com.edam.common.security.Permissions;
 import com.edam.testsupport.AbstractPostgreSqlIntegrationTest;
@@ -18,22 +19,18 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.containsString;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Security and API-contract behaviour exercised through the MVC stack with real
- * authentication objects.
+ * Security and API-contract behaviour exercised through the MVC stack with real authentication objects.
  *
- * <p>JSP bodies are intentionally not asserted here: Spring Boot cannot render JSP views
- * inside an embedded test container. View rendering is verified against the packaged
- * executable WAR, which is the same artifact that is deployed (see docs/VERIFICATION.md).
+ * <p>Scope note: EDAM is now backend-only, so these tests assert the JSON contract and the security
+ * spine rather than rendered pages. Anything that used to assert a JSP body is gone with the view layer.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -44,20 +41,12 @@ class WebLayerSecurityTest extends AbstractPostgreSqlIntegrationTest {
 	private MockMvc mockMvc;
 
 	private static EdamPrincipal principalWith(String... permissions) {
-		return new EdamPrincipal("emp-1", "admin", "Administrator", Map.of("demo-bank", Set.of("ADMINISTRATOR")),
-				Map.of("demo-bank", Set.of(permissions)), Set.of("demo-bank"));
+		return new EdamPrincipal(UUID.randomUUID(), "EMP-1", "admin", "Administrator", Set.of("SYSTEM_ADMINISTRATOR"),
+				Set.of(permissions), Set.of(new DataScope(DataScope.Type.ALL, null)));
 	}
 
 	@Test
-	@DisplayName("an anonymous browser request is redirected to the login page")
-	void anonymousIsRedirectedToLogin() throws Exception {
-		this.mockMvc.perform(get("/dashboard"))
-			.andExpect(status().is3xxRedirection())
-			.andExpect(redirectedUrl("/login"));
-	}
-
-	@Test
-	@DisplayName("an anonymous API request receives the JSON 401 envelope, never a redirect")
+	@DisplayName("an anonymous request to a protected API receives the JSON 401 envelope")
 	void anonymousApiGetsJson401() throws Exception {
 		this.mockMvc.perform(get("/api/v1/system/info").accept(MediaType.APPLICATION_JSON))
 			.andExpect(status().isUnauthorized())
@@ -81,9 +70,8 @@ class WebLayerSecurityTest extends AbstractPostgreSqlIntegrationTest {
 	@Test
 	@DisplayName("an authenticated API call returns the standard success envelope")
 	void authenticatedApiSuccess() throws Exception {
-		this.mockMvc
-			.perform(get("/api/v1/system/info").with(user(principalWith(Permissions.REPORTING_VIEW)))
-				.accept(MediaType.APPLICATION_JSON))
+		this.mockMvc.perform(get("/api/v1/system/info").with(user(principalWith(Permissions.REPORT_VIEW)))
+			.accept(MediaType.APPLICATION_JSON))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.success").value(true))
 			.andExpect(jsonPath("$.data.application").value("edam"))
@@ -93,32 +81,10 @@ class WebLayerSecurityTest extends AbstractPostgreSqlIntegrationTest {
 	}
 
 	@Test
-	@DisplayName("the identity endpoint exposes institution membership as a set")
-	void identityExposesInstitutionSet() throws Exception {
-		EdamPrincipal multiTenant = new EdamPrincipal("emp-1", "admin", "Administrator",
-				Map.of("demo-bank", Set.of("ADMINISTRATOR"), "albaraka", Set.of("ADMINISTRATOR")),
-				Map.of(), Set.of("demo-bank", "albaraka"));
-
-		this.mockMvc.perform(get("/api/v1/dev/me").with(user(multiTenant)).accept(MediaType.APPLICATION_JSON))
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.data.institutions.length()").value(2))
-			.andExpect(jsonPath("$.data.rolesByInstitution").isMap());
-	}
-
-	@Test
-	@DisplayName("security headers are applied to HTML responses")
-	void securityHeaders() throws Exception {
-		this.mockMvc.perform(get("/login"))
-			.andExpect(status().isOk())
-			.andExpect(header().string("X-Frame-Options", "DENY"))
-			.andExpect(header().string("X-Content-Type-Options", "nosniff"))
-			.andExpect(header().string("Content-Security-Policy", containsString("default-src 'self'")));
-	}
-
-	@Test
 	@DisplayName("a caller-supplied correlation id is echoed verbatim")
 	void correlationIdEchoed() throws Exception {
-		this.mockMvc.perform(get("/login").header("X-Correlation-Id", "11111111-2222-3333-4444-555555555555"))
+		this.mockMvc.perform(get("/api/v1/system/info").header("X-Correlation-Id", "11111111-2222-3333-4444-555555555555")
+			.with(user(principalWith(Permissions.REPORT_VIEW))))
 			.andExpect(header().string("X-Correlation-Id", "11111111-2222-3333-4444-555555555555"));
 	}
 
@@ -126,7 +92,8 @@ class WebLayerSecurityTest extends AbstractPostgreSqlIntegrationTest {
 	@DisplayName("a malicious correlation id is replaced, never reflected into headers or logs")
 	void correlationIdIsSanitized() throws Exception {
 		MvcResult result = this.mockMvc
-			.perform(get("/login").header("X-Correlation-Id", "not-a-uuid<script>alert(1)</script>"))
+			.perform(get("/api/v1/system/info").header("X-Correlation-Id", "not-a-uuid<script>alert(1)</script>")
+				.with(user(principalWith(Permissions.REPORT_VIEW))))
 			.andExpect(status().isOk())
 			.andReturn();
 
@@ -135,27 +102,23 @@ class WebLayerSecurityTest extends AbstractPostgreSqlIntegrationTest {
 	}
 
 	@Test
-	@DisplayName("the error dispatch target is reachable, so failures render instead of redirecting")
-	void errorEndpointIsReachable() throws Exception {
+	@DisplayName("the error dispatch target answers in the JSON envelope, not a rendered page")
+	void errorEndpointIsJson() throws Exception {
 		this.mockMvc.perform(get("/error").with(user(principalWith())))
 			.andExpect(status().is5xxServerError())
-			.andExpect(header().doesNotExist("Location"));
+			.andExpect(header().doesNotExist("Location"))
+			.andExpect(jsonPath("$.success").value(false))
+			.andExpect(jsonPath("$.error.code").value("EDAM-9001"));
 	}
 
 	@Test
 	@DisplayName("CSRF protection is enabled: a state-changing request without a token is rejected")
 	void csrfIsEnforced() throws Exception {
-		// A rejected POST is answered with 403 (denied) or 302 (invalid CSRF token); what
-		// matters is that it is not processed as a successful logout.
+		// A rejected POST is answered with 403 (denied) or 302 (invalid CSRF token); what matters is
+		// that it is not processed as a successful logout.
 		MvcResult result = this.mockMvc.perform(post("/logout").with(user(principalWith()))).andReturn();
 
 		assertThat(result.getResponse().getStatus()).isIn(403, 302);
-	}
-
-	@Test
-	@DisplayName("the access-denied page is publicly reachable so a 403 can be explained")
-	void accessDeniedPageIsPublic() throws Exception {
-		this.mockMvc.perform(get("/access-denied")).andExpect(status().isOk());
 	}
 
 	@Test

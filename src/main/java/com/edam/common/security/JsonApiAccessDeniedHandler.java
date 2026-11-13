@@ -21,8 +21,17 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.web.access.AccessDeniedHandler;
 
 /**
- * Authorization failure at the filter level: JSON envelope for API callers, HTML
- * {@code /access-denied} page for browsers.
+ * Authorization failure at the filter level, answered with the JSON envelope for every caller.
+ *
+ * <p>An earlier revision redirected browsers to an HTML {@code /access-denied} page. With the view
+ * layer removed there is no page to redirect to, and a 302 would be actively misleading: the client
+ * (React, curl, Postman) needs the 403 and the correlation id, not a navigation.
+ *
+ * <p>The distinction between {@code ACCESS_DENIED} (EDAM-2002) and the aspect's
+ * {@code PERMISSION_DENIED} (EDAM-2005) is intentional. This handler fires when the security chain or a
+ * method-security annotation rejects the call before any business code runs; the aspect fires inside the
+ * controller. Keeping them distinct lets an operator tell "the URL is protected" from "this endpoint
+ * asked for a capability the user lacks", which are different configuration mistakes.
  */
 public class JsonApiAccessDeniedHandler implements AccessDeniedHandler {
 
@@ -50,7 +59,14 @@ public class JsonApiAccessDeniedHandler implements AccessDeniedHandler {
 			this.jsonMapper.writeValue(response.getOutputStream(), body);
 			return;
 		}
-		response.sendRedirect(request.getContextPath() + "/access-denied");
+		// Non-API path: still answer with a status, never a redirect. There is no HTML surface left.
+		response.setStatus(HttpStatus.FORBIDDEN.value());
+		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+		response.setCharacterEncoding("UTF-8");
+		String correlationId = CorrelationId.current() != null ? CorrelationId.current() : CorrelationId.generate();
+		response.setHeader(CorrelationId.HEADER, correlationId);
+		this.jsonMapper.writeValue(response.getOutputStream(), ApiResponse.failure(ErrorCode.ACCESS_DENIED,
+				ErrorCode.ACCESS_DENIED.safeMessage(), correlationId, ApiPaths.applicationPath(request)));
 	}
 
 }

@@ -1,133 +1,145 @@
 package com.edam.common.security;
 
-import java.util.Collections;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 /**
- * Authenticated EDAM user as seen by the application layer.
+ * The authenticated identity, with permissions and data scopes resolved once per request.
  *
- * <h2>Institution membership is a set</h2>
- * The BRD states explicitly that a user must not be assumed to belong to a single institution
- * (IAM-04). {@link #institutionRoles} maps institution code to the role codes held <em>there</em>;
- * {@link #permissionsByInstitution} maps institution code to permissions granted <em>there</em>.
+ * <h2>Three separate things, deliberately kept separate</h2>
+ * <ol>
+ *   <li><strong>Permissions</strong> — capabilities, the union of the user's active roles. Answers
+ *       "may this person manage expense configuration at all?"</li>
+ *   <li><strong>Data scopes</strong> — the organizational units those capabilities apply to. Answers
+ *       "may they do it for this department, or only for their own?"</li>
+ *   <li><strong>Role codes</strong> — kept for display and for role-targeted workflow assignment.
+ *       Authorization logic must never branch on a role code: branching on a role is how a configurable
+ *       model quietly becomes hardcoded again.</li>
+ * </ol>
  *
- * <h2>Why permissions are per institution (fixes audit defect D-1)</h2>
- * The previous model carried one flat permission set for the whole principal, so a permission
- * granted in institution A was silently effective in institution B — a cross-tenant privilege
- * escalation. Every authorization decision now has to name the institution it applies to:
- * {@link #hasPermissionIn(String, String)}. A permission held "globally" does not exist as a
- * concept in EDAM.
+ * <h2>Expiry is applied at construction</h2>
+ * Role assignments carry an optional {@code expires_at}. An expired assignment must not grant anything,
+ * so the adapter that builds this principal excludes expired and inactive roles. That is why there is no
+ * "isExpired" check anywhere downstream: a permission this object holds is valid <em>now</em>.
  *
- * <h2>Authority encoding</h2>
- * Spring Security needs flat authorities, so institution-scoped permissions are encoded as
- * {@code PERM_<institution>:<permission>}. Encoding the tenant into the authority means a
- * {@code hasAuthority} expression cannot accidentally match across tenants.
+ * <h2>No credential material</h2>
+ * This record never carries a password hash. Credential verification happens in the identity adapter;
+ * the principal is what survives into the security context, the session and (potentially) a log line.
  *
- * @param employeeId stable business identifier of the employee
- * @param username login name captured at authentication time
- * @param displayName presentational name
- * @param institutionRoles institution code to role codes the user holds there
- * @param permissionsByInstitution institution code to permissions granted there
- * @param allInstitutions the institution codes known to the identity store for membership checks
+ * @param userId the {@code users.id} primary key
+ * @param employeeCode the bank's employee code, or null when the bank does not supply one
+ * @param username unique login name
+ * @param displayName full name for display
+ * @param roleCodes active role codes, for display and role-targeted assignment
+ * @param permissions union of active role permissions
+ * @param dataScopes organizational scopes the permissions apply to
  */
-public record EdamPrincipal(String employeeId, String username, String displayName,
-		Map<String, Set<String>> institutionRoles, Map<String, Set<String>> permissionsByInstitution,
-		Set<String> allInstitutions) implements UserDetails {
+public record EdamPrincipal(UUID userId, String employeeCode, String username, String displayName,
+		Set<String> roleCodes, Set<String> permissions, Set<DataScope> dataScopes) implements UserDetails {
 
 	public EdamPrincipal {
-		institutionRoles = immutableNested(institutionRoles);
-		permissionsByInstitution = immutableNested(permissionsByInstitution);
-		allInstitutions = (allInstitutions == null) ? Set.copyOf(institutionRoles.keySet())
-				: Set.copyOf(allInstitutions);
-	}
-
-	private static Map<String, Set<String>> immutableNested(Map<String, Set<String>> source) {
-		if (source == null || source.isEmpty()) {
-			return Map.of();
-		}
-		Map<String, Set<String>> copy = new LinkedHashMap<>();
-		source.forEach((key, value) -> copy.put(key, value == null ? Set.of() : Set.copyOf(value)));
-		return Collections.unmodifiableMap(copy);
+		roleCodes = (roleCodes == null) ? Set.of() : Set.copyOf(roleCodes);
+		permissions = (permissions == null) ? Set.of() : Set.copyOf(permissions);
+		dataScopes = (dataScopes == null) ? Set.of() : Set.copyOf(dataScopes);
 	}
 
 	/**
-	 * Backwards-compatible view of the union of all permissions. Intended for diagnostics and
-	 * for the {@code /me/context} read model only — <strong>never</strong> for an authorization
-	 * decision, because it has lost the tenant dimension.
+	 * True when the user holds the permission at all.
+	 *
+	 * <p>Callers must still check the data scope: holding {@code expense-configuration:manage} means
+	 * they may manage categories <em>somewhere</em>, not everywhere.
 	 */
-	public Set<String> permissions() {
-		Set<String> union = new LinkedHashSet<>();
-		this.permissionsByInstitution.values().forEach(union::addAll);
-		return Set.copyOf(union);
+	public boolean hasPermission(String permission) {
+		return permission != null && this.permissions.contains(permission);
 	}
 
-	/** Institutions this user may act for. Never exactly-one by assumption. */
-	public Set<String> institutionCodes() {
-		return Set.copyOf(this.allInstitutions);
-	}
-
-	public boolean belongsTo(String institutionCode) {
-		return institutionCode != null && this.allInstitutions.contains(institutionCode);
-	}
-
-	public Set<String> rolesIn(String institutionCode) {
-		return this.institutionRoles.getOrDefault(institutionCode, Set.of());
-	}
-
-	public Set<String> permissionsIn(String institutionCode) {
-		return this.permissionsByInstitution.getOrDefault(institutionCode, Set.of());
-	}
-
-	/**
-	 * The only sanctioned permission check. Both arguments are mandatory: an unknown institution
-	 * yields {@code false} rather than "all permissions".
-	 */
-	public boolean hasPermissionIn(String institutionCode, String permission) {
-		if (institutionCode == null || permission == null) {
-			return false;
+	/** True when the user holds every listed permission. */
+	public boolean hasAllPermissions(String... required) {
+		for (String permission : required) {
+			if (!hasPermission(permission)) {
+				return false;
+			}
 		}
-		return permissionsIn(institutionCode).contains(permission);
+		return true;
 	}
 
-	public boolean hasRoleIn(String institutionCode, String role) {
-		return role != null && rolesIn(institutionCode).contains(role);
+	/** True when the user has installation-wide scope for the permissions they hold. */
+	public boolean hasInstallationScope() {
+		return this.dataScopes.stream().anyMatch(DataScope::isInstallationWide);
+	}
+
+	/** True when the user may act on records of the given department. */
+	public boolean scopesToDepartment(UUID departmentId) {
+		if (hasInstallationScope()) {
+			return true;
+		}
+		return departmentId != null
+				&& this.dataScopes.stream().anyMatch(scope -> scope.type() == DataScope.Type.DEPARTMENT
+						&& departmentId.equals(scope.referenceId()));
+	}
+
+	/** True when the user may act on records of the given branch. */
+	public boolean scopesToBranch(UUID branchId) {
+		if (hasInstallationScope()) {
+			return true;
+		}
+		return branchId != null
+				&& this.dataScopes.stream().anyMatch(scope -> scope.type() == DataScope.Type.BRANCH
+						&& branchId.equals(scope.referenceId()));
+	}
+
+	/** True when the user may act on records of the given organization unit. */
+	public boolean scopesToOrganizationUnit(UUID organizationUnitId) {
+		if (hasInstallationScope()) {
+			return true;
+		}
+		return organizationUnitId != null && this.dataScopes.stream()
+			.anyMatch(scope -> scope.type() == DataScope.Type.ORGANIZATION_UNIT
+					&& organizationUnitId.equals(scope.referenceId()));
+	}
+
+	/** True when the only scope the user holds is their own records. */
+	public boolean isSelfScopedOnly() {
+		return !hasInstallationScope() && this.dataScopes.stream().allMatch(DataScope::isSelfOnly);
+	}
+
+	/** Grouping of permissions by module, used by the identity endpoint and the admin UI. */
+	public Map<String, Set<String>> permissionsByModule() {
+		Map<String, Set<String>> byModule = new LinkedHashMap<>();
+		this.permissions.stream().sorted().forEach(code -> {
+			int separator = code.indexOf(':');
+			String module = separator < 0 ? "other" : code.substring(0, separator);
+			byModule.computeIfAbsent(module, key -> new LinkedHashSet<>()).add(code);
+		});
+		return Map.copyOf(byModule);
 	}
 
 	/**
-	 * One {@code ROLE_<institution>:<role>} authority per institution/role pair plus one
-	 * {@code PERM_<institution>:<permission>} authority per institution/permission pair.
+	 * Spring Security authorities, derived from permissions only.
+	 *
+	 * <p>Role codes are deliberately <em>not</em> authorities. If a role were an authority, URL rules
+	 * such as {@code hasRole('SYSTEM_ADMINISTRATOR')} would become possible, and a bank-renamed role
+	 * would silently stop matching a rule written months earlier. Permissions are the stable contract.
 	 */
 	@Override
-	public Set<GrantedAuthority> getAuthorities() {
-		Set<GrantedAuthority> authorities = new LinkedHashSet<>();
-		this.institutionRoles.forEach((institution, roles) -> roles.forEach(
-				role -> authorities.add(new SimpleGrantedAuthority("ROLE_" + institution + ":" + role))));
-		this.permissionsByInstitution.forEach((institution, permissions) -> permissions.forEach(
-				permission -> authorities.add(new SimpleGrantedAuthority("PERM_" + institution + ":" + permission))));
-		return Set.copyOf(authorities);
+	public Collection<? extends GrantedAuthority> getAuthorities() {
+		List<GrantedAuthority> authorities = this.permissions.stream()
+			.sorted()
+			.map(permission -> (GrantedAuthority) new SimpleGrantedAuthority(permission))
+			.toList();
+		return List.copyOf(authorities);
 	}
 
-	/** Convenience: the encoded authority string for an institution-scoped permission. */
-	public static String permissionAuthority(String institutionCode, String permission) {
-		return "PERM_" + Objects.requireNonNull(institutionCode) + ":" + Objects.requireNonNull(permission);
-	}
-
-	// ------------------------------------------------------------------
-	// UserDetails contract
-	// ------------------------------------------------------------------
-
-	/**
-	 * EDAM never stores or exposes credential material on the principal. Authentication is
-	 * performed against the identity provider, which returns a fully authenticated token.
-	 */
+	/** Never exposed: credential verification is the identity adapter's job. */
 	@Override
 	public String getPassword() {
 		return null;
@@ -156,6 +168,11 @@ public record EdamPrincipal(String employeeId, String username, String displayNa
 	@Override
 	public boolean isEnabled() {
 		return true;
+	}
+
+	@Override
+	public String toString() {
+		return "EdamPrincipal[" + this.username + ", roles=" + this.roleCodes + "]";
 	}
 
 }
