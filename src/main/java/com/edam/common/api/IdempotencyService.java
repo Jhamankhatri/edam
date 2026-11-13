@@ -78,7 +78,7 @@ public class IdempotencyService {
 		}
 		String hash = sha256(key.trim());
 		String fingerprint = sha256(body == null ? "" : body);
-		Optional<IdempotencyRecord> existing = this.records.findByIdempotencyKeyAndOperationType(hash, operationType);
+		Optional<IdempotencyRecord> existing = this.records.findByKey(hash, operationType);
 		if (existing.isEmpty()) {
 			// Claim the key before the work starts. The unique index makes this the winner; a concurrent
 			// duplicate loses on insert and is told to retry rather than executing the action twice.
@@ -114,7 +114,7 @@ public class IdempotencyService {
 		if (key == null || key.isBlank()) {
 			return;
 		}
-		this.records.findByIdempotencyKeyAndOperationType(sha256(key.trim()), operationType).ifPresent(record -> {
+		this.records.findByKey(sha256(key.trim()), operationType).ifPresent(record -> {
 			record.complete(status);
 			this.records.save(record);
 		});
@@ -126,7 +126,7 @@ public class IdempotencyService {
 		if (key == null || key.isBlank()) {
 			return;
 		}
-		this.records.findByIdempotencyKeyAndOperationType(sha256(key.trim()), operationType).ifPresent(record -> {
+		this.records.findByKey(sha256(key.trim()), operationType).ifPresent(record -> {
 			record.fail();
 			this.records.save(record);
 		});

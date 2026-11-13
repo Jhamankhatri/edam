@@ -18,7 +18,19 @@ import org.springframework.data.repository.query.Param;
  */
 public interface IdempotencyRecordRepository extends JpaRepository<IdempotencyRecord, UUID> {
 
-	Optional<IdempotencyRecord> findByIdempotencyKeyAndOperationType(String idempotencyKey, String operationType);
+	/**
+	 * Looks a key up by its hash and operation.
+	 *
+	 * <p>Written as an explicit query rather than a derived name because the persisted field is
+	 * {@code keyHash} while the column is {@code idempotency_key}; a derived finder would silently try to
+	 * resolve the column name as a property and fail at startup.
+	 */
+	@Query("""
+			select r from IdempotencyRecord r
+			where r.keyHash = :keyHash
+			  and r.operationType = :operationType
+			""")
+	Optional<IdempotencyRecord> findByKey(String keyHash, String operationType);
 
 	@Modifying
 	@Query("delete from IdempotencyRecord r where r.expiresAt < :cutoff")
