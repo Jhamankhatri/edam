@@ -59,14 +59,18 @@ public class WorkflowAssignmentResolver {
 
 	private final com.edam.approvallimits.service.RecommendingAuthorityService recommendingAuthorities;
 
+	private final com.edam.committee.service.CommitteeResolutionService committees;
+
 	public WorkflowAssignmentResolver(UserRepository users, RoleRepository roles, DepartmentRepository departments,
 			UserRoleRepository userRoles,
-			com.edam.approvallimits.service.RecommendingAuthorityService recommendingAuthorities) {
+			com.edam.approvallimits.service.RecommendingAuthorityService recommendingAuthorities,
+			com.edam.committee.service.CommitteeResolutionService committees) {
 		this.users = users;
 		this.roles = roles;
 		this.departments = departments;
 		this.userRoles = userRoles;
 		this.recommendingAuthorities = recommendingAuthorities;
+		this.committees = committees;
 	}
 
 	/**
@@ -90,12 +94,11 @@ public class WorkflowAssignmentResolver {
 				// step with "no approver could be resolved" rather than routing to a substitute.
 				case RECOMMENDING_AUTHORITY -> addRecommendingAuthority(resolved, approver.getApproverType(),
 						context);
-				// The committee module is Phase 3; its members are resolved there. Until then a committee step
-				// resolves to nobody and fails loudly, which is the honest behaviour for an unimplemented
-				// designation.
-				case EXPENSE_COMMITTEE ->
-					log.warn("workflow.approver_resolution_unsupported type={} reason=committee_module_not_yet_available",
-							approver.getApproverType());
+				// A committee step names one amount band, and the people who act are whoever is currently
+				// seated on it. Seats are effective-dated, so the answer depends on the instant; the same
+				// instant the recommending-authority lookup uses is passed so a single submission cannot be
+				// resolved against two different moments.
+				case EXPENSE_COMMITTEE -> addCommitteeMembers(resolved, approver.getCommitteeLevelId());
 			}
 		}
 		return new ArrayList<>(resolved);
@@ -136,6 +139,26 @@ public class WorkflowAssignmentResolver {
 			log.warn("workflow.recommending_authority_unresolved departmentId={} type={}",
 					context.requestingDepartmentId(), type);
 		}
+	}
+
+	/**
+	 * Members currently seated on one committee level.
+	 *
+	 * <p>An empty level contributes nobody, and the engine then refuses to start the step with the step named.
+	 * That is the honest outcome: BRD 8.5 hides the committee section when no committee workflow applies, but
+	 * it does <em>not</em> say an approver may be substituted when one was configured and cannot be staffed.
+	 */
+	private void addCommitteeMembers(Set<UUID> target, UUID committeeLevelId) {
+		if (committeeLevelId == null) {
+			log.warn("workflow.committee_unresolved reason=no_level_designated");
+			return;
+		}
+		List<UUID> members = this.committees.resolveLevelMembers(committeeLevelId, java.time.Instant.now());
+		if (members.isEmpty()) {
+			log.warn("workflow.committee_unresolved levelId={}", committeeLevelId);
+			return;
+		}
+		target.addAll(members);
 	}
 
 	private void addIfActive(Set<UUID> target, UUID userId) {

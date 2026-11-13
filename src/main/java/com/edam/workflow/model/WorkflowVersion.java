@@ -79,6 +79,22 @@ public class WorkflowVersion extends AuditableEntity {
 	@Column(name = "published_at")
 	private Instant publishedAt;
 
+	@Column(name = "retired_by")
+	private UUID retiredBy;
+
+	@Column(name = "retired_at")
+	private Instant retiredAt;
+
+	/**
+	 * The revision that replaced this one, when it was retired by a publication.
+	 *
+	 * <p>Null when the definition was retired outright (no workflow should be started for that request type
+	 * any more) rather than superseded. The distinction matters to an administrator reading the history:
+	 * "replaced by v4" and "switched off" are different decisions.
+	 */
+	@Column(name = "superseded_by_version_id")
+	private UUID supersededByVersionId;
+
 	@OneToMany(mappedBy = "workflowVersion", cascade = CascadeType.ALL, orphanRemoval = true,
 			fetch = FetchType.LAZY)
 	@OrderBy("stepOrder ASC")
@@ -87,6 +103,10 @@ public class WorkflowVersion extends AuditableEntity {
 	@OneToMany(mappedBy = "workflowVersion", cascade = CascadeType.ALL, orphanRemoval = true,
 			fetch = FetchType.LAZY)
 	private List<WorkflowState> states = new ArrayList<>();
+
+	@OneToMany(mappedBy = "workflowVersion", cascade = CascadeType.ALL, orphanRemoval = true,
+			fetch = FetchType.LAZY)
+	private List<WorkflowTransition> transitions = new ArrayList<>();
 
 	/** True when the revision may still be edited. */
 	public boolean isEditable() {
@@ -168,6 +188,72 @@ public class WorkflowVersion extends AuditableEntity {
 
 	public void setStates(List<WorkflowState> states) {
 		this.states = states;
+	}
+
+	public List<WorkflowTransition> getTransitions() {
+		return this.transitions;
+	}
+
+	public void setTransitions(List<WorkflowTransition> transitions) {
+		this.transitions = transitions;
+	}
+
+	public UUID getRetiredBy() {
+		return this.retiredBy;
+	}
+
+	public Instant getRetiredAt() {
+		return this.retiredAt;
+	}
+
+	public UUID getSupersededByVersionId() {
+		return this.supersededByVersionId;
+	}
+
+	/**
+	 * Publishes this revision.
+	 *
+	 * <p>The only transition into {@code PUBLISHED}. It requires the publisher because the schema does, and
+	 * requires a definition because a version with no definition could not be found by any request type.
+	 *
+	 * @param publisher the administrator who published it
+	 * @param when the effective instant
+	 * @throws IllegalStateException if the revision is not a draft
+	 */
+	public void publish(UUID publisher, Instant when) {
+		if (this.status != Status.DRAFT) {
+			throw new IllegalStateException("Only a draft version can be published; this one is " + this.status);
+		}
+		if (this.workflowDefinitionId == null) {
+			throw new IllegalStateException("A version cannot be published without a definition");
+		}
+		this.status = Status.PUBLISHED;
+		this.publishedBy = publisher;
+		this.publishedAt = when;
+		this.effectiveFrom = (this.effectiveFrom == null) ? when : this.effectiveFrom;
+	}
+
+	/**
+	 * Retires a published revision, optionally naming its replacement.
+	 *
+	 * <p>Retirement never touches in-flight instances: each pins this version's id, so its steps keep
+	 * governing the requests that started under it. Retirement only stops <em>new</em> starts.
+	 *
+	 * @param actor the administrator who retired it
+	 * @param when the instant
+	 * @param replacement the version that supersedes this one, or {@code null} if the route is switched off
+	 */
+	public void retire(UUID actor, Instant when, UUID replacement) {
+		if (this.status == Status.DRAFT) {
+			throw new IllegalStateException("A draft version was never in use and cannot be retired");
+		}
+		if (replacement != null && replacement.equals(this.id)) {
+			throw new IllegalArgumentException("A version cannot supersede itself");
+		}
+		this.status = Status.RETIRED;
+		this.retiredBy = actor;
+		this.retiredAt = when;
+		this.supersededByVersionId = replacement;
 	}
 
 }

@@ -103,12 +103,15 @@ public class ExpenseRequestService {
 
 	private final Clock clock;
 
+	private final com.edam.workflow.service.RequestWorkflowService workflow;
+
 	public ExpenseRequestService(ExpenseRequestRepository requests, RequestDocumentRepository documents,
 			ExpenseRequestTypeRepository requestTypes, ExpenseCategoryRepository categories,
 			ExpenseSubcategoryRepository subcategories, ExpenseNatureRepository natures,
 			OrganizationProfileRepository organizationProfile,
 			CurrencyService currencyService, ExchangeRateResolver exchangeRates, RequestNumberGenerator numbers,
-			RequestAssembler assembler, AuditRecorder audit, Clock clock) {
+			RequestAssembler assembler, AuditRecorder audit, Clock clock,
+			com.edam.workflow.service.RequestWorkflowService workflow) {
 		this.requests = requests;
 		this.documents = documents;
 		this.requestTypes = requestTypes;
@@ -122,6 +125,7 @@ public class ExpenseRequestService {
 		this.assembler = assembler;
 		this.audit = audit;
 		this.clock = clock;
+		this.workflow = workflow;
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -193,18 +197,20 @@ public class ExpenseRequestService {
 	// ---------------------------------------------------------------------------------------------
 
 	/**
-	 * Validates a request and marks it submitted.
+	 * Validates a request, starts its workflow and marks it submitted.
 	 *
 	 * <h2>What this method does not do</h2>
-	 * It does not select approvers. Starting the workflow needs a published version for the request type,
-	 * which Phase 3's configuration module owns; until that exists, a submission moves the request to
-	 * {@code SUBMITTED} and records that no instance was started. Deliberately not faked with a
-	 * placeholder chain: an approval that was never routed is indistinguishable from one that was, and the
-	 * difference is exactly what an audit asks about.
+	 * It does not decide <em>who</em> approves. It asks the workflow engine to start the published revision
+	 * for the request type; the engine reads the configured steps and designations and resolves them against
+	 * live organization data. There is still no approval ladder in this class, which is what stops a second,
+	 * contradictory routing rule from growing here.
 	 *
-	 * <p>When the engine is wired, {@code WorkflowEngine.start} is called from this same transaction and the
-	 * instance id is attached with {@link ExpenseRequest#markSubmitted}; the request state machine already
-	 * accepts and records it, so the change is additive.
+	 * <h2>Both halves, or neither</h2>
+	 * The instance is started from this same transaction and its id is recorded on the header by
+	 * {@link ExpenseRequest#markSubmitted}. A request recorded as submitted with no instance would be
+	 * invisible to every approver and un-editable for its author, so the two writes share one boundary: if
+	 * the workflow cannot start — no published revision, no approver for the first step — the submission
+	 * rolls back and the request stays a draft.
 	 */
 	@Transactional
 	public RequestResponse submit(UUID id, EdamPrincipal caller) {
@@ -221,11 +227,17 @@ public class ExpenseRequestService {
 		RequestValidationContext context = validationContextForExisting(request, configuration, attached);
 		RequestValidator.validate(request, context, true);
 
+		// The workflow starts inside this transaction. If it cannot — no published revision, no approver for
+		// the first step — the exception propagates and the whole submission rolls back, leaving the request
+		// an editable draft rather than a submitted request that nobody can see or act on.
+		com.edam.workflow.model.WorkflowInstance instance = this.workflow.startForSubmission(request,
+				caller.userId());
+
 		Instant now = Instant.now(this.clock);
-		request.markSubmitted(request.getCurrentWorkflowInstanceId(), now);
+		request.markSubmitted(instance.getId(), now);
 		this.audit.record(AuditAction.SUBMIT, "ExpenseRequest", id);
-		log.info("request.submitted id={} number={} workflowInstance={}", id, request.getRequestNumber(),
-				request.getCurrentWorkflowInstanceId());
+		log.info("request.submitted id={} number={} workflowInstance={} version={}", id, request.getRequestNumber(),
+				instance.getId(), instance.getWorkflowVersionId());
 		return RequestResponse.from(request, configuration.classification());
 	}
 
@@ -250,6 +262,9 @@ public class ExpenseRequestService {
 		if (reason == null || reason.isBlank()) {
 			throw new BusinessException(ErrorCode.VALIDATION_FAILED, "A cancellation reason is required.");
 		}
+		// The workflow ends in the same transaction as the request. Leaving an instance running would keep
+		// tasks in approvers' inboxes for a request that no longer exists as far as the business is concerned.
+		this.workflow.cancelForWithdrawal(request, caller.userId(), reason.trim());
 		request.cancel(caller.userId(), reason.trim(), Instant.now(this.clock));
 		this.audit.record(AuditAction.CANCEL, "ExpenseRequest", id, reason.trim());
 		return RequestResponse.from(request, classification(request));
@@ -262,6 +277,25 @@ public class ExpenseRequestService {
 	@Transactional(readOnly = true)
 	public RequestResponse get(UUID id, EdamPrincipal caller) {
 		ExpenseRequest request = requireVisible(id, caller);
+		return RequestResponse.from(request, classification(request));
+	}
+
+	/**
+	 * The request as seen by an approver who was assigned a task on it.
+	 *
+	 * <p>Assignment grants read access on its own. An approver covering a different department would
+	 * otherwise be unable to read the request they are being asked to approve, because {@link #get} applies
+	 * the register's data scope and correctly refuses. The assignment is the authority here, and it is
+	 * narrower than a scope: it applies to this one request.
+	 *
+	 * <p>Drafts remain invisible: a draft has no workflow, so no task can point at one.
+	 */
+	@Transactional(readOnly = true)
+	public RequestResponse getForAssignedApprover(UUID id) {
+		ExpenseRequest request = require(id);
+		if (request.getCurrentStatusCode() == ExpenseRequest.Status.DRAFT) {
+			throw new ResourceNotFoundException("ExpenseRequest", id);
+		}
 		return RequestResponse.from(request, classification(request));
 	}
 
@@ -445,6 +479,20 @@ public class ExpenseRequestService {
 	private ExchangeRateResolver.Conversion convert(BigDecimal amount, UUID currencyId, Instant at) {
 		this.currencyService.requireCurrency(currencyId);
 		return this.exchangeRates.convert(amount, currencyId, requireBaseCurrencyId(), at);
+	}
+
+	/**
+	 * The classification of a request, for callers outside this service (the approval inbox needs it to label
+	 * a task). Returns {@code null} when the category row is missing rather than guessing, so a data problem
+	 * is visible instead of silently reported as OPEX.
+	 */
+	public String classificationOf(ExpenseRequest request) {
+		if (request == null || request.getExpenseCategoryId() == null) {
+			return null;
+		}
+		return this.categories.findById(request.getExpenseCategoryId())
+			.map(category -> category.getExpenseType().name())
+			.orElse(null);
 	}
 
 	private String classification(ExpenseRequest request) {

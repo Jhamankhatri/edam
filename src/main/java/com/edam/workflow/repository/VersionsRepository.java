@@ -26,6 +26,21 @@ public interface VersionsRepository extends JpaRepository<WorkflowVersion, UUID>
 			.findFirst();
 	}
 
+	/** True when the definition already has a revision carrying this number. */
+	boolean existsByWorkflowDefinitionIdAndVersionNumber(UUID definitionId, int versionNumber);
+
+	/** True when two revisions of the same definition share a number, checked before saving. */
+	default boolean numberTaken(UUID definitionId, Integer excludeVersionId, int versionNumber) {
+		return findByWorkflowDefinitionIdOrderByVersionNumberDesc(definitionId).stream()
+			.filter(version -> excludeVersionId == null || !excludeVersionId.equals(version.getId()))
+			.anyMatch(version -> version.getVersionNumber() == versionNumber);
+	}
+
+	/** Revisions of a definition that may still accept a new instance. */
+	default Optional<WorkflowVersion> findStartable(UUID definitionId) {
+		return findPublished(definitionId);
+	}
+
 	/** The highest version number used so far, or zero when a definition has no revisions yet. */
 	default int maxVersionNumber(UUID definitionId) {
 		return findByWorkflowDefinitionIdOrderByVersionNumberDesc(definitionId).stream()
