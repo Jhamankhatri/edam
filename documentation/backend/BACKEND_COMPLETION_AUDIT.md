@@ -10,6 +10,34 @@ executed CI results for that exact commit.
 
 ---
 
+## Revision history
+
+This document is a point-in-time audit and is deliberately **not** rewritten in place: the findings below
+describe the code at `b73f8c5` and are the evidence for why Phases 1–3 were scheduled. What follows in this
+block is what has changed since, so a reader sees both the original state and the current one.
+
+| Phase | Merge | Effect on the findings below |
+|---|---|---|
+| Phase 1 — Security foundation | `a118364` | Login, logout, CSRF, bootstrap and password reset exist. The §6.1 "React authentication blocker" is **closed**. |
+| Phase 2 — Request management | `4783a99` | The expense request exists: OPEX and CAPEX, drafts, submission, cancellation, validation, exchange-rate capture, register. §2.10–2.11 move to **implemented**. |
+| Phase 3 — Workflow configuration and approvals | this branch | Workflow authoring/publish API, submission integration, approval inbox and the four decisions. §2.12–2.13 move to **implemented with named gaps**. |
+
+**Current headline figures** (measured on this branch, not inherited):
+
+| Metric | At `b73f8c5` | Now |
+|---|---|---|
+| REST endpoints | 59 | **127** |
+| Controllers | 7 | **16** |
+| Permission constants consumed by an endpoint | 22 of 58 | **36 of 58** |
+| Automated tests executed in CI | 70 (3 skipped) | **287 (3 skipped)** |
+| Test classes run by CI | — | **23** |
+| Tests touching a service or repository | 0 | **All but the pure-model and filter tests — every integration test runs against real PostgreSQL** |
+
+The verdict in §1 — "not ready for frontend integration" — was correct for its commit and is **superseded**.
+See §11 for the current position.
+
+---
+
 ## 0. Verification method (and its limits)
 
 Everything below was established by reading the repository, not by trusting prior summaries. Where a
@@ -772,3 +800,100 @@ Base `{V1}` = `/api/v1`. All require authentication; all non-public ones are `@E
 
 **Development only (2):** `GET {V1}/dev/me` · `GET {V1}/dev/me/permissions` (gated by
 `edam.security.dev-users.enabled`, `local` profile only)
+
+---
+
+## 11. Phase 3 close-out — the current position
+
+Written at the end of Phase 3 and appended rather than merged into the sections above, so the original
+findings remain readable as the evidence that scheduled the work.
+
+### 11.1 §2.12 and §2.13, revisited
+
+| Field | At `b73f8c5` | Now |
+|---|---|---|
+| Authoring API | None | `WorkflowConfigurationController`, 11 endpoints |
+| Publish / retire | No service | `WorkflowConfigurationService.publish/retire`, immutable once published |
+| Submission integration | `WorkflowEngine.start` had no callers | `RequestWorkflowService.startForSubmission`, in the submit transaction |
+| Transitions consulted | No — unmapped, ignored | Yes — `WorkflowTransition`, two-regime resolution |
+| Approval API | None | `ApprovalController`, 8 endpoints |
+| Approval inbox | None | `GET /approvals`, `GET /approvals/count` |
+| Actions over HTTP | None | approve, reject, revert, forward |
+| Assignment enforced | Only in the engine | Also in `ApprovalService.requireAssigned`, with a refusal reason exposed per action |
+
+The two findings that mattered most are both addressed and both tested:
+
+* **"the engine can only be invoked by code that does not exist"** — submission is now the caller, and
+  `SubmissionIntegrationTest` asserts that a request cannot become `SUBMITTED` without a live instance.
+* **"`workflow_transitions` rows are not consulted"** — they are consulted, and an action a revision does
+  not declare is refused rather than defaulted. A revision that declares no transitions keeps the
+  pre-existing built-in semantics, so no frozen workflow changed behaviour.
+
+### 11.2 §8 "Missing or incomplete APIs" — workflow and approval entries
+
+| Endpoint group | Status |
+|---|---|
+| Workflow definition CRUD | **Implemented** |
+| Workflow version history and detail | **Implemented** |
+| Draft, clone-from-published, validate | **Implemented** |
+| Publish, retire | **Implemented** |
+| Version compare / rollback | **Not implemented** — OD-P3-03 |
+| Workflow simulation | **Not implemented** — OD-P3-02 |
+| Approval inbox, count, case file, request detail | **Implemented** |
+| Approve / reject / revert / forward | **Implemented** |
+| Approval history | **Implemented** — `WorkflowAction` plus `audit_events` |
+
+### 11.3 Requirement status for Phase 3
+
+Stated as the brief requires: implemented, partial, not implemented, or blocked.
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Manage definitions separately for OPEX and CAPEX | **Implemented** | `WorkflowDefinition.requestTypeId`; `WorkflowConfigurationApiTest.separateWorkflowsPerRequestType` |
+| Steps, order, approver strategies | **Implemented** | `WorkflowStep`, `WorkflowStepApprover` (9 types); `ApproverResolutionTest` |
+| Conditions/transitions via the business-rule model | **Partial** — transitions are data; conditions refuse | OD-P3-04 |
+| Validate before publication | **Implemented** | `inspect`; validation tests |
+| Publish immutable versions, retain prior versions | **Implemented** | Three guards; `secondPublicationRetiresFirst` |
+| Reject invalid publication | **Implemented** | `publish` refuses any `ERROR` and names the first |
+| Require a valid published workflow before submission | **Implemented** | `requirePublishedForRequestType`; `noWorkflowRefuses` |
+| Validate → confirm version → capture → start → resolve → tasks → associate, transactionally | **Implemented** | `submissionStartsRealWorkflow`; `@Transactional(MANDATORY)` bridge |
+| Startup failure leaves no submitted request | **Implemented** | `failedStartLeavesAnEditableDraft`, `inactiveUserResolvesToNobody` |
+| In-flight requests keep their version | **Implemented** | `inFlightKeepsItsVersion` — asserts the published pointer moved too |
+| My pending approvals, approver-visible detail | **Implemented** | inbox, count, case file, request detail |
+| Approve/reject/revert/forward with mandatory remarks | **Implemented** | `@NotBlank` + service check; `blankRemarksRefused`, `forwardRequiresBoth` |
+| Forward requires recipient and remarks | **Implemented** | `forwardRequiresBoth` |
+| Only authorised **and assigned** users act | **Implemented** | `permissionIsNotAssignment` |
+| A general permission never confers authority | **Implemented** | same, plus the read-access test |
+| Enforce data scope and workflow state | **Implemented** | `requireCanRead`, `requireAssigned`; register vs assigned-task test |
+| Reject duplicate/stale actions | **Implemented** | `duplicateApprovalRefused` — one recorded action, not two |
+| Transactional transitions | **Implemented** | `@Transactional` on every action |
+| Auditable history | **Implemented** | `WorkflowAction` + `audit_events`; `actionsAreRecorded` |
+| Resolve department/unit, authorities, committee, individual/role | **Implemented** | 9 approver types; `ApproverResolutionTest` |
+| No eligible approver must not skip a mandatory step | **Implemented** | engine names the step; `missingOfficeHolderRefuses`, `emptyRoleRefuses`, `emptyCommitteeRefuses` |
+| Handle inactive users and missing data scope | **Implemented** | `inactiveUserResolvesToNobody` |
+| Handle effective dates | **Implemented** | seats and designations resolved at one instant |
+| Reuse the permission catalogue; document any new one | **Implemented — no new permission** | `PERMISSION_ENDPOINT_MAP.md` |
+| Keep endpoint authorization separate from assignment | **Implemented** | §2.4 of the Phase 3 doc |
+| One bank per deployment, multiple admins | **Implemented** | no institution switching added |
+| Tests per capability, real PostgreSQL, Flyway, `ddl-auto: validate` | **Implemented** | 6 new/extended classes, 287 tests total |
+| CEO cannot reject an EC request | **Not implemented** | OD-P3-01, awaiting a business decision |
+| Selective revert to a chosen approver | **Not implemented** | OD-P3-01 |
+| EC revert to the last Phase-1 approver | **Partial** — the declared target is honoured | OD-P3-01 |
+| Simulation before publication | **Not implemented** | OD-P3-02 |
+| Version compare and rollback | **Not implemented** | OD-P3-03 |
+| Cloning between institutions | **Not implemented** — out of scope by design | OD-P3-05 |
+| Currency rounding policy (OD-P2-01) | **Blocked — still undecided** | Not invented; recorded unresolved |
+
+### 11.4 What is still not true
+
+The audit's central complaint was that the product's core object did not exist. That is fixed. What remains:
+
+1. **No documents.** An approver sees document *types*, not files. Upload is Phase 4.
+2. **No notifications or escalation.** Nothing is emailed and nothing is scheduled; an approver learns of a
+   task by opening the inbox.
+3. **No reporting or dashboards.** `report:view` and `dashboard:manage` have no consumer.
+4. **No business-rule evaluator**, so conditional transitions refuse rather than route (OD-P3-04).
+5. **`request:view-all` has no endpoint** — a finance user cannot list every request in the bank.
+6. **Currency rounding is undecided** (OD-P2-01). The converted amount is shown to an approver alongside its
+   inputs but is not presented as a final figure, and no rounding rule has been invented.
+
