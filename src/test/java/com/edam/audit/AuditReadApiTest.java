@@ -53,6 +53,7 @@ import com.edam.workflow.repository.TasksRepository;
 import com.edam.workflow.repository.VersionsRepository;
 import com.edam.workflow.service.WorkflowConfigurationService;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -61,6 +62,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -113,6 +116,7 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 
 	@BeforeEach
 	void setUp() {
+		SecurityContextHolder.clearContext();
 		var profile = RequestFixtures.organizationProfile(this.profiles, this.currencies);
 		this.currency = this.currencies.findById(profile.getDefaultCurrencyId()).orElseThrow();
 		this.department = RequestFixtures.department(this.departments, this.units, this.unitTypes);
@@ -126,6 +130,11 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 		this.category = RequestFixtures.category(this.categories, "AUC-" + suffix, ExpenseCategory.ExpenseType.OPEX);
 		this.nature = RequestFixtures.nature(this.natures, "AUN-" + suffix);
 		RequestFixtures.publishedWorkflow(this.configuration, this.requestType, this.approver.getId(), "AUD-" + suffix);
+	}
+
+	@AfterEach
+	void tearDown() {
+		SecurityContextHolder.clearContext();
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -184,6 +193,11 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 	// ---------------------------------------------------------------------------------------------
 
 	private UUID createAndSubmitRequest() {
+		// AuditRecorder reads the actor from SecurityContext, not from the caller argument, so
+		// direct service calls in tests must populate the context for performedBy to be stamped.
+		EdamPrincipal owner = requesterPrincipal();
+		SecurityContextHolder.getContext().setAuthentication(
+				new UsernamePasswordAuthenticationToken(owner, null, owner.getAuthorities()));
 		ExpenseRequestDtos.RequestResponse created = this.requestService.create(
 				new ExpenseRequestDtos.CreateRequest(
 						this.requestType.getId(), this.category.getId(), null, this.nature.getId(),
@@ -427,7 +441,10 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 					.findByWorkflowInstanceIdOrderByAssignedAtAsc(instance.getId()).stream()
 					.filter(t -> t.getStatus() == WorkflowTask.TaskStatus.PENDING).findFirst().orElseThrow();
 			// Approve through the service to produce a real WorkflowAction row.
-			AuditReadApiTest.this.approvalService.approve(open.getId(), "Looks good", approverPrincipal());
+			EdamPrincipal approver = approverPrincipal();
+			SecurityContextHolder.getContext().setAuthentication(
+					new UsernamePasswordAuthenticationToken(approver, null, approver.getAuthorities()));
+			AuditReadApiTest.this.approvalService.approve(open.getId(), "Looks good", approver);
 
 			String body = AuditReadApiTest.this.mockMvc
 					.perform(get(REQUESTS + "/{id}/activity", requestId).with(user(requesterPrincipal()))
