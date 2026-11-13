@@ -48,30 +48,40 @@ public interface AuditRepository extends Repository<AuditEvent, UUID> {
 	 * Oldest-first keyset fetch for the timeline. Returns at most {@code fetchLimit} audit events
 	 * for the given request that are strictly after the cursor key (or from the beginning when
 	 * {@code afterTs} is null) and not after {@code boundedAt}. Ordering is
-	 * {@code (created_at ASC, id ASC)} so tie-breaking is deterministic.
+	 * {@code (created_at ASC, msb(id) ASC, lsb(id) ASC)} so tie-breaking matches
+	 * {@link java.util.UUID#compareTo} exactly (signed 64-bit halves).
 	 *
-	 * <p>We use a native query because JPQL keyset pagination with a composite (ts, id) cursor
-	 * is awkward to express portably, and Hibernate 6 does not reliably bind {@code (ts,id) >
-	 * (:afterTs, :afterId)} row-value comparisons on Postgres. The explicit boolean expression
-	 * below is equivalent.
+	 * <p>We use a native query because (a) JPQL keyset pagination with a composite (ts, id)
+	 * cursor is awkward to express portably and Hibernate 6 does not reliably bind
+	 * {@code (ts,id) > (:afterTs, :afterId)} row-value comparisons on Postgres, and
+	 * (b) Postgres' native {@code uuid > uuid} operator orders by unsigned bytes while Java
+	 * {@link java.util.UUID#compareTo} orders by signed longs; we therefore cast each UUID
+	 * half to {@code bigint} (signed) and compare explicitly.
 	 */
 	@Query(value = """
-			select e.* from audit_events e
+			select e.*
+			from audit_events e
 			where e.entity_type = cast(:entityType as text)
 			  and e.entity_id   = cast(:entityId as text)
 			  and e.created_at  <= :boundedAt
 			  and (   cast(:afterTs as timestamptz) is null
 			       or e.created_at > cast(:afterTs as timestamptz)
 			       or (e.created_at = cast(:afterTs as timestamptz)
-			           and (cast(:afterId as uuid) is null or e.id > cast(:afterId as uuid))))
-			order by e.created_at asc, e.id asc
+			           and (:afterMsb is null
+			                or (   (('x'||substr(replace(e.id::text,'-',''),1,16))::bit(64))::bigint > :afterMsb
+			                    or ((('x'||substr(replace(e.id::text,'-',''),1,16))::bit(64))::bigint = :afterMsb
+			                        and (('x'||substr(replace(e.id::text,'-',''),17,16))::bit(64))::bigint > :afterLsb)))))
+			order by e.created_at asc,
+			         (('x'||substr(replace(e.id::text,'-',''),1,16))::bit(64))::bigint asc,
+			         (('x'||substr(replace(e.id::text,'-',''),17,16))::bit(64))::bigint asc
 			limit :fetchLimit
 			""", nativeQuery = true)
 	List<AuditEvent> findForEntityAfter(@Param("entityType") String entityType,
 			@Param("entityId") String entityId,
 			@Param("boundedAt") Instant boundedAt,
 			@Param("afterTs") Instant afterTs,
-			@Param("afterId") UUID afterId,
+			@Param("afterMsb") Long afterMsb,
+			@Param("afterLsb") Long afterLsb,
 			@Param("fetchLimit") int fetchLimit);
 
 	/**
@@ -89,6 +99,12 @@ public interface AuditRepository extends Repository<AuditEvent, UUID> {
 	 * longer exists in {@code expense_requests}), the event is visible <b>only</b> to
 	 * installation-wide auditors. This prevents a deleted/stale request from leaking historical
 	 * metadata to department-scoped callers.
+	 *
+	 * <p>DRAFT visibility mirrors {@code ExpenseRequestService.isVisible}: a request whose
+	 * {@code current_status_code = 'DRAFT'} is visible only to its requester and to
+	 * installation-wide auditors — department/branch scope alone never grants access to another
+	 * user's draft, which prevents metadata leakage of unsubmitted filings through the audit
+	 * search list, detail endpoint, or {@code totalElements}.
 	 *
 	 * <p>Parameters {@code deptIds} and {@code branchIds} are required to be non-null (empty
 	 * means no department/branch scope). When both are empty and {@code installationWide} is
@@ -116,8 +132,10 @@ public interface AuditRepository extends Repository<AuditEvent, UUID> {
 			          and (
 			               cast(:installationWide as boolean) = true
 			            or r.requested_by = :callerId
-			            or r.department_id = any (cast(:deptIds as uuid[]))
-			            or (r.branch_id is not null and r.branch_id = any (cast(:branchIds as uuid[])))
+			            or (    r.current_status_code <> cast('DRAFT' as text)
+			                and (   r.department_id = any (cast(:deptIds as uuid[]))
+			                     or (r.branch_id is not null
+			                         and r.branch_id = any (cast(:branchIds as uuid[])))))
 			          )
 			        )
 			     or (r.id is null and cast(:installationWide as boolean) = true)
@@ -146,8 +164,10 @@ public interface AuditRepository extends Repository<AuditEvent, UUID> {
 			          and (
 			               cast(:installationWide as boolean) = true
 			            or r.requested_by = :callerId
-			            or r.department_id = any (cast(:deptIds as uuid[]))
-			            or (r.branch_id is not null and r.branch_id = any (cast(:branchIds as uuid[])))
+			            or (    r.current_status_code <> cast('DRAFT' as text)
+			                and (   r.department_id = any (cast(:deptIds as uuid[]))
+			                     or (r.branch_id is not null
+			                         and r.branch_id = any (cast(:branchIds as uuid[])))))
 			          )
 			        )
 			     or (r.id is null and cast(:installationWide as boolean) = true)

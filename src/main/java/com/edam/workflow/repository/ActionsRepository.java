@@ -27,9 +27,11 @@ public interface ActionsRepository extends JpaRepository<WorkflowAction, UUID> {
 
 	/**
 	 * Oldest-first keyset fetch for the timeline. Returns at most {@code fetchLimit} actions
-	 * whose task is in {@code taskIds}, with {@code action_at} not after {@code boundedAt} and
-	 * strictly after the cursor key {@code (afterTs, afterId)}. Native query with explicit
-	 * casts keeps Postgres from inferring {@code unknown} for nullable parameters.
+	 * whose task belongs to {@code instanceId} (sub-selected through {@code workflow_tasks} —
+	 * no in-memory task-id materialization), with {@code action_at} not after {@code boundedAt}
+	 * and strictly after the cursor key {@code (afterTs, afterMsb, afterLsb)} (signed-long
+	 * halves matching {@link java.util.UUID#compareTo}). Native query with explicit casts keeps
+	 * Postgres from inferring {@code unknown} for nullable parameters.
 	 */
 	@Query(value = """
 			select a.* from workflow_actions a
@@ -40,14 +42,20 @@ public interface ActionsRepository extends JpaRepository<WorkflowAction, UUID> {
 			  and (   cast(:afterTs as timestamptz) is null
 			       or a.action_at > cast(:afterTs as timestamptz)
 			       or (a.action_at = cast(:afterTs as timestamptz)
-			           and (cast(:afterId as uuid) is null or a.id > cast(:afterId as uuid))))
-			order by a.action_at asc, a.id asc
+			           and (:afterMsb is null
+			                or (   (('x'||substr(replace(a.id::text,'-',''),1,16))::bit(64))::bigint > :afterMsb
+			                    or ((('x'||substr(replace(a.id::text,'-',''),1,16))::bit(64))::bigint = :afterMsb
+			                        and (('x'||substr(replace(a.id::text,'-',''),17,16))::bit(64))::bigint > :afterLsb)))))
+			order by a.action_at asc,
+			         (('x'||substr(replace(a.id::text,'-',''),1,16))::bit(64))::bigint asc,
+			         (('x'||substr(replace(a.id::text,'-',''),17,16))::bit(64))::bigint asc
 			limit :fetchLimit
 			""", nativeQuery = true)
 	List<WorkflowAction> findForInstanceAfter(@Param("instanceId") UUID instanceId,
 			@Param("boundedAt") Instant boundedAt,
 			@Param("afterTs") Instant afterTs,
-			@Param("afterId") UUID afterId,
+			@Param("afterMsb") Long afterMsb,
+			@Param("afterLsb") Long afterLsb,
 			@Param("fetchLimit") int fetchLimit);
 
 	/**

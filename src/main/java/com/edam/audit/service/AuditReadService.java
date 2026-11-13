@@ -2,7 +2,6 @@ package com.edam.audit.service;
 
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
-import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
@@ -328,7 +327,10 @@ public class AuditReadService {
 
 	private List<AuditEvent> fetchAuditEventsFor(UUID requestId, Instant boundedAt, CursorKey after, int fetchLimit) {
 		return this.audit.findForEntityAfter(ENTITY_TYPE_REQUEST, requestId.toString(),
-				boundedAt, after.timestamp(), after.id(), fetchLimit);
+				boundedAt, after.timestamp(),
+				after.timestamp() == null ? null : after.msb(),
+				after.timestamp() == null ? null : after.lsb(),
+				fetchLimit);
 	}
 
 	private List<WorkflowTask> fetchTaskEventsFor(ExpenseRequest request, Instant boundedAt, CursorKey after,
@@ -337,7 +339,10 @@ public class AuditReadService {
 		if (instance == null) {
 			return List.of();
 		}
-		return this.tasks.findForInstanceAfter(instance.getId(), boundedAt, after.timestamp(), after.id(), fetchLimit);
+		Long afterMsb = after.timestamp() == null ? null : after.msb();
+		Long afterLsb = after.timestamp() == null ? null : after.lsb();
+		return this.tasks.findForInstanceAfter(instance.getId(), boundedAt, after.timestamp(), afterMsb, afterLsb,
+				fetchLimit);
 	}
 
 	private List<WorkflowAction> fetchActionEventsFor(ExpenseRequest request, Instant boundedAt, CursorKey after,
@@ -346,9 +351,12 @@ public class AuditReadService {
 		if (instance == null) {
 			return List.of();
 		}
+		Long afterMsb = after.timestamp() == null ? null : after.msb();
+		Long afterLsb = after.timestamp() == null ? null : after.lsb();
 		// SQL-level join through workflow_tasks — we never materialise the full task list or the
 		// full action history; keyset predicate + LIMIT fetchLimit keeps the result bounded.
-		return this.actions.findForInstanceAfter(instance.getId(), boundedAt, after.timestamp(), after.id(), fetchLimit);
+		return this.actions.findForInstanceAfter(instance.getId(), boundedAt, after.timestamp(), afterMsb, afterLsb,
+				fetchLimit);
 	}
 
 	private Map<UUID, String> loadStateNames(ExpenseRequest request) {
@@ -547,7 +555,11 @@ public class AuditReadService {
 	private record TimelineCursor(int version, Instant boundedAt, UUID requestId, Map<String, CursorKey> lastKeys) {
 	}
 
-	private record CursorKey(Instant timestamp, UUID id) {
+	private record CursorKey(Instant timestamp, UUID id, long msb, long lsb) {
+		CursorKey(Instant timestamp, UUID id) {
+			this(timestamp, id, id == null ? 0L : id.getMostSignificantBits(),
+					id == null ? 0L : id.getLeastSignificantBits());
+		}
 	}
 
 	private TimelineCursor decodeCursor(String encoded, UUID requestId) {
@@ -737,7 +749,12 @@ public class AuditReadService {
 		}
 	}
 
-	/** Composite sort key used by the timeline k-way merge and cursor comparisons. */
+	/** Composite sort key used by the timeline k-way merge and cursor comparisons.
+	 *
+	 * <p>The id tie-break uses {@link UUID#compareTo}, which compares the two 64-bit halves as
+	 * signed longs. The SQL keyset predicate uses the same split (MSB signed, LSB signed) so the
+	 * database ordering matches Java exactly.
+	 */
 	static final class TimelineKey {
 
 		static final Comparator<TimelineEntry> ORDER = (a, b) -> {
@@ -749,9 +766,10 @@ public class AuditReadService {
 			if (c != 0) {
 				return c;
 			}
-			String aid = a.eventId() == null ? "" : a.eventId().toString();
-			String bid = b.eventId() == null ? "" : b.eventId().toString();
-			return aid.compareTo(bid);
+			if (a.eventId() == null || b.eventId() == null) {
+				return 0;
+			}
+			return a.eventId().compareTo(b.eventId());
 		};
 
 		private TimelineKey() {

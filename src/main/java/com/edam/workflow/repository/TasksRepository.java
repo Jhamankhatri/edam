@@ -28,9 +28,10 @@ public interface TasksRepository extends JpaRepository<WorkflowTask, UUID>, JpaS
 	/**
 	 * Oldest-first keyset fetch for the timeline. Returns at most {@code fetchLimit} tasks for
 	 * the instance whose {@code assigned_at} is not after {@code boundedAt} and that are
-	 * strictly after the cursor key {@code (afterTs, afterId)}. When {@code afterTs} is null,
-	 * returns the earliest tasks. Uses a native query with explicit casts so Postgres can infer
-	 * parameter types even when the cursor values are null.
+	 * strictly after the cursor key {@code (afterTs, afterMsb, afterLsb)} (signed-long
+	 * halves of the task id, matching {@link java.util.UUID#compareTo}). When {@code afterTs}
+	 * is null, returns the earliest tasks. Uses a native query with explicit casts so Postgres
+	 * can infer parameter types even when the cursor values are null.
 	 */
 	@Query(value = """
 			select t.* from workflow_tasks t
@@ -39,14 +40,20 @@ public interface TasksRepository extends JpaRepository<WorkflowTask, UUID>, JpaS
 			  and (   cast(:afterTs as timestamptz) is null
 			       or t.assigned_at > cast(:afterTs as timestamptz)
 			       or (t.assigned_at = cast(:afterTs as timestamptz)
-			           and (cast(:afterId as uuid) is null or t.id > cast(:afterId as uuid))))
-			order by t.assigned_at asc, t.id asc
+			           and (:afterMsb is null
+			                or (   (('x'||substr(replace(t.id::text,'-',''),1,16))::bit(64))::bigint > :afterMsb
+			                    or ((('x'||substr(replace(t.id::text,'-',''),1,16))::bit(64))::bigint = :afterMsb
+			                        and (('x'||substr(replace(t.id::text,'-',''),17,16))::bit(64))::bigint > :afterLsb)))))
+			order by t.assigned_at asc,
+			         (('x'||substr(replace(t.id::text,'-',''),1,16))::bit(64))::bigint asc,
+			         (('x'||substr(replace(t.id::text,'-',''),17,16))::bit(64))::bigint asc
 			limit :fetchLimit
 			""", nativeQuery = true)
 	List<WorkflowTask> findForInstanceAfter(@Param("instanceId") UUID instanceId,
 			@Param("boundedAt") Instant boundedAt,
 			@Param("afterTs") Instant afterTs,
-			@Param("afterId") UUID afterId,
+			@Param("afterMsb") Long afterMsb,
+			@Param("afterLsb") Long afterLsb,
 			@Param("fetchLimit") int fetchLimit);
 
 	long countByAssignedUserIdAndStatus(UUID userId, WorkflowTask.TaskStatus status);
