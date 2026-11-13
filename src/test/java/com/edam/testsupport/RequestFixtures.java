@@ -4,6 +4,10 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+
 import com.edam.expenseconfiguration.model.ExpenseCategory;
 import com.edam.expenseconfiguration.model.ExpenseCategory.ExpenseType;
 import com.edam.expenseconfiguration.model.ExpenseNature;
@@ -45,6 +49,26 @@ import com.edam.usermanagement.repository.UserRepository;
 public final class RequestFixtures {
 
 	private RequestFixtures() {
+	}
+
+	/**
+	 * Inserts a media asset and returns its id.
+	 *
+	 * <p>{@code request_documents.media_asset_id} is a foreign key, so a document can only be attached to an
+	 * asset that exists. There is no {@code MediaAsset} entity yet — the upload path is Phase 4 — so the row
+	 * is written with plain SQL here rather than through a repository that would exist only for tests.
+	 */
+	public static UUID mediaAsset(JdbcTemplate jdbc, UUID uploadedBy) {
+		UUID id = UUID.randomUUID();
+		new NamedParameterJdbcTemplate(jdbc).update("""
+				insert into media_assets (id, original_file_name, storage_provider, storage_reference, \
+				mime_type, file_size, uploaded_by, uploaded_at)
+				values (:id, :name, 'LOCAL', :reference, 'application/pdf', 1024, :uploadedBy, CURRENT_TIMESTAMP)
+				""", new MapSqlParameterSource().addValue("id", id)
+			.addValue("name", "fixture-" + id + ".pdf")
+			.addValue("reference", "file:///tmp/" + id + ".pdf")
+			.addValue("uploadedBy", uploadedBy));
+		return id;
 	}
 
 	private static String randomSuffix() {

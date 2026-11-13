@@ -209,7 +209,8 @@ public class ExpenseRequestService {
 	@Transactional
 	public RequestResponse submit(UUID id, EdamPrincipal caller) {
 		ExpenseRequest request = require(id);
-		requireEditableBy(request, caller);
+		requireAuthoredBy(request, caller, "submit");
+		// The state check precedes the generic editability one so the refusal names this operation.
 		if (!request.isSubmittable()) {
 			throw new BusinessException(ErrorCode.INVALID_STATE_TRANSITION,
 					"A request in status " + request.getCurrentStatusCode() + " cannot be submitted.");
@@ -279,15 +280,20 @@ public class ExpenseRequestService {
 		var pageable = page.toPageable(REGISTER_SORT);
 		// Two explicit queries rather than one with a nullable enum parameter: an optional enum in JPQL
 		// produces an ambiguous parameter type at runtime instead of a compile-time error.
+		// The scope lists are bound even when the corresponding flag is false, and an empty list cannot
+		// be expanded into SQL. A placeholder replaces "no scope of this kind": the flag still short-
+		// circuits the predicate, so the placeholder can never match a row.
+		List<UUID> departmentIds = orPlaceholder(visibility.departmentIds());
+		List<UUID> branchIds = orPlaceholder(visibility.branchIds());
 		var result = (status == null)
 				? this.requests.searchScoped(normaliseSearch(search), departmentId, categoryId, mineOnly,
 						visibility.installationWide(), caller.userId(), ExpenseRequest.Status.DRAFT,
-						!visibility.departmentIds().isEmpty(), visibility.departmentIds(),
-						!visibility.branchIds().isEmpty(), visibility.branchIds(), pageable)
+						!visibility.departmentIds().isEmpty(), departmentIds,
+						!visibility.branchIds().isEmpty(), branchIds, pageable)
 				: this.requests.searchScopedByStatus(normaliseSearch(search), status, departmentId, categoryId,
 						mineOnly, visibility.installationWide(), caller.userId(), ExpenseRequest.Status.DRAFT,
-						!visibility.departmentIds().isEmpty(), visibility.departmentIds(),
-						!visibility.branchIds().isEmpty(), visibility.branchIds(), pageable);
+						!visibility.departmentIds().isEmpty(), departmentIds,
+						!visibility.branchIds().isEmpty(), branchIds, pageable);
 		return PageResponse.of(result, request -> RequestSummary.from(request, classification(request)));
 	}
 
@@ -340,10 +346,16 @@ public class ExpenseRequestService {
 		return request.getBranchId() != null && caller.scopesToBranch(request.getBranchId());
 	}
 
-	private void requireEditableBy(ExpenseRequest request, EdamPrincipal caller) {
+	/** Ownership only; the state check belongs to the caller because its wording names the action. */
+	private void requireAuthoredBy(ExpenseRequest request, EdamPrincipal caller, String action) {
 		if (!caller.userId().equals(request.getRequestedBy())) {
-			throw new BusinessException(ErrorCode.ACCESS_DENIED, "Only the requester can change this request.");
+			throw new BusinessException(ErrorCode.ACCESS_DENIED,
+					"Only the requester can " + action + " this request.");
 		}
+	}
+
+	private void requireEditableBy(ExpenseRequest request, EdamPrincipal caller) {
+		requireAuthoredBy(request, caller, "change");
 		if (!request.isEditable()) {
 			throw new BusinessException(ErrorCode.INVALID_STATE_TRANSITION,
 					"A request in status " + request.getCurrentStatusCode() + " cannot be changed.");
@@ -559,6 +571,13 @@ public class ExpenseRequestService {
 	}
 
 	/** The caller's visibility, precomputed for the query. Mirrors {@code UserManagementService}. */
+	/** A single value that matches no row, so a scope list is always bindable. */
+	private static final UUID NO_MATCH = new UUID(0L, 0L);
+
+	private static List<UUID> orPlaceholder(List<UUID> ids) {
+		return ids.isEmpty() ? List.of(NO_MATCH) : ids;
+	}
+
 	private record Visibility(boolean installationWide, List<UUID> departmentIds, List<UUID> branchIds) {
 
 		static Visibility forCaller(EdamPrincipal caller) {

@@ -37,14 +37,20 @@ def _escape_data(value: str) -> str:
     return (str(value).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))
 
 
+MAX_MESSAGE = 1400
+
+
 def emit(kind: str, title: str, message: str) -> None:
+    """Emit one annotation.
+
+    A long message is truncated rather than split: GitHub discards annotations past a per-run
+    budget, so spending three of them on one stack trace can hide three other failures. The head
+    of a stack trace carries the assertion; the tail is framework frames.
+    """
     text = " ".join(str(message).split())
-    # GitHub accepts up to 64000 chars per annotation but the runner truncates much earlier in
-    # practice; chunk long messages so diagnostics are never silently lost.
-    for index in range(0, max(len(text), 1), 1200):
-        chunk = text[index:index + 1200]
-        suffix = f" [{index // 1200 + 1}]" if len(text) > 1200 else ""
-        print(f"::{kind} title={_escape_property(str(title) + suffix)}::{_escape_data(chunk)}")
+    if len(text) > MAX_MESSAGE:
+        text = text[:MAX_MESSAGE] + " [truncated]"
+    print(f"::{kind} title={_escape_property(title)}::{_escape_data(text)}")
 
 
 def report_test_results() -> None:
@@ -58,10 +64,15 @@ def report_test_results() -> None:
             name = case.get("name") or "?"
             for tag in ("failure", "error"):
                 for bad in case.findall(tag):
-                    # AssertJ reports the useful explanation in the element text, and
-                    # JUnit only sometimes duplicates a message attribute; keep both.
-                    parts = [bad.get("message"), bad.text]
-                    detail = " | ".join(part.strip() for part in parts if part and part.strip())
+                    # The message attribute states the assertion that failed; the element text
+                    # repeats it followed by the stack. Prefer the message so the annotation opens
+                    # with the reason rather than with a frame.
+                    message = (bad.get("message") or "").strip()
+                    body = " ".join((bad.text or "").split())
+                    if message and body and message not in body:
+                        detail = f"{message} | {body}"
+                    else:
+                        detail = body or message or tag
                     emit("error", f"FAIL {classname}.{name}", detail)
 
 

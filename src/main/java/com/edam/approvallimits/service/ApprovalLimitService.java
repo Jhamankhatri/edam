@@ -122,9 +122,10 @@ public class ApprovalLimitService {
 			DepartmentApprovalLimit d = departmentWide.get();
 			// Rule 2: the lower of the two. Personal tightens, never widens.
 			DepartmentApprovalLimit binding = (p.getApprovalLimit().compareTo(d.getApprovalLimit()) <= 0) ? p : d;
+			// Identity decides the basis, not the id: the row that won is one of the two candidates in
+			// hand, and an id is only populated once the row has been persisted.
 			return Optional.of(new EffectiveLimit(departmentId, userId, binding.getApprovalLimit(), currencyId,
-					binding.getExpenseType().name(), binding.getId(),
-					p.getId().equals(binding.getId()) ? "PERSONAL" : "DEPARTMENT"));
+					binding.getExpenseType().name(), binding.getId(), (binding == p) ? "PERSONAL" : "DEPARTMENT"));
 		}
 		DepartmentApprovalLimit source = personal.orElseGet(departmentWide::get);
 		String basis = personal.isPresent() ? "PERSONAL" : "DEPARTMENT";
