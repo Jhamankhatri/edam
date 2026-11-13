@@ -141,9 +141,9 @@ class WorkflowConfigurationApiTest extends AbstractPostgreSqlIntegrationTest {
 				com.edam.workflow.model.WorkflowStep.ApprovalMode.PARALLEL, (short) 1,
 				List.of(
 						new com.edam.workflow.dto.WorkflowDtos.ApproverRequest(
-								WorkflowStepApprover.ApproverType.USER, null, first.id(), null),
+								WorkflowStepApprover.ApproverType.USER, null, first.getId(), null),
 						new com.edam.workflow.dto.WorkflowDtos.ApproverRequest(
-								WorkflowStepApprover.ApproverType.USER, null, second.id(), null))));
+								WorkflowStepApprover.ApproverType.USER, null, second.getId(), null))));
 	}
 
 	private com.edam.workflow.dto.WorkflowDtos.VersionResponse draft(
@@ -434,8 +434,7 @@ class WorkflowConfigurationApiTest extends AbstractPostgreSqlIntegrationTest {
 					WorkflowConfigurationApiTest.this.draft(definition));
 
 			WorkflowConfigurationApiTest.this.configuration.retire(published.id(),
-					new com.edam.workflow.dto.WorkflowDtos.RetireRequest("Withdrawn"),
-					WorkflowConfigurationApiTest.this.approver.getId());
+					WorkflowConfigurationApiTest.this.approver.getId(), "Withdrawn");
 
 			// Fails closed: a request type whose only revision was retired must not accept submissions.
 			assertThatThrownBy(() -> WorkflowConfigurationApiTest.this.configuration
