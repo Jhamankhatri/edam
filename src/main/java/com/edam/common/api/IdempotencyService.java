@@ -109,12 +109,19 @@ public class IdempotencyService {
 	 * Check a key before executing the operation. The caller is responsible for canonicalising the
 	 * request fingerprint (see {@link #fingerprint(String)}).
 	 *
+	 * <p>Runs in its own REQUIRES_NEW transaction so the IN_PROGRESS claim is committed immediately
+	 * and visible to concurrent duplicates, even though the aspect invokes {@code check} from
+	 * inside the controller method whose body will open its own {@code @Transactional} business
+	 * transaction. Using default propagation would bind the claim to the outer business TX and
+	 * leave it invisible to retries until the entire controller returns — that defeats the whole
+	 * point of claiming before doing the work.
+	 *
 	 * @param operationType stable operation identifier from {@link IdempotentOperation#value()}
 	 * @param actorId authenticated user id; must NOT be null
 	 * @param key caller-supplied {@code Idempotency-Key} header (trimmed); null/blank ⇒ opt-out
 	 * @param fingerprint canonical SHA-256 of the request body + path parameters (see below)
 	 */
-	@Transactional
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public Decision check(String operationType, UUID actorId, String key, String fingerprint) {
 		if (key == null || key.isBlank()) {
 			return Proceed.INSTANCE;
@@ -129,13 +136,24 @@ public class IdempotencyService {
 						now.plus(RETENTION)));
 			}
 			catch (DataIntegrityViolationException ex) {
-				// Lost the race with a concurrent identical request.
-				throw new BusinessException(ErrorCode.PRECONDITION_FAILED,
-						"An identical request is already being processed. Retry once it completes.");
+				// Lost the race with a concurrent identical request. Fall through to one re-read so
+				// the winner's COMPLETED/IN_PROGRESS state is visible and returned to the caller
+				// rather than a blanket 409.
+				existing = this.records.findByKey(keyHash, operationType, actorId);
+				if (existing.isEmpty()) {
+					throw new BusinessException(ErrorCode.PRECONDITION_FAILED,
+							"An identical request is already being processed. Retry once it completes.");
+				}
+				return decideForExisting(existing.get(), keyHash, operationType, actorId, fingerprint);
 			}
 			return Proceed.INSTANCE;
 		}
-		IdempotencyRecord record = existing.get();
+		return decideForExisting(existing.get(), keyHash, operationType, actorId, fingerprint);
+	}
+
+	/** Resolve the decision for an existing IN_PROGRESS / FAILED / COMPLETED record. */
+	private Decision decideForExisting(IdempotencyRecord record, String keyHash, String operationType,
+			UUID actorId, String fingerprint) {
 		if (!record.matchesRequest(fingerprint)) {
 			throw new BusinessException(ErrorCode.IDEMPOTENCY_CONFLICT);
 		}
