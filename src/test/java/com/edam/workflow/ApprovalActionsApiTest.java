@@ -200,6 +200,7 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 				List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
 				List.of()),
 				owner());
+		// submit answers with the request envelope, whose id is the request's own UUID as text.
 		return UUID.fromString(this.requests.submit(UUID.fromString(created.id()), owner()).id());
 	}
 
@@ -365,7 +366,7 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 				.andExpect(jsonPath("$.data.requestStatus").value("APPROVED"));
 
 			ExpenseRequest reloaded = ApprovalActionsApiTest.this.requestRows.findById(requestId).orElseThrow();
-			assertThat(reloaded.getStatus()).isEqualTo(ExpenseRequest.Status.APPROVED);
+			assertThat(reloaded.getCurrentStatusCode()).isEqualTo(ExpenseRequest.Status.APPROVED);
 		}
 
 		@Test
@@ -456,7 +457,7 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.requestStatus").value("REJECTED"));
 
-			assertThat(ApprovalActionsApiTest.this.requestRows.findById(requestId).orElseThrow().getStatus())
+			assertThat(ApprovalActionsApiTest.this.requestRows.findById(requestId).orElseThrow().getCurrentStatusCode())
 				.isEqualTo(ExpenseRequest.Status.REJECTED);
 		}
 
@@ -476,7 +477,7 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 
 			// The request is editable again, which is the point of a revert.
 			ExpenseRequest reverted = ApprovalActionsApiTest.this.requestRows.findById(requestId).orElseThrow();
-			assertThat(reverted.getStatus()).isEqualTo(ExpenseRequest.Status.RETURNED);
+			assertThat(reverted.getCurrentStatusCode()).isEqualTo(ExpenseRequest.Status.RETURNED);
 			assertThat(reverted.isEditable()).isTrue();
 
 			// The step was re-opened rather than abandoned, so the chain is ready for resubmission.
