@@ -57,12 +57,13 @@ public interface AuditRepository extends Repository<AuditEvent, UUID> {
 	 */
 	@Query(value = """
 			select e.* from audit_events e
-			where e.entity_type = :entityType
+			where e.entity_type = cast(:entityType as text)
 			  and e.entity_id   = cast(:entityId as text)
 			  and e.created_at  <= :boundedAt
-			  and (   :afterTs is null
-			       or e.created_at > :afterTs
-			       or (e.created_at = :afterTs and (:afterId is null or e.id > cast(:afterId as uuid))))
+			  and (   cast(:afterTs as timestamptz) is null
+			       or e.created_at > cast(:afterTs as timestamptz)
+			       or (e.created_at = cast(:afterTs as timestamptz)
+			           and (cast(:afterId as uuid) is null or e.id > cast(:afterId as uuid))))
 			order by e.created_at asc, e.id asc
 			limit :fetchLimit
 			""", nativeQuery = true)
