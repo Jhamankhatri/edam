@@ -76,7 +76,14 @@ public class RequestNumberGenerator {
 		return value.longValue();
 	}
 
-	static String format(String categoryCode, String period, long sequence) {
+	/**
+	 * Formats a number from its parts.
+	 *
+	 * <p>Public because it is the numbering <em>contract</em>, not an internal detail: import validation and
+	 * the API documentation both need to recognise a well-formed number, and duplicating the pattern in a
+	 * second place is how two definitions of "valid" start to disagree.
+	 */
+	public static String format(String categoryCode, String period, long sequence) {
 		String code = (categoryCode == null || categoryCode.isBlank()) ? "REQ" : sanitize(categoryCode);
 		return code + "-" + period + "-" + String.format("%0" + SEQUENCE_WIDTH + "d", sequence);
 	}
