@@ -223,7 +223,7 @@ class WorkflowConfigurationApiTest extends AbstractPostgreSqlIntegrationTest {
 			com.edam.workflow.dto.WorkflowDtos.VersionResponse draft = WorkflowConfigurationApiTest.this.draft(definition);
 
 			assertThat(draft.versionNumber()).isEqualTo(1);
-			assertThat(draft.status()).isEqualTo(WorkflowVersion.Status.DRAFT);
+			assertThat(draft.status()).isEqualTo("DRAFT");
 			assertThat(draft.definitionId()).isEqualTo(definition.id());
 		}
 
@@ -247,18 +247,18 @@ class WorkflowConfigurationApiTest extends AbstractPostgreSqlIntegrationTest {
 		}
 
 		@Test
-		@DisplayName("a second draft on a definition already holding one is refused")
-		void secondDraftRefused() {
-			com.edam.workflow.dto.WorkflowDtos.DefinitionResponse definition = WorkflowConfigurationApiTest.this.definition("ONEDRAFT-" + System.nanoTime());
+		@DisplayName("a definition never accumulates two editable revisions")
+		void onlyOneDraftAtATime() {
+			var definition = WorkflowConfigurationApiTest.this.definition("ONEDRAFT-" + System.nanoTime());
+			WorkflowConfigurationApiTest.this.draft(definition);
+			// Authoring again rewrites that same revision rather than opening a second one, so "which draft
+			// becomes v4" is never a race between two administrators.
 			WorkflowConfigurationApiTest.this.draft(definition);
 
-			assertThatThrownBy(() -> WorkflowConfigurationApiTest.this.configuration.createDraft(
-					definition.id(), new com.edam.workflow.dto.WorkflowDtos.SaveDraftRequest(
-							twoApproverStep(WorkflowConfigurationApiTest.this.approver,
-									WorkflowConfigurationApiTest.this.secondApprover),
-							List.of(), null)))
-				.isInstanceOf(BusinessException.class)
-				.hasMessageContaining("draft");
+			long editable = WorkflowConfigurationApiTest.this.versions
+				.findByWorkflowDefinitionIdOrderByVersionNumberDesc(definition.id())
+				.stream().filter(WorkflowVersion::isEditable).count();
+			assertThat(editable).isEqualTo(1);
 		}
 	}
 
@@ -310,19 +310,21 @@ class WorkflowConfigurationApiTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("an approver type whose reference is missing is an error")
 		void danglingApproverReferenceRefused() {
-			com.edam.workflow.dto.WorkflowDtos.DefinitionResponse definition = WorkflowConfigurationApiTest.this.definition("DANGLE-" + System.nanoTime());
-			com.edam.workflow.dto.WorkflowDtos.VersionResponse draft = WorkflowConfigurationApiTest.this.configuration.createDraft(
+			var definition = WorkflowConfigurationApiTest.this
+				.definition("DANGLE-" + System.nanoTime());
+
+			// Refused earlier than publication, and better for it: the entity's own constructor rejects a
+			// designation whose type does not match the reference columns supplied. An unroutable approver
+			// cannot be convened into existence in the first place, so no validation pass has to catch it.
+			assertThatThrownBy(() -> WorkflowConfigurationApiTest.this.configuration.createDraft(
 					definition.id(), new com.edam.workflow.dto.WorkflowDtos.SaveDraftRequest(
 							List.of(new com.edam.workflow.dto.WorkflowDtos.StepRequest("ROLE", "Role step",
 									(short) 1, com.edam.workflow.model.WorkflowStep.ApprovalMode.PARALLEL, (short) 1,
 									List.of(new com.edam.workflow.dto.WorkflowDtos.ApproverRequest(
 											WorkflowStepApprover.ApproverType.ROLE, null, null, null)))),
-							List.of(), null));
-
-			// A ROLE approver naming no role can never resolve; publication must not accept it.
-			assertThatThrownBy(() -> WorkflowConfigurationApiTest.this.publish(draft))
-				.isInstanceOf(BusinessException.class)
-				.hasMessageContaining("cannot be published");
+							List.of(), null)))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("does not match the reference columns");
 		}
 	}
 
@@ -350,7 +352,32 @@ class WorkflowConfigurationApiTest extends AbstractPostgreSqlIntegrationTest {
 		}
 
 		@Test
-		@DisplayName("a published revision cannot be rewritten")
+		@DisplayName("changing a published workflow opens a new revision and leaves the old one intact")
+		void publishedRevisionIsImmutable() {
+			var definition = WorkflowConfigurationApiTest.this.definition("IMMUT-" + System.nanoTime());
+			var published = WorkflowConfigurationApiTest.this.publish(
+					WorkflowConfigurationApiTest.this.draft(definition));
+
+			// Authoring after publication must not touch v1. It creates v2, which is the whole point of
+			// versioning: requests already pinned to v1 keep the chain they started under.
+			var nextDraft = WorkflowConfigurationApiTest.this.configuration.createDraft(definition.id(),
+					new com.edam.workflow.dto.WorkflowDtos.SaveDraftRequest(
+							List.of(new com.edam.workflow.dto.WorkflowDtos.StepRequest("NARROWER", "Narrower",
+									(short) 1, com.edam.workflow.model.WorkflowStep.ApprovalMode.PARALLEL, (short) 1,
+									List.of(new com.edam.workflow.dto.WorkflowDtos.ApproverRequest(
+											WorkflowStepApprover.ApproverType.USER, null,
+											WorkflowConfigurationApiTest.this.approver.getId(), null)))),
+							List.of(), null));
+			assertThat(nextDraft.id()).isNotEqualTo(published.id());
+			assertThat(nextDraft.versionNumber()).isEqualTo(2);
+
+			// v1 is exactly what it was: still published, still holding two approvers.
+			WorkflowVersion reloaded = WorkflowConfigurationApiTest.this.versions.findById(published.id())
+				.orElseThrow();
+			assertThat(reloaded.getStatus()).isEqualTo(WorkflowVersion.Status.PUBLISHED);
+			assertThat(reloaded.getSteps()).hasSize(1);
+			assertThat(reloaded.getSteps().get(0).getApprovers()).hasSize(2);
+		}
 		void publishedRevisionIsImmutable() {
 			com.edam.workflow.dto.WorkflowDtos.DefinitionResponse definition = WorkflowConfigurationApiTest.this.definition("IMMUT-" + System.nanoTime());
 			com.edam.workflow.dto.WorkflowDtos.VersionResponse published = WorkflowConfigurationApiTest.this.publish(
