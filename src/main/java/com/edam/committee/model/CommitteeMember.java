@@ -7,6 +7,8 @@ import com.edam.common.audit.AuditableEntity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
@@ -47,6 +49,12 @@ public class CommitteeMember extends AuditableEntity {
 	@Column(name = "user_id", nullable = false)
 	private UUID userId;
 
+	/**
+	 * Stored by name, not by ordinal. The database constrains this column to the office vocabulary, and an
+	 * ordinal would silently re-point every stored value if the enum were ever reordered or a member type
+	 * inserted in the middle — turning a CFO into a CEO without a single row being written.
+	 */
+	@Enumerated(EnumType.STRING)
 	@Column(name = "member_type", nullable = false, length = 40)
 	private MemberType memberType = MemberType.MEMBER;
 
