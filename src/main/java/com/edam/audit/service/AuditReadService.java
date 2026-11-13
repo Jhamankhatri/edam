@@ -156,7 +156,8 @@ public class AuditReadService {
 		// ORDER BY that could override it.
 		Pageable pageable = pageQuery.toPageable(Sort.unsorted());
 		Scope scope = Scope.from(caller);
-		Page<AuditEvent> page = this.audit.search(window[0], window[1], criteria.action(),
+		String actionName = criteria.action() == null ? null : criteria.action().name();
+		Page<AuditEvent> page = this.audit.search(window[0], window[1], actionName,
 				normalize(criteria.entityType()), normalize(criteria.entityId()), criteria.actorId(),
 				normalize(criteria.correlationId()), actorName, caller.userId(), scope.installationWide(),
 				scope.deptIdsArray(), scope.branchIdsArray(), pageable);

@@ -392,17 +392,26 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 		void requestEventEnforcesVisibility() throws Exception {
 			UUID requestId = createAndSubmitRequest();
 			Instant to = Instant.now().plusSeconds(5);
-			// Find the SUBMIT event id from search.
+			// With Correction A the list is also filtered, so the scoped auditor sees no
+			// ExpenseRequest events for another user's request.
 			String body = AuditReadApiTest.this.mockMvc
 					.perform(get(AUDIT_EVENTS + "?action=SUBMIT&entityType=ExpenseRequest&entityId={id}&from={from}&to={to}",
 							requestId.toString(), to.minus(1, ChronoUnit.HOURS), to)
 							.with(user(auditorSelfScoped())).accept(MediaType.APPLICATION_JSON))
 					.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-			// The list returns the event (installation-wide metadata) but detail must 404 because
-			// the auditor has no request-scope.
-			String eventId = com.jayway.jsonpath.JsonPath.read(body, "$.data.items[0].id");
+			List<Object> items = com.jayway.jsonpath.JsonPath.read(body, "$.data.items");
+			assertThat(items).isEmpty();
+			// Look up the SUBMIT event directly via the repository to prove detail also enforces
+			// visibility (would 404 even with a known id).
+			var submit = AuditReadApiTest.this.auditRepository.findByEntityTypeAndEntityIdOrderByCreatedAtDesc(
+							"ExpenseRequest", requestId.toString(),
+							org.springframework.data.domain.PageRequest.of(0, 10,
+									org.springframework.data.domain.Sort.by("createdAt").descending()))
+					.getContent().stream()
+					.filter(e -> e.getAction() == AuditAction.SUBMIT)
+					.findFirst().orElseThrow();
 			AuditReadApiTest.this.mockMvc
-					.perform(get(AUDIT_EVENTS + "/{id}", eventId).with(user(auditorSelfScoped()))
+					.perform(get(AUDIT_EVENTS + "/{id}", submit.getId()).with(user(auditorSelfScoped()))
 							.accept(MediaType.APPLICATION_JSON))
 					.andExpect(status().isNotFound());
 		}

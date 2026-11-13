@@ -107,7 +107,7 @@ public interface AuditRepository extends Repository<AuditEvent, UUID> {
 			nativeQuery = true)
 	Page<AuditEvent> search(@Param("from") Instant from,
 			@Param("to") Instant to,
-			@Param("action") AuditAction action,
+			@Param("action") String action,
 			@Param("entityType") String entityType,
 			@Param("entityId") String entityId,
 			@Param("performedBy") UUID performedBy,
