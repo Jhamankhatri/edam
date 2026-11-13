@@ -1,6 +1,5 @@
 package com.edam.organization.model;
 
-import java.time.Instant;
 import java.util.UUID;
 
 import jakarta.persistence.Column;
@@ -36,17 +35,21 @@ public class OrganizationUnitType {
 	@Column(name = "id", nullable = false, updatable = false)
 	private UUID id;
 
-	@Column(name = "code", nullable = false, updatable = false, length = 64)
+	@Column(name = "code", nullable = false, updatable = false, length = 50)
 	private String code;
 
-	@Column(name = "name", nullable = false, updatable = false, length = 200)
+	@Column(name = "name", nullable = false, updatable = false, length = 100)
 	private String name;
 
 	@Column(name = "description", updatable = false)
 	private String description;
 
-	@Column(name = "created_at", nullable = false, updatable = false)
-	private Instant createdAt;
+	/**
+	 * Whether this kind is offered when creating a unit. A bank that does not use "Zone" can hide it
+	 * without deleting the rows that already reference it.
+	 */
+	@Column(name = "is_active", nullable = false)
+	private boolean active = true;
 
 	protected OrganizationUnitType() {
 		// JPA
@@ -68,8 +71,8 @@ public class OrganizationUnitType {
 		return this.description;
 	}
 
-	public Instant getCreatedAt() {
-		return this.createdAt;
+	public boolean isActive() {
+		return this.active;
 	}
 
 }
