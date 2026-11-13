@@ -1,6 +1,5 @@
 package com.edam.audit.service;
 
-import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -356,7 +355,7 @@ public class AuditReadService {
 			LinkedHashMap<String, Object> parsed = this.jsonMapper.readValue(json, MAP_TYPE);
 			return AuditValueRedactor.redact(parsed);
 		}
-		catch (IOException ex) {
+		catch (Exception ex) {
 			// If a stored payload is unreadable for any reason, surface a marker rather than the
 			// raw string — the raw string could contain anything.
 			log.warn("audit.parse_failed for event; returning marker");
