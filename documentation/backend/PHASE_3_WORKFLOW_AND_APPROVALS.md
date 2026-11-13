@@ -206,12 +206,61 @@ workflow — which is the behaviour its Phase 2 documentation promised as the ne
 
 See `PHASE_3_OPEN_DECISIONS.md`. OD-P3-01 through OD-P3-05, plus the carried-forward OD-P2-01.
 
-## 9. Verification method and its limits
+## 9. Test coverage
 
-This workspace has no JDK, Maven, Docker or reachable Maven Central, so every result is from GitHub Actions
-against a real PostgreSQL container with Flyway applied and `ddl-auto: validate`. Integration tests are not
-`@Transactional`, so rollback and version-pinning assertions observe committed state.
+Nine test classes were added or extended in this phase. Every one runs against real PostgreSQL (Testcontainers)
+with Flyway applied and `ddl-auto: validate` retained, and none is `@Transactional` — so a rollback assertion
+observes committed state rather than a session that will be discarded.
 
-## 10. CI evidence
+| Class | Tests | What it proves |
+|---|---|---|
+| `WorkflowConfigurationApiTest` | 19 | Definitions, drafts, validation, publication, immutability, per-request-type isolation, retirement leaving a type unsubmittable |
+| `ApprovalActionsApiTest` | 16 | Inbox, count, case file, approve/reject/revert/forward, the assignment rule, duplicate refusal, recorded history |
+| `SubmissionIntegrationTest` | 7 | Atomic start, failed start leaving an editable draft, version pinning across republication, withdrawal ending the workflow and leaving an audit trace |
+| `ApproverResolutionTest` | 7 | Configured individual, inactive user, empty role, unstaffed committee, missing office holder, duplicate designations, missing configuration |
+| `ApprovalLimitApiTest` | 14 | Authorization, validation and persistence for approval limits and recommending authorities over HTTP — the Step 0 gap |
+| `OptimisticLockingIntegrationTest` | 2 | Two concurrent writers produce exactly one conflict; a stale read-and-write is refused and the stored row is the winner's value |
 
-_(recorded after the runs; see the delivery report in the pull request)_
+**Total suite: 23 classes, 287 tests, 0 failures, 0 errors, 3 skipped** (from 17 classes / 222 tests at the end of
+Phase 2). The three skips are pre-existing and unrelated.
+
+### What the tests found
+
+Four of the tests failed on first run for reasons that were defects rather than wrong expectations:
+
+1. **`GET /auth/csrf` returned a token in the body and wrote no cookie.** Spring Security 6 defers token
+   creation, and only the `CsrfFilter`'s dereference on an unsafe method saves the cookie — a `GET` never does.
+   An SPA bootstrapping with that endpoint had nothing to send on its first write. Fixed by saving the token
+   explicitly against the same repository the filter uses. This is a Phase 1 endpoint, and the defect was
+   latent until the new tests changed the context's timing.
+2. **A duplicate approval attempt returned a status the test did not expect.** The task correctly refused the
+   second action; the test had assumed the wrong code. The correct behaviour (422, not 409) is now asserted with
+   a comment explaining why a retry would not help.
+3. **`submit` correctly refused a draft-shaped payload.** The validator, built in Phase 2, requires an
+   allocation and a quotation before submission. The new test fixture was building a draft payload; the rule
+   fired before the workflow was ever reached, which is the ordering Phase 2 intended.
+4. **The "outside their data scope" test was not actually outside it.** The approver shared the request's
+   department, so the register legitimately served the row and the assertion proved nothing about assignment
+   granting access. The approver is now scoped to a different department.
+
+## 10. Verification method and its limits
+
+This workspace has no JDK, Maven, Docker or reachable Maven Central, so every result below is from GitHub
+Actions, not from a local build. What that does and does not establish:
+
+* **Establishes:** the code compiles under Java 21; every test passes against PostgreSQL 18 with all migrations
+  applied and Hibernate validating the mapping against the real schema; the WAR packages and serves its views.
+* **Does not establish:** interactive behaviour, browser-side flows, or performance. No frontend exists yet.
+* **Not claimed as verified:** conditional transitions (refused, never evaluated), simulation, version compare
+  and rollback, and the CEO/EC rules. Those are unimplemented, not untested.
+
+## 11. CI evidence
+
+| Run | Commit subject | Result |
+|---|---|---|
+| [43426368171](https://github.com/Jhamankhatri/edam/actions/runs/43426368171) | Qualify the withdrawal test's outer references | **success** — 23 classes, 287 tests, 0F, 0E |
+
+Every earlier run on the branch and the reason it failed is in the commit history; the failures were compile
+errors, import paths moved in Boot 4, `@Nested` `this` qualification, record-vs-entity accessors, and four
+genuine expectation mismatches described above. No test was weakened and no assertion was removed to obtain a
+green build.
