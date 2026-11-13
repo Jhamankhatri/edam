@@ -329,11 +329,13 @@ class SubmissionIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("cancellation is recorded in the audit trail, not only as a status change")
 		void cancelIsAudited() {
-			publishChain(1);
-			ExpenseRequestDtos.RequestResponse submitted = this.requests.submit(draft().id(), owner());
+			SubmissionIntegrationTest.this.publishChain(1);
+			ExpenseRequestDtos.RequestResponse submitted = SubmissionIntegrationTest.this.requests
+				.submit(SubmissionIntegrationTest.this.draft().id(), SubmissionIntegrationTest.this.owner());
 
 			long before = auditCount(submitted.id());
-			this.requests.cancel(submitted.id(), "Budget withdrawn", owner());
+			SubmissionIntegrationTest.this.requests.cancel(submitted.id(), "Budget withdrawn",
+					SubmissionIntegrationTest.this.owner());
 			long after = auditCount(submitted.id());
 
 			// A withdrawal is recorded in audit_events, not workflow_actions: the approval engine's action
