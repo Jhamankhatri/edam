@@ -531,13 +531,16 @@ public class AuditReadService {
 			}
 			Instant boundedAt = Instant.parse(root.get("b").asText());
 			Map<String, CursorKey> lastKeys = new LinkedHashMap<>();
+			// Read cursor keys generically; iterate via property names to avoid a
+			// generic-type reference to the shaded Jackson Map.Entry.
 			tools.jackson.databind.JsonNode keysNode = root.path("k");
-			var fields = keysNode.fields();
-			while (fields.hasNext()) {
-				var entry = fields.next();
-				Instant ts = Instant.parse(entry.getValue().get("t").asText());
-				UUID keyId = UUID.fromString(entry.getValue().get("i").asText());
-				lastKeys.put(entry.getKey(), new CursorKey(ts, keyId));
+			java.util.Iterator<String> keyNames = keysNode.fieldNames();
+			while (keyNames.hasNext()) {
+				String src = keyNames.next();
+				tools.jackson.databind.JsonNode kv = keysNode.get(src);
+				Instant ts = Instant.parse(kv.get("t").asText());
+				UUID keyId = UUID.fromString(kv.get("i").asText());
+				lastKeys.put(src, new CursorKey(ts, keyId));
 			}
 			return new TimelineCursor(version, boundedAt, requestId, lastKeys);
 		}
