@@ -115,6 +115,9 @@ class ApproverResolutionTest extends AbstractPostgreSqlIntegrationTest {
 	@Autowired
 	private com.edam.committee.repository.CommitteeRepository committees;
 
+	@Autowired
+	private org.springframework.jdbc.core.JdbcTemplate jdbc;
+
 	private Department department;
 
 	private Currency currency;
@@ -279,7 +282,7 @@ class ApproverResolutionTest extends AbstractPostgreSqlIntegrationTest {
 			ExpenseRequestType type = RequestFixtures.requestType(ApproverResolutionTest.this.requestTypes,
 					"RSC-" + UUID.randomUUID().toString().substring(0, 8));
 			UUID levelId = RequestFixtures.emptyCommitteeLevel(ApproverResolutionTest.this.committees,
-					"RSC-" + UUID.randomUUID().toString().substring(0, 8),
+					ApproverResolutionTest.this.jdbc, "RSC-" + UUID.randomUUID().toString().substring(0, 8),
 					ApproverResolutionTest.this.currency.getId());
 			var definition = ApproverResolutionTest.this.configuration
 				.createDefinition(new com.edam.workflow.dto.WorkflowDtos.SaveDefinitionRequest(

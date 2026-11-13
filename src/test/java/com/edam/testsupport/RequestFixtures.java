@@ -239,7 +239,7 @@ public final class RequestFixtures {
 	 * the submission, never be skipped.
 	 */
 	public static UUID emptyCommitteeLevel(com.edam.committee.repository.CommitteeRepository committees,
-			String code, UUID currencyId) {
+			JdbcTemplate jdbc, String code, UUID currencyId) {
 		com.edam.committee.model.ExpenseCommittee committee = committees.findByCommitteeCode(code)
 			.orElseGet(() -> committees.saveAndFlush(new com.edam.committee.model.ExpenseCommittee(code,
 					"Fixture committee " + code, "Created by RequestFixtures")));
@@ -253,9 +253,11 @@ public final class RequestFixtures {
 		committee.getLevels().add(level);
 		committees.saveAndFlush(committee);
 		// The id is assigned by the database (@Generated(event = INSERT)) and is not back-filled onto the
-		// detached instance that was handed in, so it is read back from the persisted aggregate. Returning
-		// the transient object's id would hand a null reference to the step.
-		return committees.findById(committee.getId()).orElseThrow().getLevels().get(0).getId();
+		// instance that was handed in. Re-reading through the repository would touch a lazy collection
+		// outside a transaction, so the single value needed is read directly through JDBC, which is what
+		// this fixture style already does for media assets.
+		return jdbc.queryForObject("select id from committee_levels where committee_id = ? and level_number = ?",
+				UUID.class, committee.getId(), (short) 1);
 	}
 
 	/**
