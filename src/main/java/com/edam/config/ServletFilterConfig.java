@@ -27,7 +27,7 @@ import org.springframework.security.web.context.SecurityContextHolderFilter;
  * page, the access-denied page and every JSP forward are plain {@code REQUEST} handling
  * plus an internal {@code FORWARD}, so authorization remains complete.</li>
  * <li>An error dispatch goes through the servlet container and lands on
- * {@code MvcExceptionHandler}, which renders the safe error page with the original status
+ * {@code ErrorEndpointAttributes}, which answers with the standard envelope and the original status
  * code and no internal detail.</li>
  * </ul>
  *

@@ -48,7 +48,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
  * without stack traces. Unexpected conditions are logged at ERROR with the stack
  * trace.</li>
  * <li>HTML requests never reach this advice for handled conditions; the servlet container
- * error path renders the MVC error page instead (see {@code MvcExceptionHandler}).</li>
+ * error path is rendered by {@code ErrorEndpointAttributes}, which produces the same envelope.</li>
  * </ul>
  */
 @RestControllerAdvice

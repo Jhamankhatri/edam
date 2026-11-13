@@ -15,7 +15,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * pages, the theme interceptor, the view-attribute interceptor and the Jasper/JSTL dependencies are gone.
  *
  * <p>Nothing needs a view resolver. The container's error dispatch is handled by
- * {@code MvcExceptionHandler}, which answers with the standard JSON envelope, so a browser navigation that
+ * {@code ErrorEndpointAttributes}, which answers with the standard JSON envelope, so a navigation that
  * fails before reaching a controller still receives a well-formed error rather than a stack trace.
  * Removing the resolver is deliberate: a resolver with no views is dead configuration that implies a
  * presentation layer which no longer exists.

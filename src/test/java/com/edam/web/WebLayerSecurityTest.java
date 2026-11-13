@@ -102,13 +102,15 @@ class WebLayerSecurityTest extends AbstractPostgreSqlIntegrationTest {
 	}
 
 	@Test
-	@DisplayName("the error dispatch target answers in the JSON envelope, not a rendered page")
+	@DisplayName("the container error dispatch answers in the JSON envelope, not a rendered page")
 	void errorEndpointIsJson() throws Exception {
+		// The container's error path is what a failure before any controller reaches; it must produce the
+		// same envelope as every other error, never a rendered page and never a redirect.
 		this.mockMvc.perform(get("/error").with(user(principalWith())))
 			.andExpect(status().is5xxServerError())
 			.andExpect(header().doesNotExist("Location"))
-			.andExpect(jsonPath("$.success").value(false))
-			.andExpect(jsonPath("$.error.code").value("EDAM-9001"));
+			.andExpect(jsonPath("$.edamEnvelope.success").value(false))
+			.andExpect(jsonPath("$.edamEnvelope.error.code").value("EDAM-9001"));
 	}
 
 	@Test
