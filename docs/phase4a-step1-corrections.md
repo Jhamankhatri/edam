@@ -8,18 +8,18 @@
 | Branch | `feature/phase-4a-step1-audit-corrections` |
 | Target | `main` |
 | Base | `main @ 5073570a918eb6ce58ee67f1df47b35cfdb2b026` (PR #9 merge) |
-| **Final head SHA** | **`39f5614b88e3a2c8b32216e9ca80e3b5c47c442f`** |
-| **Final CI (pull_request)** | **[`43519615134`](https://github.com/Jhamankhatri/edam/actions/runs/43519615134) — all green** |
-| Test tally (final CI) | 24 classes, **321 tests, 0 failures, 0 errors, 3 skipped** |
-| CI jobs (final) | `build-and-test` ✓, `war-package-smoke-test` ✓, `prod-profile-smoke-test` ✓ |
+| **Final head SHA** | **`d15f46e1734f472f6d4eede9ecb34b5b9fa65a48`** |
+| **Last code+tests CI (pull_request)** | **[`43519615134`](https://github.com/Jhamankhatri/edam/actions/runs/43519615134) — all green** |
+| Test tally (last code+tests CI) | 24 classes, **321 tests, 0 failures, 0 errors, 3 skipped** |
+| CI jobs (last code+tests CI) | `build-and-test` ✓, `war-package-smoke-test` ✓, `prod-profile-smoke-test` ✓ |
 
 ## Historical verification note
 
-Earlier heads in this PR were also green:
-- `18532be7621dba18e4c76ff5abba8a1c22668b09` (code + H-1/H-2 fixes + tests) — CI [`43516091998`](https://github.com/Jhamankhatri/edam/actions/runs/43516091998) ✓.
+The authoritative green CI for the production code (H-1, H-2, HMAC, tests) is run [`43519615134`](https://github.com/Jhamankhatri/edam/actions/runs/43519615134) at head `39f5614b88e3a2c8b32216e9ca80e3b5c47c442f`; all 321 tests and both smoke jobs passed. Commits after that point (`39f5614` → `d15f46e`) change only this Markdown document and no Java source, SQL migrations, tests, or configuration — they therefore do not alter runtime behaviour, and the 43519615134 results remain the authoritative verification of the code. Earlier code heads were also green with identical tallies:
+- `18532be7621dba18e4c76ff5abba8a1c22668b09` (H-1/H-2 fixes + tests) — CI [`43516091998`](https://github.com/Jhamankhatri/edam/actions/runs/43516091998) ✓.
 - `442f71bf51eb04d00b95572757bd65a17e03b394` (first documentation rewrite) — CI [`43517599318`](https://github.com/Jhamankhatri/edam/actions/runs/43517599318) ✓.
 
-Both documentation-only commits (`442f71b`, `39f5614`) change only `docs/phase4a-step1-corrections.md` and no source code; test tally and job results are therefore identical across all three runs. The section 7 verification table and test-evidence tables below reflect the final head `39f5614` and run `43519615134`.
+The section 7 verification table cites run `43519615134`, which exercised every line of the application code at the final head.
 
 ## Summary of fixes (all review items closed)
 
@@ -166,9 +166,7 @@ No historical rows are modified. No passwords/tokens/secrets are included; all d
 | Endpoints | unchanged at 130 (no new endpoints, no removals). |
 | Entities / migrations | unchanged (52 mapped entities, 0 new tables). |
 
-Intermediate code-only head `18532be7621dba18e4c76ff5abba8a1c22668b09` was also green at [`43516091998`](https://github.com/Jhamankhatri/edam/actions/runs/43516091998) with the same test tally; see the historical note above.
-
-### Test evidence (from the green CI run at the final head)
+### Test evidence (from the green CI run 43519615134)
 
 **Audit search authorization:**
 
