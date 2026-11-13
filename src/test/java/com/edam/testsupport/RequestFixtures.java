@@ -252,12 +252,10 @@ public final class RequestFixtures {
 				new BigDecimal("999999999.0000"), currencyId, (short) 1);
 		committee.getLevels().add(level);
 		committees.saveAndFlush(committee);
-		// The id is assigned by the database on insert (@Generated(event = INSERT)), so it is only
-		// readable after the flush; reading it earlier would hand a null reference to the step.
-		if (level.getId() == null) {
-			throw new IllegalStateException("The fixture committee level was not assigned an id");
-		}
-		return level.getId();
+		// The id is assigned by the database (@Generated(event = INSERT)) and is not back-filled onto the
+		// detached instance that was handed in, so it is read back from the persisted aggregate. Returning
+		// the transient object's id would hand a null reference to the step.
+		return committees.findById(committee.getId()).orElseThrow().getLevels().get(0).getId();
 	}
 
 	/**
