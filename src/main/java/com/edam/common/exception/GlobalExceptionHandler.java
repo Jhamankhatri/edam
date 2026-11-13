@@ -260,7 +260,15 @@ public class GlobalExceptionHandler {
 			case VALIDATION_FAILED, INVALID_REQUEST, INVALID_PAGINATION, IDEMPOTENCY_CONFLICT, INVALID_DOCUMENT,
 					INVALID_CONFIGURATION ->
 				HttpStatus.BAD_REQUEST;
-			case UNAUTHENTICATED -> HttpStatus.UNAUTHORIZED;
+			// INVALID_CREDENTIALS and INVALID_RESET_TOKEN are deliberately 401 rather than 400: the
+			// request was well formed and the caller simply is not authenticated. ACCOUNT_LOCKED is 423
+			// (Locked) so a client can show a distinct message, but only after a correct password — see
+			// AuthService, which reports bad credentials at the moment a lock engages so the transition
+			// cannot be used to confirm an account exists.
+			case UNAUTHENTICATED, INVALID_CREDENTIALS, INVALID_RESET_TOKEN -> HttpStatus.UNAUTHORIZED;
+			case ACCOUNT_LOCKED -> HttpStatus.LOCKED;
+			case WEAK_PASSWORD, INSTALLATION_ALREADY_COMPLETED, INSTALLATION_NOT_BOOTSTRAPPED,
+					SYSTEM_ROLE_PROTECTED -> HttpStatus.UNPROCESSABLE_CONTENT;
 			case ACCESS_DENIED, INSTITUTION_REQUIRED, INSTITUTION_ACCESS_DENIED, PERMISSION_DENIED ->
 				HttpStatus.FORBIDDEN;
 			case NOT_FOUND -> HttpStatus.NOT_FOUND;
