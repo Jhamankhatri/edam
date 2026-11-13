@@ -216,10 +216,17 @@ public final class RequestFixtures {
 	 */
 	public static com.edam.rolemanagement.model.Role emptyRole(
 			com.edam.rolemanagement.repository.RoleRepository roles, String code) {
-		return roles.findByCode(code).orElseGet(() -> {
+		// The schema constrains role codes to ^[A-Z][A-Z0-9_]{1,99}$, so a fixture that passed a
+		// random UUID would be rejected by the database rather than testing what it meant to.
+		String normalised = code.toUpperCase(java.util.Locale.ROOT).replaceAll("[^A-Z0-9_]", "_");
+		if (!normalised.matches("[A-Z][A-Z0-9_]{1,99}")) {
+			normalised = "FIXTURE_" + normalised;
+		}
+		String finalCode = normalised;
+		return roles.findByCode(finalCode).orElseGet(() -> {
 			com.edam.rolemanagement.model.Role role = new com.edam.rolemanagement.model.Role();
-			role.setCode(code);
-			role.setName("Fixture role " + code);
+			role.setCode(finalCode);
+			role.setName("Fixture role " + finalCode);
 			return roles.save(role);
 		});
 	}
@@ -234,14 +241,22 @@ public final class RequestFixtures {
 	public static UUID emptyCommitteeLevel(com.edam.committee.repository.CommitteeRepository committees,
 			String code, UUID currencyId) {
 		com.edam.committee.model.ExpenseCommittee committee = committees.findByCommitteeCode(code)
-			.orElseGet(() -> committees.save(new com.edam.committee.model.ExpenseCommittee(code,
+			.orElseGet(() -> committees.saveAndFlush(new com.edam.committee.model.ExpenseCommittee(code,
 					"Fixture committee " + code, "Created by RequestFixtures")));
-		// A level with no members. Adding one here would defeat the purpose of the fixture.
+		// A level with no members, which the committee service will not create: its request record
+		// requires at least one member, because a band nobody sits on is not a usable configuration.
+		// That is exactly the state under test here — a level that exists and is unstaffed — so the row
+		// is built directly and then attached to the managed committee.
 		com.edam.committee.model.CommitteeLevel level = new com.edam.committee.model.CommitteeLevel(committee,
 				(short) 1, "Fixture level " + code, new BigDecimal("0.0000"),
 				new BigDecimal("999999999.0000"), currencyId, (short) 1);
 		committee.getLevels().add(level);
 		committees.saveAndFlush(committee);
+		// The id is assigned by the database on insert (@Generated(event = INSERT)), so it is only
+		// readable after the flush; reading it earlier would hand a null reference to the step.
+		if (level.getId() == null) {
+			throw new IllegalStateException("The fixture committee level was not assigned an id");
+		}
 		return level.getId();
 	}
 
