@@ -5,11 +5,9 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.UUID;
 
 import com.edam.audit.dto.AuditDtos;
@@ -531,13 +529,14 @@ public class AuditReadService {
 			}
 			Instant boundedAt = Instant.parse(root.get("b").asText());
 			Map<String, CursorKey> lastKeys = new LinkedHashMap<>();
-			// Read cursor keys generically; iterate via property names to avoid a
-			// generic-type reference to the shaded Jackson Map.Entry.
+			// Read cursor keys by known source names to avoid any reliance on
+			// the shaded Jackson iterator type.
 			tools.jackson.databind.JsonNode keysNode = root.path("k");
-			java.util.Iterator<String> keyNames = keysNode.fieldNames();
-			while (keyNames.hasNext()) {
-				String src = keyNames.next();
+			for (String src : new String[]{"audit", "task", "action"}) {
 				tools.jackson.databind.JsonNode kv = keysNode.get(src);
+				if (kv == null || kv.isNull()) {
+					continue;
+				}
 				Instant ts = Instant.parse(kv.get("t").asText());
 				UUID keyId = UUID.fromString(kv.get("i").asText());
 				lastKeys.put(src, new CursorKey(ts, keyId));
