@@ -1,5 +1,7 @@
 package com.edam.config;
 
+import java.time.Clock;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -27,6 +29,20 @@ import org.springframework.web.servlet.view.InternalResourceViewResolver;
  */
 @Configuration(proxyBeanMethods = false)
 public class WebMvcConfig implements WebMvcConfigurer {
+
+	/**
+	 * The application clock.
+	 *
+	 * <p>Effective dating makes "now" a business input: whether an exchange rate or a delegation rule
+	 * applies depends on the instant of the decision. Injecting a {@link Clock} rather than calling
+	 * {@code Instant.now()} at each site lets a test place the call on either side of a period boundary
+	 * without sleeping, and it keeps the time zone question in one place — the clock is UTC, and the
+	 * organization profile decides how a timestamp is <em>rendered</em>.
+	 */
+	@Bean
+	Clock applicationClock() {
+		return Clock.systemUTC();
+	}
 
 	@Bean
 	InternalResourceViewResolver defaultViewResolver(@Value("${spring.mvc.view.prefix:/WEB-INF/jsp/}") String prefix,
