@@ -92,10 +92,12 @@ def report_error_lines(log: str) -> None:
     """Final safety net: surface any [ERROR] line not already covered.
 
     A silent CI report is worse than a noisy one, because it turns a build failure into an
-    unexplained build failure.
+    unexplained build failure. It is capped hard, though: GitHub discards annotations beyond a
+    per-run limit, and an unbounded dump of compiler lines is exactly what pushes the specific
+    failing-test evidence off the end of that list.
     """
     seen: set[str] = set()
-    for match in list(re.finditer(r"\[ERROR\][^\n]{0,400}", log))[:15]:
+    for match in list(re.finditer(r"\[ERROR\][^\n]{0,400}", log))[:3]:
         line = " ".join(match.group(0).split())
         if line in seen:
             continue
@@ -147,10 +149,13 @@ def main() -> int:
     except FileNotFoundError:
         emit("warning", "ci-report", f"{path} not found")
         return 0
-    report_log(log)
-    report_error_lines(log)
+    # Order matters: GitHub keeps only the first ~10-20 annotations of a run, so the most
+    # specific evidence goes first. A failing test case is worth more than a summary line,
+    # and the raw [ERROR] dump is the last resort because it is the noisiest.
     report_test_results()
     report_summaries()
+    report_log(log)
+    report_error_lines(log)
     return 0
 
 

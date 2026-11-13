@@ -525,6 +525,7 @@ public class ExpenseRequestService {
 			return;
 		}
 		Instant now = Instant.now(this.clock);
+		java.util.Set<UUID> seen = new java.util.HashSet<>();
 		for (var payload : payloads) {
 			String type = payload.documentType() == null ? null
 					: payload.documentType().trim().toUpperCase(java.util.Locale.ROOT);
@@ -532,7 +533,12 @@ public class ExpenseRequestService {
 				throw new BusinessException(ErrorCode.VALIDATION_FAILED,
 						"The document type must be one of " + String.join(", ", RequestDocument.TYPES) + ".");
 			}
-			if (this.documents.existsByExpenseRequestIdAndMediaAssetId(request.getId(), payload.mediaAssetId())) {
+			// A duplicate inside the payload is detected here rather than by the database: the rows are
+			// saved but not flushed, so a query cannot see the first one, and unique-violation at flush
+			// time would reach the caller as an opaque persistence error naming a constraint.
+			if (!seen.add(payload.mediaAssetId())
+					|| this.documents.existsByExpenseRequestIdAndMediaAssetId(request.getId(),
+							payload.mediaAssetId())) {
 				throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE,
 						"That document is already attached to this request.");
 			}

@@ -51,14 +51,30 @@ public final class RequestFixtures {
 		return UUID.randomUUID().toString().replace("-", "").substring(0, 8);
 	}
 
-	/** A currency with a unique three-letter code, since the column is {@code VARCHAR(3)}. */
+	/**
+	 * A currency with a unique three-letter code.
+	 *
+	 * <p>The column is {@code VARCHAR(3)} with {@code CHECK (currency_code ~ '^[A-Z]{3}$')}, so the code must
+	 * be exactly three <em>letters</em>. Deriving the third character from a random hex suffix produced a
+	 * digit roughly ten times in sixteen, and the schema rejected it — a fixture bug that looked like a
+	 * product failure. Letters are drawn explicitly instead.
+	 */
 	public static Currency currency(CurrencyRepository currencies, String prefix) {
-		String suffix = randomSuffix().substring(0, 1).toUpperCase();
-		String code = (prefix + suffix).toUpperCase();
-		return currencies.findByCode(code).orElseGet(() -> {
+		java.util.concurrent.ThreadLocalRandom random = java.util.concurrent.ThreadLocalRandom.current();
+		StringBuilder code = new StringBuilder();
+		// Keep the caller's prefix where it is already alphabetic, then pad to exactly three letters.
+		String seed = (prefix == null) ? "" : prefix.replaceAll("[^A-Za-z]", "").toUpperCase(java.util.Locale.ROOT);
+		if (!seed.isEmpty()) {
+			code.append(seed.charAt(0));
+		}
+		while (code.length() < 3) {
+			code.append((char) ('A' + random.nextInt(26)));
+		}
+		String finalCode = code.substring(0, 3);
+		return currencies.findByCode(finalCode).orElseGet(() -> {
 			Currency currency = new Currency();
-			currency.setCode(code);
-			currency.setName("Test currency " + code);
+			currency.setCode(finalCode);
+			currency.setName("Test currency " + finalCode);
 			currency.setDecimalPlaces((short) 2);
 			return currencies.save(currency);
 		});

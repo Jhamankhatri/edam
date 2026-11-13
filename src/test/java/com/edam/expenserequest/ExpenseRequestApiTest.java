@@ -1,6 +1,7 @@
 package com.edam.expenserequest;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -170,7 +171,7 @@ class ExpenseRequestApiTest extends AbstractPostgreSqlIntegrationTest {
 	 */
 	private String createDraft(String amount) throws Exception {
 		MvcResult result = this.mockMvc
-			.perform(post(BASE).with(user(owner()))
+			.perform(post(BASE).with(user(owner())).with(csrf())
 				.contentType(MediaType.APPLICATION_JSON)
 				.accept(MediaType.APPLICATION_JSON)
 				.content(opexBody(amount)))
@@ -196,7 +197,7 @@ class ExpenseRequestApiTest extends AbstractPostgreSqlIntegrationTest {
 	@DisplayName("an anonymous create is refused with the JSON 401 envelope")
 	void anonymousCreateRefused() throws Exception {
 		this.mockMvc
-			.perform(post(BASE).contentType(MediaType.APPLICATION_JSON)
+			.perform(post(BASE).with(csrf()).contentType(MediaType.APPLICATION_JSON)
 				.accept(MediaType.APPLICATION_JSON)
 				.content(opexBody("100.0000")))
 			.andExpect(status().isUnauthorized())
@@ -209,7 +210,7 @@ class ExpenseRequestApiTest extends AbstractPostgreSqlIntegrationTest {
 	void createWithoutPermissionRefused() throws Exception {
 		EdamPrincipal noCreate = principal(this.requester.getId(), Permissions.REQUEST_VIEW_OWN);
 		this.mockMvc
-			.perform(post(BASE).with(user(noCreate))
+			.perform(post(BASE).with(user(noCreate)).with(csrf())
 				.contentType(MediaType.APPLICATION_JSON)
 				.accept(MediaType.APPLICATION_JSON)
 				.content(opexBody("100.0000")))
@@ -234,7 +235,7 @@ class ExpenseRequestApiTest extends AbstractPostgreSqlIntegrationTest {
 	@DisplayName("a valid create returns 201 with the documented envelope and a request number")
 	void createReturnsEnvelope() throws Exception {
 		MvcResult result = this.mockMvc
-			.perform(post(BASE).with(user(owner()))
+			.perform(post(BASE).with(user(owner())).with(csrf())
 				.contentType(MediaType.APPLICATION_JSON)
 				.accept(MediaType.APPLICATION_JSON)
 				.content(opexBody("150.5000")))
@@ -261,7 +262,7 @@ class ExpenseRequestApiTest extends AbstractPostgreSqlIntegrationTest {
 	@DisplayName("a zero amount is refused with 400 and a field error naming requestedAmount")
 	void zeroAmountIsFieldError() throws Exception {
 		this.mockMvc
-			.perform(post(BASE).with(user(owner()))
+			.perform(post(BASE).with(user(owner())).with(csrf())
 				.contentType(MediaType.APPLICATION_JSON)
 				.accept(MediaType.APPLICATION_JSON)
 				.content(opexBody("0")))
@@ -297,14 +298,16 @@ class ExpenseRequestApiTest extends AbstractPostgreSqlIntegrationTest {
 	void submitThenRefuse() throws Exception {
 		String id = createDraft("200.0000");
 		this.mockMvc
-			.perform(post(BASE + "/" + id + "/submit").with(user(owner())).accept(MediaType.APPLICATION_JSON))
+			.perform(post(BASE + "/" + id + "/submit").with(user(owner())).with(csrf()).accept(MediaType.APPLICATION_JSON))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.status").value("SUBMITTED"))
 			.andExpect(jsonPath("$.data.submittedAt").isNotEmpty())
 			.andExpect(jsonPath("$.data.canEdit").value(false));
 		this.mockMvc
-			.perform(post(BASE + "/" + id + "/submit").with(user(owner())).accept(MediaType.APPLICATION_JSON))
-			.andExpect(status().isUnprocessableContent())
+			.perform(post(BASE + "/" + id + "/submit").with(user(owner())).with(csrf()).accept(MediaType.APPLICATION_JSON))
+			// 422 Unprocessable Content: asserted numerically so the test does not depend on which
+			// spelling of the constant the Spring version in use provides.
+			.andExpect(status().is(422))
 			.andExpect(jsonPath("$.error.code").value("EDAM-3004"));
 	}
 
@@ -313,7 +316,7 @@ class ExpenseRequestApiTest extends AbstractPostgreSqlIntegrationTest {
 	void cancelRequiresReason() throws Exception {
 		String id = createDraft("300.0000");
 		this.mockMvc
-			.perform(post(BASE + "/" + id + "/cancel").with(user(owner()))
+			.perform(post(BASE + "/" + id + "/cancel").with(user(owner())).with(csrf())
 				.contentType(MediaType.APPLICATION_JSON)
 				.accept(MediaType.APPLICATION_JSON)
 				.content("{\"reason\":\"   \"}"))
