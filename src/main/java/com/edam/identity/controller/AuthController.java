@@ -5,6 +5,7 @@ import java.util.Optional;
 import com.edam.common.api.ApiPaths;
 import com.edam.common.api.ApiResponse;
 import com.edam.common.logging.CorrelationId;
+import com.edam.common.security.AuthenticatedEndpoint;
 import com.edam.common.security.PublicEndpoint;
 import com.edam.identity.dto.AuthDtos.BootstrapRequest;
 import com.edam.identity.dto.AuthDtos.BootstrapResponse;
@@ -114,6 +115,7 @@ public class AuthController {
 	}
 
 	@GetMapping("/me")
+	@AuthenticatedEndpoint(reason = "A caller may always read their own identity, whatever roles they hold")
 	@Operation(summary = "The authenticated caller's profile, roles, permissions and data scopes")
 	public ApiResponse<CurrentUserResponse> currentUser(HttpServletRequest request) {
 		User user = requireCurrentUser();
@@ -136,6 +138,7 @@ public class AuthController {
 	}
 
 	@PostMapping("/change-password")
+	@AuthenticatedEndpoint(reason = "A user must be able to rotate their own credential without any privilege")
 	@Operation(summary = "Change your own password",
 			description = "Requires the current password. Returns 200 with no body on success.")
 	public ApiResponse<Void> changePassword(@Valid @RequestBody ChangePasswordRequest body,

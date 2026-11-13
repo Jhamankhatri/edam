@@ -4,6 +4,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.edam.common.security.AuthenticatedEndpoint;
 import com.edam.common.security.EdamPermission;
 import com.edam.common.security.Permissions;
 import com.edam.common.security.PublicEndpoint;
@@ -54,6 +55,7 @@ class EndpointAuthorizationArchitectureTest {
 	void everyEndpointIsGuarded() throws ClassNotFoundException {
 		List<String> violations = new ArrayList<>();
 		List<String> publicEndpoints = new ArrayList<>();
+		List<String> authenticatedEndpoints = new ArrayList<>();
 		int guarded = 0;
 		for (Class<?> controller : controllers()) {
 			Method[] methods = controller.getDeclaredMethods();
@@ -84,9 +86,26 @@ class EndpointAuthorizationArchitectureTest {
 					}
 					continue;
 				}
+				// A third category: authenticated but requiring no specific permission. Reading your own
+				// profile and changing your own password are the only legitimate members — a user with no
+				// roles must still manage their own credential, and requiring a permission there would lock
+				// out precisely the user who needs it.
+				AuthenticatedEndpoint authenticated = method.getAnnotation(AuthenticatedEndpoint.class);
+				AuthenticatedEndpoint authenticatedType = controller.getAnnotation(AuthenticatedEndpoint.class);
+				if (authenticated != null || authenticatedType != null) {
+					String reason = (authenticated != null) ? authenticated.reason() : authenticatedType.reason();
+					if (reason == null || reason.isBlank()) {
+						violations.add(location + " requires a session but gives no justification");
+					}
+					else {
+						authenticatedEndpoints.add(location + " (" + reason + ")");
+					}
+					guarded++;
+					continue;
+				}
 				EdamPermission effective = (methodLevel != null) ? methodLevel : typeLevel;
 				if (effective == null) {
-					violations.add(location + " has no @EdamPermission and no @PublicEndpoint");
+					violations.add(location + " has no @EdamPermission, @AuthenticatedEndpoint or @PublicEndpoint");
 					continue;
 				}
 				if (effective.value() == null || effective.value().isBlank()) {
@@ -106,6 +125,11 @@ class EndpointAuthorizationArchitectureTest {
 					+ "@PublicEndpoint(reason = \"...\"). Public endpoints found: %s", publicEndpoints)
 			.isEmpty();
 		assertThat(guarded).as("the scan must actually find guarded endpoints").isPositive();
+		// Authenticated endpoints are a deliberate, narrow category. Enumerated by controller so that a
+		// new one anywhere else fails this test and has to be argued for in review.
+		assertThat(authenticatedEndpoints)
+			.as("unexpected session-only endpoint(s): %s", authenticatedEndpoints)
+			.allMatch(entry -> entry.startsWith("AuthController") || entry.startsWith("DevUserController"));
 	}
 
 	@Test
