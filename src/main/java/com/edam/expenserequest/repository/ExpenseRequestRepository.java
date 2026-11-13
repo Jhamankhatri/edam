@@ -52,7 +52,7 @@ public interface ExpenseRequestRepository extends JpaRepository<ExpenseRequest, 
 			  and (:departmentId is null or r.departmentId = :departmentId)
 			  and (:categoryId is null or r.expenseCategoryId = :categoryId)
 			  and ((:mineOnly = true and r.requestedBy = :callerId) or :mineOnly = false)
-			  and (:search is null
+			  and (:search = ''
 			       or lower(r.requestNumber) like lower(concat('%', :search, '%'))
 			       or lower(r.justification) like lower(concat('%', :search, '%')))
 			""")
@@ -76,7 +76,7 @@ public interface ExpenseRequestRepository extends JpaRepository<ExpenseRequest, 
 			  and (:departmentId is null or r.departmentId = :departmentId)
 			  and (:categoryId is null or r.expenseCategoryId = :categoryId)
 			  and ((:mineOnly = true and r.requestedBy = :callerId) or :mineOnly = false)
-			  and (:search is null
+			  and (:search = ''
 			       or lower(r.requestNumber) like lower(concat('%', :search, '%'))
 			       or lower(r.justification) like lower(concat('%', :search, '%')))
 			""")

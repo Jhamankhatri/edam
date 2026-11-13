@@ -124,7 +124,7 @@ public class UserManagementService {
 			EdamPrincipal caller) {
 		var pageable = page.toPageable(Sort.by("lastName", "firstName"));
 		ScopeFilter filter = ScopeFilter.forCaller(caller);
-		var result = this.users.searchScoped(search, departmentId, active, filter.installationWide(),
+		var result = this.users.searchScoped(search == null ? "" : search.trim(), departmentId, active, filter.installationWide(),
 				filter.departmentIds(), filter.branchIds(), caller == null ? null : caller.userId(), pageable);
 		return PageResponse.of(result, this::toResponse);
 	}
@@ -189,7 +189,8 @@ public class UserManagementService {
 
 	@Transactional(readOnly = true)
 	public List<UserSummary> searchSummaries(String search) {
-		return this.users.search(search, null, org.springframework.data.domain.PageRequest.of(0, 20))
+		return this.users.search(search == null ? "" : search.trim(), null,
+				org.springframework.data.domain.PageRequest.of(0, 20))
 			.stream()
 			.map(user -> new UserSummary(user.getId(), user.getUsername(), user.displayName(),
 					user.getEmployeeCode()))

@@ -55,7 +55,7 @@ public class VendorService {
 		// Only name and code are exposed for sorting: they are the columns the endpoint returns and the
 		// only ones the operator can meaningfully order by. An unindexed column would let a client ask
 		// the database to sort the whole table on every page.
-		Page<Vendor> page = this.vendors.search(blankToNull(search),
+		Page<Vendor> page = this.vendors.search(blankToEmpty(search),
 				pageQuery.toPageable(org.springframework.data.domain.Sort.by("name")));
 		return PageResponse.of(page.map(VendorService::toResponse));
 	}
@@ -156,8 +156,9 @@ public class VendorService {
 				authority.getDescription(), authority.isActive());
 	}
 
-	private static String blankToNull(String value) {
-		return (value == null || value.isBlank()) ? null : value.trim();
+	/** "No search" is the empty string, never null: see the note on the repository predicate. */
+	private static String blankToEmpty(String value) {
+		return (value == null || value.isBlank()) ? "" : value.trim();
 	}
 
 	static String normaliseCode(String raw) {

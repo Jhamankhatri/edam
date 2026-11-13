@@ -18,6 +18,7 @@ import com.edam.expenserequest.dto.ExpenseRequestDtos.ItemPayload;
 import com.edam.expenserequest.dto.ExpenseRequestDtos.OpexDetailPayload;
 import com.edam.expenserequest.dto.ExpenseRequestDtos.QuotationPayload;
 import com.edam.expenserequest.dto.ExpenseRequestDtos.RequestResponse;
+import com.edam.expenserequest.dto.ExpenseRequestDtos.StaPayload;
 import com.edam.expenserequest.model.ExpenseRequest;
 import com.edam.expenserequest.repository.ExpenseRequestRepository;
 import com.edam.expenserequest.service.ExpenseRequestService;
@@ -28,7 +29,9 @@ import com.edam.expenseconfiguration.repository.ExpenseCategoryRepository;
 import com.edam.expenseconfiguration.repository.ExpenseNatureRepository;
 import com.edam.expenseconfiguration.repository.ExpenseRequestTypeRepository;
 import com.edam.masterdata.model.Currency;
+import com.edam.masterdata.model.TaxAuthority;
 import com.edam.masterdata.repository.CurrencyRepository;
+import com.edam.masterdata.repository.TaxAuthorityRepository;
 import com.edam.organization.model.Department;
 import com.edam.organization.model.OrganizationProfile;
 import com.edam.organization.repository.DepartmentRepository;
@@ -103,6 +106,9 @@ class ExpenseRequestLifecycleTest extends AbstractPostgreSqlIntegrationTest {
 	private UserRepository users;
 
 	@Autowired
+	private TaxAuthorityRepository taxAuthorities;
+
+	@Autowired
 	private org.springframework.jdbc.core.JdbcTemplate jdbc;
 
 	private Department department;
@@ -123,6 +129,8 @@ class ExpenseRequestLifecycleTest extends AbstractPostgreSqlIntegrationTest {
 
 	private OrganizationProfile profile;
 
+	private TaxAuthority taxAuthority;
+
 	@BeforeEach
 	void setUp() {
 		this.profile = RequestFixtures.organizationProfile(this.profiles, this.currencies);
@@ -136,6 +144,7 @@ class ExpenseRequestLifecycleTest extends AbstractPostgreSqlIntegrationTest {
 		this.capexCategory = RequestFixtures.category(this.categories, "CP-" + suffix,
 				ExpenseCategory.ExpenseType.CAPEX);
 		this.nature = RequestFixtures.nature(this.natures, "NAT-" + suffix);
+		this.taxAuthority = RequestFixtures.taxAuthority(this.taxAuthorities, "STA-" + suffix);
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -183,7 +192,11 @@ class ExpenseRequestLifecycleTest extends AbstractPostgreSqlIntegrationTest {
 						RequestFixtures.money("5000.0000"), RequestFixtures.money("100.0000"))),
 				List.of(new ItemPayload("Server", RequestFixtures.money("1.0000"),
 						RequestFixtures.money("5000.0000"), null)),
-				null, null, null, null, null, null);
+				null, null, null, null,
+				// BRD 8.3: at least one sales tax authority is required before submission.
+				List.of(new StaPayload(this.taxAuthority.getId(), "STA-1", RequestFixtures.money("250.0000"),
+						"Sales tax at 5%")),
+				null);
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -208,11 +221,14 @@ class ExpenseRequestLifecycleTest extends AbstractPostgreSqlIntegrationTest {
 			assertThat(created.exchangeRateId()).isNull();
 			assertThat(created.allocations()).hasSize(1);
 
-			ExpenseRequest reloaded = ExpenseRequestLifecycleTest.this.requests.findById(created.id()).orElseThrow();
-			assertThat(reloaded.getQuotations()).hasSize(1);
-			assertThat(reloaded.getAllocations()).hasSize(1);
-			assertThat(reloaded.getOpexDetails()).hasSize(1);
-			assertThat(reloaded.capexDetail()).isNull();
+			// Read through the service inside its transaction. A bare findById returns a detached entity
+			// whose child collections are lazy, and touching one outside a session fails - that is a
+			// property of the mapping, not of the write that the test is about.
+			RequestResponse reread = ExpenseRequestLifecycleTest.this.service.get(created.id(), caller());
+			assertThat(reread.quotations()).hasSize(1);
+			assertThat(reread.allocations()).hasSize(1);
+			assertThat(reread.opex()).isNotNull();
+			assertThat(reread.capex()).isNull();
 		}
 
 		@Test

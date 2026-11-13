@@ -563,9 +563,18 @@ public class ExpenseRequestService {
 	// Small helpers
 	// ---------------------------------------------------------------------------------------------
 
+	/**
+	 * Turns an absent search into the empty string.
+	 *
+	 * <p>An empty string rather than null because the parameter appears inside
+	 * {@code lower(concat('%', :search, '%'))}: when a null is bound there, the driver sends it without a
+	 * type, PostgreSQL cannot resolve the overload and the query fails with {@code lower(bytea) does not
+	 * exist}. An empty string is a varchar, so the predicate is always well typed, and "no search" is
+	 * still expressed explicitly rather than by absence.
+	 */
 	private static String normaliseSearch(String search) {
 		if (search == null || search.isBlank()) {
-			return null;
+			return "";
 		}
 		return search.trim();
 	}

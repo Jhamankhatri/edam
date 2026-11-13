@@ -16,7 +16,9 @@ import com.edam.expenseconfiguration.repository.ExpenseCategoryRepository;
 import com.edam.expenseconfiguration.repository.ExpenseNatureRepository;
 import com.edam.expenseconfiguration.repository.ExpenseRequestTypeRepository;
 import com.edam.masterdata.model.Currency;
+import com.edam.masterdata.model.TaxAuthority;
 import com.edam.masterdata.repository.CurrencyRepository;
+import com.edam.masterdata.repository.TaxAuthorityRepository;
 import com.edam.organization.model.Department;
 import com.edam.organization.model.OrganizationProfile;
 import com.edam.organization.model.OrganizationUnit;
@@ -49,6 +51,21 @@ import com.edam.usermanagement.repository.UserRepository;
 public final class RequestFixtures {
 
 	private RequestFixtures() {
+	}
+
+	/**
+	 * A sales tax authority, created if the code is new.
+	 *
+	 * <p>{@code capex_sta_details.tax_authority_id} is a foreign key, so a CAPEX submission that claims a
+	 * sales tax authority (§8.3 makes one mandatory) needs a real row to point at.
+	 */
+	public static TaxAuthority taxAuthority(TaxAuthorityRepository authorities, String code) {
+		return authorities.findByCodeIgnoreCase(code).orElseGet(() -> {
+			TaxAuthority authority = new TaxAuthority();
+			authority.setName("Fixture " + code);
+			authority.setCode(code);
+			return authorities.save(authority);
+		});
 	}
 
 	/**

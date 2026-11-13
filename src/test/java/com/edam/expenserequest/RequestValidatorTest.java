@@ -13,7 +13,9 @@ import java.util.UUID;
 import com.edam.common.api.ApiResponse.FieldErrorDetail;
 import com.edam.common.exception.ValidationFailedException;
 import com.edam.expenserequest.model.CapexRequestDetail;
+import com.edam.expenserequest.model.CapexStaDetail;
 import com.edam.expenserequest.model.ExpenseAllocation;
+import com.edam.expenserequest.model.ExpenseQuotation;
 import com.edam.expenserequest.model.ExpenseRequest;
 import com.edam.expenserequest.model.ExpenseRequestItem;
 import com.edam.expenserequest.model.OpexRequestDetail;
@@ -57,7 +59,13 @@ class RequestValidatorTest {
 		detail.setBudget(new BigDecimal("50000.0000"), "BUD-2026");
 		request.replaceDetails(detail, null);
 		request.replaceAllocations(List.of(allocation(new BigDecimal("1000.0000"))));
+		request.replaceQuotations(List.of(quotation("Q-1", new BigDecimal("1000.0000"))));
 		return request;
+	}
+
+	/** One quotation; BRD 8.2 makes the first one mandatory for every OPEX submission. */
+	private static ExpenseQuotation quotation(String number, BigDecimal amount) {
+		return new ExpenseQuotation(null, number, TODAY, amount, CURRENCY, null);
 	}
 
 	/** A complete CAPEX request: every submission rule satisfied. */
@@ -71,6 +79,8 @@ class RequestValidatorTest {
 		request.replaceAllocations(List.of(allocation(new BigDecimal("1000.0000"))));
 		request.replaceItems(List.of(new ExpenseRequestItem("Laptop", BigDecimal.ONE, new BigDecimal("1000.0000"),
 				null)));
+		request.replaceStaDetails(List.of(new CapexStaDetail(null, "STA-1", new BigDecimal("50.0000"),
+				"Sales tax")));
 		return request;
 	}
 
@@ -389,6 +399,9 @@ class RequestValidatorTest {
 			ExpenseRequest request = validCapex();
 			request.capexDetail().setFinancials(new BigDecimal("1000.00"), new BigDecimal("1000.00000"),
 					new BigDecimal("1000.0"));
+			// The shared CAPEX baseline carries a warranty ending a year after the fixed TODAY, which for a
+			// scale test is irrelevant but would otherwise be reported as an expired warranty.
+			request.capexDetail().setAssetDetails("PURCHASE", "IT_EQUIPMENT", null, null);
 			RequestValidationContext context = capexContext();
 			assertThatCode(() -> RequestValidator.validate(request, context, true)).doesNotThrowAnyException();
 		}
@@ -485,8 +498,12 @@ class RequestValidatorTest {
 		@DisplayName("allocations equal to the requested amount are accepted")
 		void allocationsMayEqualRequest() {
 			ExpenseRequest request = validOpex();
-			request.replaceAllocations(List.of(allocation(new BigDecimal("600.0000")),
-					allocation(new BigDecimal("400.0000"))));
+			// The percentages must also add up: two rows at 100 each would claim 200% of the expense.
+			request.replaceAllocations(List.of(
+					new ExpenseAllocation(DEPARTMENT, null, "CC-100", new BigDecimal("600.0000"),
+							new BigDecimal("60.0000")),
+					new ExpenseAllocation(DEPARTMENT, null, "CC-100", new BigDecimal("400.0000"),
+							new BigDecimal("40.0000"))));
 			assertThat(fieldsOf(request, opexContext())).doesNotContain("allocations");
 		}
 
