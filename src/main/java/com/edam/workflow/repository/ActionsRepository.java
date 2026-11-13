@@ -33,7 +33,7 @@ public interface ActionsRepository extends JpaRepository<WorkflowAction, UUID> {
 	 */
 	@Query(value = """
 			select a.* from workflow_actions a
-			where a.workflow_task_id = any (cast(:taskIds as uuid[]))
+			where a.workflow_task_id = any (:taskIds)
 			  and a.action_at <= :boundedAt
 			  and (   cast(:afterTs as timestamptz) is null
 			       or a.action_at > cast(:afterTs as timestamptz)
