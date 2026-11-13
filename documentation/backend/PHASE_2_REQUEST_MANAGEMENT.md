@@ -1,8 +1,18 @@
 # Phase 2 — OPEX/CAPEX request management, approval limits and recommending authorities
 
-Status: **implemented, not yet verified by CI.** No compile or test result exists for this work at the time of
-writing; the workspace has no JDK, no Maven and no Docker, so evidence comes only from the GitHub Actions run.
-Nothing in this document should be read as a passing result.
+Status: **implemented and verified by CI.**
+
+| Run | Commit | Result |
+|---|---|---|
+| [43398153433](https://github.com/Jhamankhatri/edam/actions/runs/43398153433) | `Make a green run prove which classes ran` | 17 classes, 222 tests, 0 failures, 0 errors, 3 skipped; `build-and-test`, `war-package-smoke-test` and `prod-profile-smoke-test` all green |
+
+Verification is CI-only by necessity: the workspace has no JDK, no Maven and no Docker, and Maven Central is
+unreachable, so no result here was produced locally. Tests run against a real PostgreSQL container with
+`ddl-auto: validate` and Flyway applied, which is what makes the mapping assertions meaningful.
+
+It took eight CI runs to get from "compiles" to "green". The failures were worth recording because six of
+them were defects in the tests or the harness that a reviewer would otherwise have attributed to the
+feature; §6 lists them.
 
 ## 1. Scope delivered
 
@@ -28,6 +38,22 @@ request table was created.
 equal the approval amount". Those rules are a single pure function so they can be tested without Spring and
 read in one place. Cross-field failures are collected exhaustively: a form with four mistakes returns four
 field errors, not the first one.
+
+### Child rows are read from the aggregate, not passed beside it
+`RequestValidationContext` carries the twelve facts that are *not* reachable from the request — the
+classification, the configured base currency, the four conditional flags, the three document-presence flags,
+and today's date. It deliberately carries no child-row counts and no child-row lists: quotations, invoices,
+items, sales-tax rows and documents are read from the request itself.
+
+An earlier revision passed a second copy of "how many quotations are there". That copy could disagree with
+the entity, and it did: a request whose quotations had just been cleared still passed the "at least one
+quotation" rule because the context still said one was present. There is exactly one source for each fact.
+
+### An absent search is the empty string, never null
+`lower(concat('%', :search, '%'))` binds the parameter untyped when it is null, and PostgreSQL then fails with
+`function lower(bytea) does not exist`. The predicate tests `:search = ''` and callers pass `""`. The same bug
+existed in the Phase 1 user, audit and vendor queries; it survived because no Phase 1 test listed a collection
+without a search term.
 
 ### The total of a line item is computed, never accepted
 `expense_request_items` has a database CHECK: `total_amount = round(quantity * unit_price, 4)`. The entity
@@ -101,17 +127,37 @@ read. A caller holding `request:submit` still cannot submit someone else's reque
 
 ## 6. Tests written
 
-| Class | Kind | Assertions |
+| Class | Kind | Tests |
 |---|---|---|
-| `RequestValidatorTest` | pure unit, no context | 49 |
+| `RequestValidatorTest` | pure unit, no Spring | 49 |
 | `ApprovalLimitResolutionTest` | unit with mocked repositories | 15 |
-| `RequestNumberGeneratorTest` | pure unit | 4 + parameterised cases |
+| `RequestNumberGeneratorTest` | pure unit | 9 |
 | `ExpenseRequestLifecycleTest` | Spring + Testcontainers PostgreSQL | 20 |
+| `ExpenseRequestApiTest` | MockMvc + Testcontainers PostgreSQL | 11 |
 
-The integration class is deliberately not `@Transactional`, so assertions observe committed state: a
-test-owned transaction cannot catch a deferred constraint, an unread generated id, or a failed rollback.
-Fixtures use random codes and build their own organization unit per department, because
-`uk_departments_unit` makes `organization_unit_id` unique.
+Phase 2 adds 104 tests. The two integration classes are deliberately not `@Transactional`, so assertions
+observe committed state: a test-owned transaction cannot catch a deferred constraint, an unread generated
+id, or a failed rollback. Fixtures use random codes and build their own organization unit per department,
+because `uk_departments_unit` makes `organization_unit_id` unique.
+
+### What the integration tests actually hold down
+
+Five bugs that no unit test would have found were caught here, and each one is a reason the class exists:
+
+- **CSRF is enforced on the API.** The chain uses `CookieCsrfTokenRepository`, so a POST authenticated with
+  only a principal gets 403 before any controller runs. Every state-changing MockMvc call carries `csrf()`.
+- **The scope lists in the register query bind even when empty.** A caller with only a department scope has
+  no branch list, and an empty `IN ()` is not valid SQL. Each list is now always bindable, and the
+  has-departments/has-branches flags still short-circuit the predicate.
+- **`null` cannot be bound into `lower(concat('%', :search, '%'))`.** The driver sends it untyped,
+  PostgreSQL cannot resolve the overload and reports `function lower(bytea) does not exist`. Absent search
+  is now the empty string. The same predicate exists in three Phase 1 repositories, none of which had a test
+  that listed without a search term.
+- **An unflushed `save` is invisible to an existence query.** A duplicate document inside one payload was
+  therefore caught by the unique index at flush, surfacing as an opaque persistence error. Duplicates are
+  now detected within the payload before any row is written.
+- **`@Enumerated` defaults to ordinal.** `ddl-auto: validate` is what surfaced a `VARCHAR` column mapped
+  without `EnumType.STRING`.
 
 ## 7. Open decisions raised or changed
 
@@ -133,14 +179,19 @@ Fixtures use random codes and build their own organization unit per department, 
    cannot yet verify that the bytes behind an asset are the right kind of file.
 4. **CAPEX department eligibility permits everyone** (OD-P2-07).
 5. **Exceeding-limit rules are evaluated but not enforced** (OD-P2-03).
-6. **No API-level (HTTP) tests yet.** The service is covered; the controllers are covered by the endpoint
-   authorization architecture test and by Spring's own binding, but no test drives a request through HTTP
-   with a real principal. That is a gap against the brief's requirement for API tests.
+6. **The API tests cover the request endpoints, not the approval-limit ones.** `ExpenseRequestApiTest`
+   drives all five request operations over HTTP with a real principal, a real database and a real CSRF
+   token; `ApprovalLimitController` and `RecommendingAuthorityController` are covered only by the endpoint
+   authorization architecture test. This is a smaller gap than before but still a gap.
 7. **Concurrent-modification behaviour is not exercised.** `@Version` is present on every entity and
    `GlobalExceptionHandler` maps `OptimisticLockingFailureException` to 409, but no test provokes a conflict.
+8. **The register's sort allow-list is not enforced.** `list` sorts by `createdAt` with `REGISTER_SORT`;
+   `PageQuery.sort` is accepted by the controller but not validated against an allow-list, so a client
+   cannot yet choose a sort field and a request for one is silently ignored rather than refused.
 
 ## 9. What must be true before Phase 3 starts
 
-- CI green on this branch, including the four new test classes against real PostgreSQL.
-- Items 6 and 7 above closed: at least one HTTP test per controller group and one optimistic-lock conflict
-  test.
+- CI green on this branch, including all five new test classes against real PostgreSQL.
+- Item 7 above closed: one optimistic-lock conflict test.
+- Item 6 reduced to the approval-limit controllers, or closed.
+- OD-P2-01 (conversion rounding) decided before any figure from this phase is shown to an approver as final.
