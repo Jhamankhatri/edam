@@ -115,6 +115,9 @@ class SubmissionIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 	@Autowired
 	private UserRepository users;
 
+	@Autowired
+	private org.springframework.jdbc.core.JdbcTemplate jdbc;
+
 	private Department department;
 
 	private Currency currency;
@@ -128,6 +131,9 @@ class SubmissionIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 	private User requester;
 
 	private User approver;
+
+	/** The definition this test's request type is bound to, created on the first publish. */
+	private com.edam.workflow.dto.WorkflowDtos.DefinitionResponse definition;
 
 	@BeforeEach
 	void setUp() {
@@ -170,12 +176,19 @@ class SubmissionIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 				owner());
 	}
 
-	/** Publishes a chain of the given number of steps, each naming the same configured individual. */
+	/**
+	 * Publishes a chain of the given number of steps for this test's request type.
+	 *
+	 * <p>A definition is created on the first call and reused afterwards, so a second call publishes v2 of
+	 * the <em>same</em> workflow. Creating a second definition would give the request type two active
+	 * definitions, and the lookup that selects one returns the first match — so the "published pointer
+	 * moved" assertion would pass without the pointer having moved at all.
+	 */
 	private UUID publishChain(int steps) {
-		var definition = this.configuration
+		var definition = this.definition != null ? this.definition : (this.definition = this.configuration
 			.createDefinition(new com.edam.workflow.dto.WorkflowDtos.SaveDefinitionRequest(
 					"SUB-" + UUID.randomUUID().toString().substring(0, 8), "Submission chain", null,
-					this.requestType.getId()));
+					this.requestType.getId())));
 		List<com.edam.workflow.dto.WorkflowDtos.StepRequest> stepRequests = new java.util.ArrayList<>();
 		for (int n = 1; n <= steps; n++) {
 			stepRequests.add(new com.edam.workflow.dto.WorkflowDtos.StepRequest("STEP-" + n,
@@ -314,6 +327,29 @@ class SubmissionIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 		}
 
 		@Test
+		@DisplayName("cancellation is recorded in the audit trail, not only as a status change")
+		void cancelIsAudited() {
+			publishChain(1);
+			ExpenseRequestDtos.RequestResponse submitted = this.requests.submit(draft().id(), owner());
+
+			long before = auditCount(submitted.id());
+			this.requests.cancel(submitted.id(), "Budget withdrawn", owner());
+			long after = auditCount(submitted.id());
+
+			// A withdrawal is recorded in audit_events, not workflow_actions: the approval engine's action
+			// vocabulary has no CANCEL code, because cancelling is the requester's act on the request rather
+			// than an approver's decision on a task. Asserting against the workflow action table would have
+			// been asserting against the wrong store.
+			assertThat(after).as("a withdrawal must leave a trace an auditor can read").isGreaterThan(before);
+		}
+
+		/** Audit rows naming this request as their subject. */
+		private long auditCount(UUID requestId) {
+			Long count = SubmissionIntegrationTest.this.jdbc.queryForObject(
+					"select count(*) from audit_events where entity_type = 'ExpenseRequest' and entity_id = ?",
+					Long.class, requestId.toString());
+			return count == null ? 0L : count;
+		}@Test
 		@DisplayName("cancellation is recorded as an action, not just a status change")
 		void cancelIsAudited() {
 			SubmissionIntegrationTest.this.publishChain(1);
