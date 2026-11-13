@@ -1,5 +1,6 @@
 package com.edam.audit.service;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -69,14 +70,34 @@ import tools.jackson.databind.json.JsonMapper;
  * {@link AuditRepository#search} is a native query that joins {@code expense_requests} for events
  * whose {@code entity_type = 'ExpenseRequest'}, applying the same visibility predicate the
  * request register uses. This keeps {@code totalElements} accurate (no invisible rows counted)
- * and avoids N+1 post-filtering.
+ * and avoids N+1 post-filtering. Orphaned request events (the {@code expense_requests} row no
+ * longer exists) are visible only to installation-wide auditors.
  *
  * <h2>Timeline pagination is keyset-based</h2>
- * To support arbitrary depth without an in-memory materialisation cap, the timeline endpoint
- * issues one bounded query per source (audit events, workflow actions, task assignments) and
- * performs a k-way merge in memory for one page at a time. The cursor is an opaque token that
+ * The timeline endpoint issues one bounded ASC keyset query per source (audit events, workflow
+ * tasks, workflow actions) and performs a k-way merge in memory for one page at a time. Each
+ * source query fetches at most {@code size + 1} rows after the per-source cursor key, so nothing
+ * is loaded beyond what is required for the next merge step. The cursor is an opaque token that
  * fixes the upper bound ({@code boundedAt}) and the last-returned key per source, so pages stay
- * stable when new events arrive mid-browse.
+ * stable as new events arrive mid-browse.
+ *
+ * <h3>Consistency guarantee (bounded snapshot, not a DB snapshot)</h3>
+ * The first request captures {@code boundedAt = Instant.now()}; subsequent pages reuse that
+ * instant. Events with {@code timestamp > boundedAt} are excluded from the entire pagination
+ * session, which prevents new events from shifting pages or producing duplicates. This is a
+ * <b>bounded application-level snapshot</b>:
+ * <ul>
+ *   <li>Events that commit after {@code boundedAt} are never returned in this session.</li>
+ *   <li>Events that commit <i>before</i> {@code boundedAt} but whose transaction commits after
+ *       the first page query runs <b>can</b> appear on a later page — we do not hold a
+ *       transaction across HTTP requests, and we do not use REPEATABLE READ / SERIALIZABLE.
+ *       Such events appear in ascending order on a later page, never duplicated.</li>
+ *   <li>Callers that need strict point-in-time semantics must refresh (omit {@code cursor}) and
+ *       re-read from the start.</li>
+ * </ul>
+ * The guarantee is therefore "no duplicates, no misses for events commit-visible before the
+ * first page scan reaches their timestamp, and no events after boundedAt," not a true
+ * cross-request database snapshot.
  *
  * <h2>No logging of payloads</h2>
  * Log statements here intentionally exclude old/new values and remarks (rule #8).
@@ -98,12 +119,14 @@ public class AuditReadService {
 	/** Default timeline page size. */
 	public static final int DEFAULT_TIMELINE_PAGE_SIZE = 50;
 
-	/** Per-source fetch size used when satisfying a page — enough to absorb overlap across sources. */
-	private static final int SOURCE_FETCH_CHUNK = 400;
-
 	/** Cursor format version — bump on structural changes so stale cursors are rejected cleanly. */
 	private static final int CURSOR_VERSION = 1;
 
+	/**
+	 * Per-source cursor keys and response-source strings. The encoding uses these exact keys
+	 * (lower-case identifiers "audit"/"task"/"action"); the human-readable SOURCE_* constants
+	 * are used in the response payload.
+	 */
 	static final String SOURCE_AUDIT = "AUDIT";
 	static final String SOURCE_WORKFLOW = "WORKFLOW_ACTION";
 	static final String SOURCE_TASK = "WORKFLOW_TASK";
@@ -111,6 +134,11 @@ public class AuditReadService {
 	static final int SOURCE_ORDER_TASK = 1;
 	static final int SOURCE_ORDER_WORKFLOW = 2;
 	static final String ENTITY_TYPE_REQUEST = "ExpenseRequest";
+
+	/** Cursor payload keys (serialised into the opaque token). */
+	private static final String CURSOR_KEY_AUDIT = "audit";
+	private static final String CURSOR_KEY_TASK = "task";
+	private static final String CURSOR_KEY_ACTION = "action";
 
 	private static final TypeReference<LinkedHashMap<String, Object>> MAP_TYPE =
 			new TypeReference<>() {
@@ -151,9 +179,6 @@ public class AuditReadService {
 		String actorName = (criteria.actorName() == null || criteria.actorName().isBlank())
 				? ""
 				: criteria.actorName().trim();
-		// The native query defines its own deterministic ordering (created_at DESC, id DESC) so
-		// pagination does not add a Sort — Spring Data's page-injection would prepend a second
-		// ORDER BY that could override it.
 		Pageable pageable = pageQuery.toPageable(Sort.unsorted());
 		Scope scope = Scope.from(caller);
 		String actionName = criteria.action() == null ? null : criteria.action().name();
@@ -172,7 +197,9 @@ public class AuditReadService {
 			UUID requestId = parseUuid(event.getEntityId());
 			if (requestId != null) {
 				ExpenseRequest request = this.requests.findById(requestId).orElse(null);
-				if (request == null || !this.requestVisibility.isVisible(request, caller)) {
+				// Mirror search policy: orphaned request events visible only to installation-wide auditors.
+				boolean orphanedVisible = request == null && (caller != null && caller.hasInstallationScope());
+				if (request == null ? !orphanedVisible : !this.requestVisibility.isVisible(request, caller)) {
 					throw new ResourceNotFoundException("AuditEvent", id);
 				}
 			}
@@ -188,10 +215,11 @@ public class AuditReadService {
 	 * Returns one page of the request activity timeline.
 	 *
 	 * <p>Consistency model: every page is evaluated against the {@code boundedAt} instant recorded
-	 * in the cursor (or {@code Instant.now()} on the first request). Events whose timestamp is
-	 * after {@code boundedAt} are excluded for the lifetime of the cursor, so new events arriving
-	 * mid-browse do not shift pages or produce duplicates. Callers start a fresh pagination
-	 * sequence (by omitting {@code cursor}) to observe newer events.
+	 * in the cursor (or {@code Instant.now()} on the first request). Events with timestamp after
+	 * {@code boundedAt} are excluded from the entire pagination session, so new events arriving
+	 * mid-browse do not shift pages or produce duplicates. Events that commit before
+	 * {@code boundedAt} but after the page is scanned may appear on later pages; see class
+	 * Javadoc for the exact bounded-snapshot guarantee.
 	 */
 	@Transactional(readOnly = true)
 	public TimelinePage requestTimeline(UUID requestId, Integer requestedSize, String encodedCursor,
@@ -205,128 +233,99 @@ public class AuditReadService {
 				? DEFAULT_TIMELINE_PAGE_SIZE
 				: Math.min(requestedSize, MAX_TIMELINE_PAGE_SIZE);
 
+		// Re-decode the cursor each request so authorization is re-checked against the URL id.
 		TimelineCursor cursor = decodeCursor(encodedCursor, requestId);
 
-		// Bounded source queries.
-		CursorKey auditKey = cursor.lastKeys.getOrDefault(SOURCE_AUDIT, new CursorKey(null, null));
-		CursorKey taskKey = cursor.lastKeys.getOrDefault(SOURCE_TASK, new CursorKey(null, null));
-		CursorKey actionKey = cursor.lastKeys.getOrDefault(SOURCE_WORKFLOW, new CursorKey(null, null));
+		CursorKey auditKey = cursor.lastKeys.getOrDefault(CURSOR_KEY_AUDIT, new CursorKey(null, null));
+		CursorKey taskKey = cursor.lastKeys.getOrDefault(CURSOR_KEY_TASK, new CursorKey(null, null));
+		CursorKey actionKey = cursor.lastKeys.getOrDefault(CURSOR_KEY_ACTION, new CursorKey(null, null));
 
-		int fetchLimit = size + SOURCE_FETCH_CHUNK;
-		List<AuditEvent> auditRows = fetchAuditEventsFor(requestId, cursor.boundedAt, auditKey, fetchLimit);
-		List<WorkflowTask> taskRows = fetchTaskEventsFor(request, cursor.boundedAt, taskKey, fetchLimit);
-		List<WorkflowAction> actionRows = fetchActionEventsFor(request, cursor.boundedAt, actionKey, fetchLimit);
+		// Fetch size+1 per source: the extra row tells us there is more in that source, and it
+		// stays available for the next merge step after we emit `size` rows.
+		int perSourceLimit = size + 1;
+		List<AuditEvent> auditRows = fetchAuditEventsFor(requestId, cursor.boundedAt, auditKey, perSourceLimit);
+		List<WorkflowTask> taskRows = fetchTaskEventsFor(request, cursor.boundedAt, taskKey, perSourceLimit);
+		List<WorkflowAction> actionRows = fetchActionEventsFor(request, cursor.boundedAt, actionKey, perSourceLimit);
 
 		Map<UUID, String> stateNames = loadStateNames(request);
-		List<TimelineEntry> all = new ArrayList<>();
+		List<TimelineEntry> all = new ArrayList<>(auditRows.size() + taskRows.size() + actionRows.size());
 		auditRows.forEach(e -> all.add(timelineFromAudit(e)));
 		taskRows.forEach(t -> all.add(timelineFromAssignment(t)));
 		actionRows.forEach(a -> all.add(timelineFromAction(a, stateNames)));
 
 		all.sort(TimelineKey.ORDER);
 
-		List<TimelineEntry> page = all.size() <= size ? all : all.subList(0, size);
-		boolean hasNext = all.size() > size;
-
-		Map<String, CursorKey> nextLastKeys = new LinkedHashMap<>(cursor.lastKeys);
-		if (!page.isEmpty()) {
-			TimelineEntry last = page.get(page.size() - 1);
-			nextLastKeys.put(last.source(), new CursorKey(last.timestamp(), last.eventId()));
+		boolean hasMoreInAnySource = auditRows.size() > size || taskRows.size() > size || actionRows.size() > size;
+		List<TimelineEntry> page;
+		List<TimelineEntry> remainder;
+		if (all.size() <= size) {
+			page = all;
+			remainder = List.of();
+		} else {
+			page = new ArrayList<>(all.subList(0, size));
+			remainder = all.subList(size, all.size());
 		}
+		// hasNext is true iff any source returned a "look-ahead" row OR there are still entries
+		// after the last emitted one in the merged buffer.
+		boolean hasNext = hasMoreInAnySource || !remainder.isEmpty();
+
+		// Build next-page cursor: for each source, record the last (timestamp,id) of an entry from
+		// that source that was actually emitted into `page`. If a source had no emitted entry in
+		// this page (only buffered, or not present), carry forward its previous cursor key so the
+		// next fetch continues from the same point.
+		Map<String, CursorKey> nextLastKeys = new LinkedHashMap<>(cursor.lastKeys);
+		for (TimelineEntry e : page) {
+			String k = cursorKeyFor(e.source());
+			if (k != null) {
+				nextLastKeys.put(k, new CursorKey(e.timestamp(), e.eventId()));
+			}
+		}
+
 		String nextCursor = hasNext
 				? encodeCursor(new TimelineCursor(CURSOR_VERSION, cursor.boundedAt, requestId, nextLastKeys))
 				: null;
 		// "complete" = not hasNext AND this is the first page bounded to now (i.e. there are no
-		// events later than boundedAt). When continuing an existing cursor we cannot re-check
-		// without a race; report false so the client must issue a fresh request to see new events.
+		// events later than boundedAt visible to this scan). When continuing an existing cursor we
+		// cannot cheaply re-check without a race; report false so the client must issue a fresh
+		// request to see new events.
 		boolean complete = !hasNext && encodedCursor == null;
 		return new TimelinePage(page, size, nextCursor, hasNext, cursor.boundedAt, complete);
 	}
 
 	// ---------------------------------------------------------------------------------------------
-	// Source fetchers for timeline (keyset queries)
+	// Source fetchers for timeline (ASC keyset queries)
 	// ---------------------------------------------------------------------------------------------
 
 	private List<AuditEvent> fetchAuditEventsFor(UUID requestId, Instant boundedAt, CursorKey after, int fetchLimit) {
-		// The repository's finder is ordered DESC; fetch a generous chunk and reverse it.
-		List<AuditEvent> rows = this.audit
-				.findByEntityTypeAndEntityIdOrderByCreatedAtDesc(ENTITY_TYPE_REQUEST, requestId.toString(),
-						PageRequest.of(0, fetchLimit, Sort.by(Sort.Direction.DESC, "createdAt", "id")))
-				.getContent();
-		// Filter to the bounded window and after-key in Java; the volume per request is bounded
-		// by request depth, and we already load only one request's events.
-		List<AuditEvent> picked = new ArrayList<>();
-		for (AuditEvent e : rows) {
-			if (e.getCreatedAt().isAfter(boundedAt)) {
-				continue;
-			}
-			if (after.timestamp() != null) {
-				int c = e.getCreatedAt().compareTo(after.timestamp());
-				if (c > 0) {
-					continue;
-				}
-				if (c == 0 && after.id() != null && e.getId().compareTo(after.id()) >= 0) {
-					continue;
-				}
-			}
-			picked.add(e);
-		}
-		picked.sort(Comparator.comparing(AuditEvent::getCreatedAt).thenComparing(AuditEvent::getId));
-		return picked.size() > SOURCE_FETCH_CHUNK ? picked.subList(0, SOURCE_FETCH_CHUNK) : picked;
+		return this.audit.findForEntityAfter(ENTITY_TYPE_REQUEST, requestId.toString(),
+				boundedAt, after.timestamp(), after.id(), fetchLimit);
 	}
 
-	private List<WorkflowTask> fetchTaskEventsFor(ExpenseRequest request, Instant boundedAt, CursorKey after, int fetchLimit) {
+	private List<WorkflowTask> fetchTaskEventsFor(ExpenseRequest request, Instant boundedAt, CursorKey after,
+			int fetchLimit) {
 		WorkflowInstance instance = this.instances.findByExpenseRequestId(request.getId()).orElse(null);
 		if (instance == null) {
 			return List.of();
 		}
-		List<WorkflowTask> rows = new ArrayList<>(this.tasks.findByWorkflowInstanceIdOrderByAssignedAtAsc(instance.getId()));
-		rows.sort(Comparator.comparing(WorkflowTask::getAssignedAt).thenComparing(WorkflowTask::getId));
-		List<WorkflowTask> picked = new ArrayList<>();
-		for (WorkflowTask t : rows) {
-			if (t.getAssignedAt().isAfter(boundedAt)) {
-				continue;
-			}
-			if (after.timestamp() != null) {
-				int c = t.getAssignedAt().compareTo(after.timestamp());
-				if (c > 0) {
-					continue;
-				}
-				if (c == 0 && after.id() != null && t.getId().compareTo(after.id()) >= 0) {
-					continue;
-				}
-			}
-			picked.add(t);
-		}
-		return picked.size() > SOURCE_FETCH_CHUNK ? picked.subList(0, SOURCE_FETCH_CHUNK) : picked;
+		Pageable pageable = PageRequest.of(0, fetchLimit);
+		return this.tasks.findForInstanceAfter(instance.getId(), boundedAt, after.timestamp(), after.id(), pageable);
 	}
 
-	private List<WorkflowAction> fetchActionEventsFor(ExpenseRequest request, Instant boundedAt, CursorKey after, int fetchLimit) {
+	private List<WorkflowAction> fetchActionEventsFor(ExpenseRequest request, Instant boundedAt, CursorKey after,
+			int fetchLimit) {
 		WorkflowInstance instance = this.instances.findByExpenseRequestId(request.getId()).orElse(null);
 		if (instance == null) {
 			return List.of();
 		}
-		List<WorkflowTask> instanceTasks = this.tasks.findByWorkflowInstanceIdOrderByAssignedAtAsc(instance.getId());
-		List<UUID> taskIds = instanceTasks.stream().map(WorkflowTask::getId).toList();
-		List<WorkflowAction> rows = new ArrayList<>(this.actions.findForInstance(taskIds));
-		rows.sort(Comparator.comparing(WorkflowAction::getActionAt).thenComparing(WorkflowAction::getId));
-		List<WorkflowAction> picked = new ArrayList<>();
-		for (WorkflowAction a : rows) {
-			if (a.getActionAt().isAfter(boundedAt)) {
-				continue;
-			}
-			if (after.timestamp() != null) {
-				int c = a.getActionAt().compareTo(after.timestamp());
-				if (c > 0) {
-					continue;
-				}
-				if (c == 0 && after.id() != null && a.getId().compareTo(after.id()) >= 0) {
-					continue;
-				}
-			}
-			picked.add(a);
+		// Only load task ids for this instance; keyset filtering happens in SQL so we do NOT
+		// materialise the full history.
+		List<UUID> taskIds = this.tasks.findByWorkflowInstanceIdOrderByAssignedAtAsc(instance.getId())
+				.stream().map(WorkflowTask::getId).toList();
+		if (taskIds.isEmpty()) {
+			return List.of();
 		}
-		return picked.size() > SOURCE_FETCH_CHUNK ? picked.subList(0, SOURCE_FETCH_CHUNK) : picked;
+		Pageable pageable = PageRequest.of(0, fetchLimit);
+		return this.actions.findForTasksAfter(taskIds, boundedAt, after.timestamp(), after.id(), pageable);
 	}
 
 	private Map<UUID, String> loadStateNames(ExpenseRequest request) {
@@ -430,6 +429,15 @@ public class AuditReadService {
 		};
 	}
 
+	private static String cursorKeyFor(String responseSource) {
+		return switch (responseSource) {
+			case SOURCE_AUDIT -> CURSOR_KEY_AUDIT;
+			case SOURCE_TASK -> CURSOR_KEY_TASK;
+			case SOURCE_WORKFLOW -> CURSOR_KEY_ACTION;
+			default -> null;
+		};
+	}
+
 	private Map<String, Object> parseAndRedact(String json) {
 		if (json == null || json.isBlank()) {
 			return Map.of();
@@ -504,9 +512,6 @@ public class AuditReadService {
 	 * read the request — but it is bound to a request id to prevent reuse across requests.
 	 */
 	private record TimelineCursor(int version, Instant boundedAt, UUID requestId, Map<String, CursorKey> lastKeys) {
-		TimelineCursor(Instant boundedAt, Map<String, CursorKey> lastKeys) {
-			this(CURSOR_VERSION, boundedAt, null, lastKeys);
-		}
 	}
 
 	private record CursorKey(Instant timestamp, UUID id) {
@@ -517,24 +522,35 @@ public class AuditReadService {
 			return new TimelineCursor(CURSOR_VERSION, Instant.now(), requestId, new LinkedHashMap<>());
 		}
 		try {
-			String json = new String(Base64.getUrlDecoder().decode(encoded), java.nio.charset.StandardCharsets.UTF_8);
+			String json = new String(Base64.getUrlDecoder().decode(encoded), StandardCharsets.UTF_8);
 			JsonNode root = this.jsonMapper.readTree(json);
+			if (!root.isObject()) {
+				throw new BusinessException(ErrorCode.INVALID_REQUEST, "The pagination cursor is not valid.");
+			}
 			int version = root.path("v").asInt(-1);
 			if (version != CURSOR_VERSION) {
-				throw new BusinessException(ErrorCode.INVALID_REQUEST, "The pagination cursor is not recognized.");
+				throw new BusinessException(ErrorCode.INVALID_REQUEST,
+						"The pagination cursor version is not supported.");
 			}
-			UUID cursorReq = root.hasNonNull("r") ? UUID.fromString(root.get("r").asText()) : null;
-			if (cursorReq == null || !cursorReq.equals(requestId)) {
+			if (!root.has("b") || !root.has("r")) {
+				throw new BusinessException(ErrorCode.INVALID_REQUEST, "The pagination cursor is not valid.");
+			}
+			UUID cursorReq;
+			try {
+				cursorReq = UUID.fromString(root.get("r").asText());
+			}
+			catch (IllegalArgumentException ex) {
+				throw new BusinessException(ErrorCode.INVALID_REQUEST, "The pagination cursor is not valid.");
+			}
+			if (!cursorReq.equals(requestId)) {
 				throw new BusinessException(ErrorCode.INVALID_REQUEST,
 						"The pagination cursor does not belong to this request.");
 			}
 			Instant boundedAt = Instant.parse(root.get("b").asText());
 			Map<String, CursorKey> lastKeys = new LinkedHashMap<>();
-			// Read cursor keys by known source names to avoid any reliance on
-			// the shaded Jackson iterator type.
-			tools.jackson.databind.JsonNode keysNode = root.path("k");
-			for (String src : new String[]{"audit", "task", "action"}) {
-				tools.jackson.databind.JsonNode kv = keysNode.get(src);
+			JsonNode keysNode = root.path("k");
+			for (String src : new String[] { CURSOR_KEY_AUDIT, CURSOR_KEY_TASK, CURSOR_KEY_ACTION }) {
+				JsonNode kv = keysNode.get(src);
 				if (kv == null || kv.isNull()) {
 					continue;
 				}

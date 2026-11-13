@@ -12,6 +12,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 /**
  * Individual approval tasks: one per approver per step.
@@ -31,6 +33,27 @@ public interface TasksRepository extends JpaRepository<WorkflowTask, UUID>, JpaS
 	List<WorkflowTask> findByWorkflowInstanceIdAndStatus(UUID instanceId, WorkflowTask.TaskStatus status);
 
 	List<WorkflowTask> findByWorkflowInstanceIdOrderByAssignedAtAsc(UUID instanceId);
+
+	/**
+	 * Oldest-first keyset fetch for the timeline: at most {@code fetchLimit} tasks for the instance
+	 * that are strictly after {@code (afterTs, afterId)} and not after {@code boundedAt}. When
+	 * {@code afterTs} is null, starts from the earliest task. Ordering is
+	 * {@code (assigned_at ASC, id ASC)} for deterministic tie-breaking.
+	 */
+	@Query("""
+			select t from WorkflowTask t
+			where t.workflowInstanceId = :instanceId
+			  and t.assignedAt <= :boundedAt
+			  and (   :afterTs is null
+			       or t.assignedAt > :afterTs
+			       or (t.assignedAt = :afterTs and (:afterId is null or t.id > :afterId)))
+			order by t.assignedAt asc, t.id asc
+			""")
+	List<WorkflowTask> findForInstanceAfter(@Param("instanceId") UUID instanceId,
+			@Param("boundedAt") java.time.Instant boundedAt,
+			@Param("afterTs") java.time.Instant afterTs,
+			@Param("afterId") UUID afterId,
+			Pageable pageable);
 
 	long countByAssignedUserIdAndStatus(UUID userId, WorkflowTask.TaskStatus status);
 

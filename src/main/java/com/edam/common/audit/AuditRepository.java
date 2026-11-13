@@ -37,8 +37,41 @@ public interface AuditRepository extends Repository<AuditEvent, UUID> {
 
 	long count();
 
-	Page<AuditEvent> findByEntityTypeAndEntityIdOrderByCreatedAtDesc(String entityType, String entityId,
+	/**
+	 * Newest-first finder for a single entity's audit trail (used by the timeline first/last
+	 * event lookups). Page size should be bounded by the caller.
+	 */
+	Page<AuditEvent> findByEntityTypeAndEntityIdOrderByCreatedAtDescIdDesc(String entityType, String entityId,
 			Pageable pageable);
+
+	/**
+	 * Oldest-first keyset fetch for the timeline. Returns at most {@code fetchLimit} audit events
+	 * for the given request that are strictly after the cursor key (or from the beginning when
+	 * {@code afterTs} is null) and not after {@code boundedAt}. Ordering is
+	 * {@code (created_at ASC, id ASC)} so tie-breaking is deterministic.
+	 *
+	 * <p>We use a native query because JPQL keyset pagination with a composite (ts, id) cursor
+	 * is awkward to express portably, and Hibernate 6 does not reliably bind {@code (ts,id) >
+	 * (:afterTs, :afterId)} row-value comparisons on Postgres. The explicit boolean expression
+	 * below is equivalent.
+	 */
+	@Query(value = """
+			select e.* from audit_events e
+			where e.entity_type = :entityType
+			  and e.entity_id   = cast(:entityId as text)
+			  and e.created_at  <= :boundedAt
+			  and (   :afterTs is null
+			       or e.created_at > :afterTs
+			       or (e.created_at = :afterTs and (:afterId is null or e.id > cast(:afterId as uuid))))
+			order by e.created_at asc, e.id asc
+			limit :fetchLimit
+			""", nativeQuery = true)
+	List<AuditEvent> findForEntityAfter(@Param("entityType") String entityType,
+			@Param("entityId") String entityId,
+			@Param("boundedAt") Instant boundedAt,
+			@Param("afterTs") Instant afterTs,
+			@Param("afterId") UUID afterId,
+			@Param("fetchLimit") int fetchLimit);
 
 	/**
 	 * Authorization-bounded audit search.
@@ -49,7 +82,12 @@ public interface AuditRepository extends Repository<AuditEvent, UUID> {
 	 *
 	 * <p>String and enum parameters are cast to {@code text} and arrays to {@code uuid[]} to
 	 * keep Postgres from inferring a {@code smallint} or other mismatch against the table's
-	 * textual columns when Hibernate binds through the native-query type inference.
+	 * textual columns when Hibernate binds through native-query type inference.
+	 *
+	 * <p>Safety policy for orphaned request events: when {@code r.id IS NULL} (the request no
+	 * longer exists in {@code expense_requests}), the event is visible <b>only</b> to
+	 * installation-wide auditors. This prevents a deleted/stale request from leaking historical
+	 * metadata to department-scoped callers.
 	 *
 	 * <p>Parameters {@code deptIds} and {@code branchIds} are required to be non-null (empty
 	 * means no department/branch scope). When both are empty and {@code installationWide} is
@@ -72,11 +110,16 @@ public interface AuditRepository extends Repository<AuditEvent, UUID> {
 			       or lower(e.performed_by_username) like lower(concat('%', cast(:search as text), '%')))
 			  and (
 			        e.entity_type <> 'ExpenseRequest'
-			     or r.id is null
-			     or cast(:installationWide as boolean) = true
-			     or r.requested_by = :callerId
-			     or r.department_id = any (cast(:deptIds as uuid[]))
-			     or (r.branch_id is not null and r.branch_id = any (cast(:branchIds as uuid[])))
+			     or (
+			          r.id is not null
+			          and (
+			               cast(:installationWide as boolean) = true
+			            or r.requested_by = :callerId
+			            or r.department_id = any (cast(:deptIds as uuid[]))
+			            or (r.branch_id is not null and r.branch_id = any (cast(:branchIds as uuid[])))
+			          )
+			        )
+			     or (r.id is null and cast(:installationWide as boolean) = true)
 			  )
 			order by e.created_at desc, e.id desc
 			""",
@@ -97,16 +140,21 @@ public interface AuditRepository extends Repository<AuditEvent, UUID> {
 			       or lower(e.performed_by_username) like lower(concat('%', cast(:search as text), '%')))
 			  and (
 			        e.entity_type <> 'ExpenseRequest'
-			     or r.id is null
-			     or cast(:installationWide as boolean) = true
-			     or r.requested_by = :callerId
-			     or r.department_id = any (cast(:deptIds as uuid[]))
-			     or (r.branch_id is not null and r.branch_id = any (cast(:branchIds as uuid[])))
+			     or (
+			          r.id is not null
+			          and (
+			               cast(:installationWide as boolean) = true
+			            or r.requested_by = :callerId
+			            or r.department_id = any (cast(:deptIds as uuid[]))
+			            or (r.branch_id is not null and r.branch_id = any (cast(:branchIds as uuid[])))
+			          )
+			        )
+			     or (r.id is null and cast(:installationWide as boolean) = true)
 			  )
 			""",
 			nativeQuery = true)
-	Page<AuditEvent> search(@Param("from") Instant from,
-			@Param("to") Instant to,
+	Page<AuditEvent> search(@Param("from") java.time.Instant from,
+			@Param("to") java.time.Instant to,
 			@Param("action") String action,
 			@Param("entityType") String entityType,
 			@Param("entityId") String entityId,
@@ -118,9 +166,5 @@ public interface AuditRepository extends Repository<AuditEvent, UUID> {
 			@Param("deptIds") UUID[] deptIds,
 			@Param("branchIds") UUID[] branchIds,
 			Pageable pageable);
-
-	/** Bounded export source; callers cap the page size before streaming. */
-	List<AuditEvent> findByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(Instant from,
-			Instant to, Pageable pageable);
 
 }

@@ -1,12 +1,16 @@
 package com.edam.workflow.repository;
 
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
 import com.edam.workflow.model.WorkflowAction;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 /**
  * The permanent record of every workflow action taken.
@@ -16,9 +20,32 @@ import org.springframework.data.jpa.repository.JpaRepository;
  */
 public interface ActionsRepository extends JpaRepository<WorkflowAction, UUID> {
 
+	long count();
+
 	List<WorkflowAction> findByWorkflowTaskIdOrderByActionAtAsc(UUID taskId);
 
 	List<WorkflowAction> findByWorkflowTaskIdInOrderByActionAtAsc(List<UUID> taskIds);
+
+	/**
+	 * Oldest-first keyset fetch for the timeline: at most {@code fetchLimit} actions whose task
+	 * is in {@code taskIds}, strictly after {@code (afterTs, afterId)} and not after
+	 * {@code boundedAt}. Ordering is {@code (action_at ASC, id ASC)} for deterministic
+	 * tie-breaking.
+	 */
+	@Query("""
+			select a from WorkflowAction a
+			where a.workflowTaskId in :taskIds
+			  and a.actionAt <= :boundedAt
+			  and (   :afterTs is null
+			       or a.actionAt > :afterTs
+			       or (a.actionAt = :afterTs and (:afterId is null or a.id > :afterId)))
+			order by a.actionAt asc, a.id asc
+			""")
+	List<WorkflowAction> findForTasksAfter(@Param("taskIds") List<UUID> taskIds,
+			@Param("boundedAt") Instant boundedAt,
+			@Param("afterTs") Instant afterTs,
+			@Param("afterId") UUID afterId,
+			Pageable pageable);
 
 	/**
 	 * The full action history of an instance, oldest first.
@@ -32,7 +59,7 @@ public interface ActionsRepository extends JpaRepository<WorkflowAction, UUID> {
 			return List.of();
 		}
 		return findByWorkflowTaskIdInOrderByActionAtAsc(taskIds).stream()
-			.sorted(Comparator.comparing(WorkflowAction::getActionAt))
+			.sorted(Comparator.comparing(WorkflowAction::getActionAt).thenComparing(WorkflowAction::getId))
 			.toList();
 	}
 
