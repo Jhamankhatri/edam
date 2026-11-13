@@ -281,7 +281,7 @@ class AuthenticationIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 		}
 		assertThatThrownBy(() -> this.bootstrap.bootstrap("any-token",
 				new com.edam.identity.dto.AuthDtos.BootstrapRequest("admin", "First", "Admin",
-						"admin@bank.example", null, "Str0ng!Passphrase")))
+						"admin@bank.example", null, "Str0ng!Passphrase"), "127.0.0.1"))
 			.isInstanceOf(BusinessException.class)
 			.hasMessageContaining("already been set up");
 	}
