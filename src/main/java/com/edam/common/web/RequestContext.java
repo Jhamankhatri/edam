@@ -35,6 +35,22 @@ public class RequestContext {
 		return this.request.getRemoteAddr();
 	}
 
+	/**
+	 * User-Agent header, truncated to the audit column's width.
+	 *
+	 * <p>Recorded because "which client made this call" is frequently the only way to distinguish an
+	 * automated integration from a human action during an incident review. It is client-controlled and
+	 * therefore never used for any decision — only stored.
+	 */
+	public String userAgent() {
+		String agent = this.request.getHeader("User-Agent");
+		if (agent == null) {
+			return null;
+		}
+		int max = 500;
+		return agent.length() <= max ? agent : agent.substring(0, max);
+	}
+
 	/** Request URI without query string, for logging and audit summaries. */
 	public String path() {
 		return this.request.getRequestURI();

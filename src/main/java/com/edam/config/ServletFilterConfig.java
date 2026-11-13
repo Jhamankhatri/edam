@@ -1,9 +1,5 @@
 package com.edam.config;
 
-import com.edam.common.security.InstitutionContext;
-import com.edam.common.tenant.TenantContextFilter;
-import com.edam.institution.InstitutionRepository;
-
 import jakarta.servlet.DispatcherType;
 
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -31,7 +27,7 @@ import org.springframework.security.web.context.SecurityContextHolderFilter;
  * page, the access-denied page and every JSP forward are plain {@code REQUEST} handling
  * plus an internal {@code FORWARD}, so authorization remains complete.</li>
  * <li>An error dispatch goes through the servlet container and lands on
- * {@code MvcExceptionHandler}, which renders the safe error page with the original status
+ * {@code ErrorEndpointAttributes}, which answers with the standard envelope and the original status
  * code and no internal detail.</li>
  * </ul>
  *
@@ -70,18 +66,5 @@ public class ServletFilterConfig {
 	 * services need. Running it here rather than in a controller argument means a service can never
 	 * be invoked with an unresolved tenant in a web request.
 	 */
-	@Bean
-	FilterRegistrationBean<TenantContextFilter> tenantContextFilter(InstitutionContext institutionContext,
-			InstitutionRepository institutions) {
-		FilterRegistrationBean<TenantContextFilter> registration = new FilterRegistrationBean<>(
-				new TenantContextFilter(institutionContext, institutions));
-		registration.setName("tenantContextFilter");
-		registration.addUrlPatterns("/api/*");
-		registration.setDispatcherTypes(DispatcherType.REQUEST);
-		// Immediately after the security chain: -100 would put it before authorization, which is
-		// correct here because this filter only reads the already-authenticated principal.
-		registration.setOrder(Ordered.LOWEST_PRECEDENCE - 200);
-		return registration;
-	}
 
 }

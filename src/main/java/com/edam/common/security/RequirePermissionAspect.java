@@ -7,32 +7,27 @@ import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
 import org.aspectj.lang.reflect.MethodSignature;
-
 import org.springframework.stereotype.Component;
 
 /**
- * Enforces {@link EdamPermission} at the service boundary.
- *
- * <h2>Why an aspect rather than only {@code @PreAuthorize}</h2>
- * Spring Security's method security evaluates flat authorities. EDAM's permissions are
- * institution-scoped, and the institution is resolved <em>per request</em> from the authenticated
- * identity plus an explicit selection. Expressing "permission X in the institution this request
- * resolved to" as a SpEL expression in every annotation would be unreadable and easy to get wrong.
- * This aspect resolves the tenant once, then checks membership + permission together.
+ * Enforces {@link EdamPermission} at the controller boundary.
  *
  * <h2>Order of checks (fail closed)</h2>
  * <ol>
- *   <li>Authentication exists.</li>
- *   <li>An institution context is resolved.</li>
- *   <li>The principal is a member of that institution (direct object-reference protection).</li>
- *   <li>The principal holds the permission <em>in that institution</em>.</li>
+ *   <li>An authenticated principal exists.</li>
+ *   <li>The principal holds the permission.</li>
  * </ol>
- * A caller who fails step 3 receives the same response as one who fails step 4, and the same
- * response as one addressing a non-existent record, so cross-tenant probing reveals nothing.
  *
- * <h2>Scope</h2>
- * Applies to methods annotated directly; the controller layer declares the annotation, and the
- * aspect is deliberately usable on services too for defence in depth.
+ * <h2>Why the data-scope check is NOT here</h2>
+ * A scope answers "over which department/branch may this be done?", and that question needs the
+ * <em>record</em> being touched. The aspect runs before the method body, so it has no record. Scopes are
+ * therefore enforced in the services that load the record
+ * ({@code DataScopeGuard}), which is the only place the answer is knowable. Putting a coarse
+ * "has any scope" check here would look like protection while granting access to records outside it.
+ *
+ * <h2>What a permission does not grant</h2>
+ * Holding {@code approval:act} does not permit approving anything: the workflow engine additionally
+ * requires the caller to be the assignee of the open task. That check lives with the assignment data.
  */
 @Aspect
 @Component
@@ -46,23 +41,13 @@ public class RequirePermissionAspect {
 
 	@Before("@annotation(edamPermission)")
 	public void check(JoinPoint joinPoint, EdamPermission edamPermission) {
-		EdamPrincipal principal = this.institutionContext.currentPrincipal()
-			.orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHENTICATED,
-					ErrorCode.UNAUTHENTICATED.safeMessage()));
-		String institutionCode = this.institutionContext.currentInstitution()
-			.orElseThrow(() -> new BusinessException(ErrorCode.INSTITUTION_REQUIRED,
-					"Select the institution you are acting for before continuing."));
-		if (!principal.belongsTo(institutionCode)) {
-			// Same safe message as a permission failure: do not reveal tenant existence.
-			throw new BusinessException(ErrorCode.INSTITUTION_ACCESS_DENIED,
-					ErrorCode.INSTITUTION_ACCESS_DENIED.safeMessage());
-		}
-		if (!principal.hasPermissionIn(institutionCode, edamPermission.value())) {
+		EdamPrincipal principal = this.institutionContext.principal();
+		if (!principal.hasPermission(edamPermission.value())) {
 			throw new BusinessException(ErrorCode.PERMISSION_DENIED, ErrorCode.PERMISSION_DENIED.safeMessage());
 		}
 	}
 
-	/** Human-readable location for the audit log when a check fails. */
+	/** Human-readable location, used when reporting a denial. */
 	static String describe(JoinPoint joinPoint) {
 		if (joinPoint.getSignature() instanceof MethodSignature signature) {
 			return signature.getDeclaringType().getSimpleName() + "#" + signature.getName();

@@ -33,18 +33,12 @@ spring:
     filter:
       # REQUEST only (the Spring Boot default is every dispatcher type).
       #
-      # FORWARD: JSP rendering is an internal forward from the view controller to
-      #   /WEB-INF/jsp/*. If that forward were re-authorized as a URL, an anonymous visitor
-      #   to /login would be redirected to /login forever.
       # ERROR: the container's error dispatch to /error must never be intercepted by
-      #   authorization, otherwise a server fault is disguised as a 302 to the login page.
-      #   ServletFilterConfig restores the security context for the error page itself.
-      # ASYNC/INCLUDE: no asynchronous controllers and no server-side includes exist.
+      #   authorization, otherwise a server fault is disguised as a 401. ServletFilterConfig
+      #   restores the security context for that dispatch.
+      # ASYNC: no asynchronous controllers exist.
       dispatcher-types: request
   mvc:
-    view:
-      prefix: /WEB-INF/jsp/
-      suffix: .jsp
     problemdetails:
       enabled: false              # EDAM defines its own error envelope.
   web:

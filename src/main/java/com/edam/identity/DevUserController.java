@@ -6,6 +6,7 @@ import java.util.Map;
 
 import com.edam.common.api.ApiResponse;
 import com.edam.common.logging.CorrelationId;
+import com.edam.common.security.DataScope;
 import com.edam.common.security.EdamPrincipal;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -18,9 +19,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Development aid: shows the authenticated principal's institution memberships and
- * permissions so that the multi-institution model can be inspected without a database
- * browser. Available only in the {@code local} profile. It exposes no credentials.
+ * Development aid: shows the caller's own identity, effective permissions and data scopes.
+ *
+ * <p>This exists so that an authorization problem can be diagnosed without a database browser —
+ * "why is this button hidden" is almost always answered by "the role is granted but the data scope is
+ * missing". It is registered only when {@code edam.security.dev-users.enabled=true}, which is set by
+ * the {@code local} profile alone.
+ *
+ * <p>It exposes no credential and no other user's data: everything in the response is derived from the
+ * caller's own principal.
  */
 @RestController
 @RequestMapping(path = "/api/v1/dev/me", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -30,10 +37,9 @@ public class DevUserController {
 	/**
 	 * The caller's own identity.
 	 *
-	 * <p>Public <em>as an endpoint</em> because it must answer for any authenticated user without
-	 * requiring a permission — a user with no roles still needs to see who they are and which
-	 * institutions they belong to, so the client can render a tenant selector. It reads only the
-	 * principal from the security context and exposes no other user's data.
+	 * <p>Deliberately not permission-gated: a user with no roles still has to be able to see who they
+	 * are and why nothing is available to them, otherwise a misconfigured account is indistinguishable
+	 * from an application fault.
 	 */
 	@GetMapping
 	@com.edam.common.security.PublicEndpoint(
@@ -42,11 +48,18 @@ public class DevUserController {
 			HttpServletRequest request) {
 		Map<String, Object> data = new LinkedHashMap<>();
 		if (principal != null) {
-			data.put("employeeId", principal.employeeId());
+			data.put("userId", principal.userId());
+			data.put("employeeCode", principal.employeeCode());
+			data.put("username", principal.getUsername());
 			data.put("displayName", principal.displayName());
-			data.put("institutions", principal.institutionCodes());
-			data.put("rolesByInstitution", principal.institutionRoles());
+			data.put("roles", principal.roleCodes().stream().sorted().toList());
 			data.put("permissions", principal.permissions().stream().sorted().toList());
+			data.put("installationScope", principal.hasInstallationScope());
+			data.put("dataScopes", principal.dataScopes()
+				.stream()
+				.map(scope -> Map.of("type", scope.type().name(),
+						"referenceId", scope.referenceId() == null ? "" : scope.referenceId().toString()))
+				.toList());
 		}
 		return ApiResponse.success(data, CorrelationId.current(), request.getRequestURI());
 	}

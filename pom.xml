@@ -156,25 +156,6 @@
 			<version>5.5.1</version>
 		</dependency>
 
-		<!-- JSP rendering (Jasper) and the JSTL tag library used by the views.
-			 Both are packaged into WEB-INF/lib-provided and remain available when the
-			 WAR runs embedded via 'java -jar'. -->
-		<dependency>
-			<groupId>org.apache.tomcat.embed</groupId>
-			<artifactId>tomcat-embed-jasper</artifactId>
-			<scope>provided</scope>
-		</dependency>
-		<dependency>
-			<groupId>jakarta.servlet.jsp.jstl</groupId>
-			<artifactId>jakarta.servlet.jsp.jstl-api</artifactId>
-			<scope>provided</scope>
-		</dependency>
-		<dependency>
-			<groupId>org.glassfish.web</groupId>
-			<artifactId>jakarta.servlet.jsp.jstl</artifactId>
-			<scope>provided</scope>
-		</dependency>
-
 		<!-- ================================ Test ================================ -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

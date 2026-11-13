@@ -1,105 +1,110 @@
 package com.edam.identity;
 
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
+import com.edam.common.security.DataScope;
 import com.edam.common.security.EdamPrincipal;
 import com.edam.common.security.EdamUserDetailsService;
-import com.edam.iam.UserMembership;
-import com.edam.iam.UserMembershipRepository;
-import com.edam.institution.Institution;
-import com.edam.institution.InstitutionRepository;
+import com.edam.rolemanagement.model.Role;
+import com.edam.rolemanagement.repository.RoleRepository;
+import com.edam.usermanagement.model.User;
+import com.edam.usermanagement.model.UserDataScope;
+import com.edam.usermanagement.repository.UserDataScopeRepository;
+import com.edam.usermanagement.repository.UserRepository;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 
 /**
- * Database-backed identity adapter: builds an {@link EdamPrincipal} from persisted memberships.
+ * Database-backed identity adapter (Module C).
  *
  * <h2>Position in the authentication seam</h2>
- * BRD OD-24 leaves the identity provider open (bank SSO/OIDC/SAML, MFA, token model). This adapter
- * does <em>not</em> choose one. It fills the existing {@link EdamUserDetailsService} seam with the
- * local membership store, so:
+ * An approved identity provider (bank SSO/OIDC/SAML, LDAP, MFA) is still an open business decision.
+ * This adapter does not choose one; it fills the {@link EdamUserDetailsService} seam with the local
+ * schema so that:
  * <ul>
- *   <li>roles and permissions are institution-scoped real data, not fixtures;</li>
- *   <li>replacing it with an OIDC adapter is a bean swap, not a rewrite;</li>
- *   <li>no password is stored here — credential verification stays with whichever provider is
- *       approved.</li>
+ *   <li>roles, permissions and data scopes are real persisted data, not fixtures;</li>
+ *   <li>replacing it with an OIDC adapter is one bean swap, not a rewrite;</li>
+ *   <li>no credential is invented here — if the user has no local hash, this adapter cannot verify a
+ *       password and says so, rather than accepting any.</li>
  * </ul>
  *
- * <h2>Precedence</h2>
- * Only one identity adapter may be active. This class is a plain component, not a
- * {@code @Configuration}, so it cannot race with another conditional bean definition; the choice is
- * made in one place by {@code IdentityConfiguration}. This also fixes a real startup failure:
- * annotating the class {@code @Configuration} and naming its {@code @Bean} method after the class
- * produced two definitions with the same name.
+ * <h2>What it loads, and in what order</h2>
+ * <ol>
+ *   <li>The user row; inactive users are rejected exactly like unknown users, so deactivation cannot be
+ *       probed for.</li>
+ *   <li>Active roles only: {@code RoleRepository#findActiveRolesForUser} applies the assignment-expiry
+ *       predicate in SQL, so an expired grant cannot be loaded by mistake.</li>
+ *   <li>Data scopes. A user with no scopes gets an <em>empty</em> set, never an implicit ALL.</li>
+ * </ol>
  *
- * <h2>Multiple memberships</h2>
- * A username may hold memberships in several institutions. All of them are loaded into the
- * principal as a set; nothing assumes a single tenant (IAM-04). A membership whose institution is
- * missing or not operational is skipped, so a suspended tenant cannot be entered by logging in.
+ * <h2>The unscoped-user case</h2>
+ * A user with roles but no data scope is a configuration error. This adapter returns the principal with
+ * no scopes; the authorization layer then denies record access. It deliberately does not throw at login:
+ * refusing sign-in would hide the misconfiguration behind "wrong password", and the requirement is that
+ * an administrator can see and fix their own account state.
  */
 public class DatabaseEdamUserDetailsService implements EdamUserDetailsService {
 
 	private static final Logger log = LoggerFactory.getLogger(DatabaseEdamUserDetailsService.class);
 
-	private final UserMembershipRepository memberships;
+	private final UserRepository users;
 
-	private final InstitutionRepository institutions;
+	private final RoleRepository roles;
 
-	public DatabaseEdamUserDetailsService(UserMembershipRepository memberships,
-			InstitutionRepository institutions) {
-		this.memberships = memberships;
-		this.institutions = institutions;
+	private final UserDataScopeRepository dataScopes;
+
+	public DatabaseEdamUserDetailsService(UserRepository users, RoleRepository roles,
+			UserDataScopeRepository dataScopes) {
+		this.users = users;
+		this.roles = roles;
+		this.dataScopes = dataScopes;
 	}
 
+	/**
+	 * Loads the principal.
+	 *
+	 * @param username login name, matched case-insensitively
+	 * @return the principal wrapped with the encoded credential when the account authenticates locally,
+	 * or with {@code null} when it does not
+	 */
 	@Override
 	public EdamUserDetails loadUserByUsername(String username) {
-		List<UserMembership> active = this.memberships.findActiveByUsername(username);
-		if (active.isEmpty()) {
-			throw new UsernameNotFoundException("Unknown user");
-		}
-		Map<Long, Institution> byId = new LinkedHashMap<>();
-		this.institutions.findAll().forEach(institution -> byId.put(institution.getId(), institution));
+		User user = resolveActiveUser(username)
+			.orElseThrow(() -> new UsernameNotFoundException("Unknown or inactive user"));
 
-		Map<String, Set<String>> rolesByInstitution = new LinkedHashMap<>();
-		Map<String, Set<String>> permissionsByInstitution = new LinkedHashMap<>();
-		Set<String> institutionCodes = new LinkedHashSet<>();
-		String displayName = null;
-		String employeeId = null;
-		for (UserMembership membership : active) {
-			Institution institution = byId.get(membership.getInstitutionId());
-			if (institution == null || !institution.isOperational()) {
-				log.debug("identity.membership_skipped reason=institution_not_operational institutionId={}",
-						membership.getInstitutionId());
-				continue;
-			}
-			String code = institution.getCode();
-			rolesByInstitution.computeIfAbsent(code, key -> new LinkedHashSet<>())
-				.addAll(membership.roleCodes());
-			permissionsByInstitution.computeIfAbsent(code, key -> new LinkedHashSet<>())
-				.addAll(membership.permissionCodes());
-			institutionCodes.add(code);
-			if (displayName == null && membership.getDisplayName() != null) {
-				displayName = membership.getDisplayName();
-			}
-			if (employeeId == null) {
-				employeeId = membership.getEmployeeId();
-			}
+		List<Role> activeRoles = this.roles.findActiveRolesForUser(user.getId());
+		Set<String> roleCodes = new LinkedHashSet<>();
+		Set<String> permissions = new LinkedHashSet<>();
+		for (Role role : activeRoles) {
+			roleCodes.add(role.getCode());
+			permissions.addAll(role.permissionCodes());
 		}
-		if (institutionCodes.isEmpty()) {
-			throw new UsernameNotFoundException("Unknown user");
+
+		Set<DataScope> scopes = new LinkedHashSet<>();
+		for (UserDataScope row : this.dataScopes.findByUserId(user.getId())) {
+			scopes.add(row.toDataScope());
 		}
-		EdamPrincipal principal = new EdamPrincipal(employeeId, username,
-				displayName == null ? username : displayName, rolesByInstitution, permissionsByInstitution,
-				institutionCodes);
-		// No credential: this adapter identifies, it does not authenticate. A provider that needs a
-		// password must obtain it from the approved identity source.
-		return new EdamUserDetails(principal, null);
+		if (!activeRoles.isEmpty() && scopes.isEmpty()) {
+			// Configuration error, not an authentication failure. Recorded so an operator can see it.
+			log.warn("identity.unscoped_user userId={} roles={} — record access will be denied until a data scope is assigned",
+					user.getId(), roleCodes);
+		}
+
+		EdamPrincipal principal = new EdamPrincipal(user.getId(), user.getEmployeeCode(), user.getUsername(),
+				user.displayName(), roleCodes, permissions, scopes);
+		return new EdamUserDetails(principal, user.getPasswordHash());
+	}
+
+	private Optional<User> resolveActiveUser(String username) {
+		if (username == null || username.isBlank()) {
+			return Optional.empty();
+		}
+		return this.users.findByUsernameIgnoreCase(username.trim()).filter(User::isActive);
 	}
 
 }

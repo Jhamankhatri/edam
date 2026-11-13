@@ -3,21 +3,31 @@ package com.edam.common.api;
 import jakarta.servlet.http.HttpServletRequest;
 
 /**
- * Helpers for deciding whether a request expects an API response or an HTML page, and for
- * deriving a safe request path for error envelopes.
+ * The API path contract, plus helpers for deriving a safe request path for error envelopes.
+ *
+ * <h2>Versioning</h2>
+ * Every business endpoint lives under {@link #V1}. The version is in the path rather than a header so
+ * that it is visible in logs, proxies and the OpenAPI document, and so that a browser, curl and Postman
+ * all address the same resource unambiguously. A future {@code /api/v2} can coexist: the old one is
+ * retired on the bank's schedule, not on a deployment.
+ *
+ * <p>Controllers must build their mapping from this constant instead of repeating the literal, so
+ * "some endpoints are versioned and some are not" cannot happen by accident.
  */
 public final class ApiPaths {
+
+	/** Versioned prefix for every business endpoint. */
+	public static final String V1 = "/api/v1";
 
 	private ApiPaths() {
 	}
 
 	/**
-	 * True when the response should be a JSON envelope rather than an HTML page.
+	 * True when the response should be a JSON envelope.
 	 *
-	 * <p>API requests are identified by URI prefix (after removing the context path), by a
-	 * JSON content type, or by an explicit {@code Accept: application/json}. Classic JSP
-	 * form posts send {@code application/x-www-form-urlencoded} and are routed to the HTML
-	 * flow even though the browser's {@code Accept} header prefers HTML with a JSON fallback.
+	 * <p>Everything under {@link #V1} is an API path by definition. The content-type and Accept checks
+	 * remain because the health probes and the container's error dispatch sit outside that prefix, and
+	 * answering a JSON probe with an HTML error page would break the monitoring that consumes it.
 	 */
 	public static boolean wantsApiResponse(HttpServletRequest request) {
 		String path = applicationPath(request);

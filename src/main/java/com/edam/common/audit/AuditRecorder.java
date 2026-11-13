@@ -10,6 +10,7 @@ import com.edam.common.web.RequestContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,22 +18,25 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Writes audit events.
+ * Writes audit events (Module K).
  *
  * <h2>Propagation: {@code REQUIRES_NEW}</h2>
- * An audit record for a <em>business attempt</em> must survive the rollback of that attempt. When
- * an approval action fails after the workflow has advanced one step, the evidence that the action
- * was attempted is exactly what a control reviewer needs. Recording it in the caller's transaction
- * would discard it. This is the deliberate exception to "one transaction per use case"; the audit
- * write is not part of the business unit of work, it observes it.
+ * Evidence of a <em>business attempt</em> must survive the rollback of that attempt. If an
+ * approval fails after the workflow advanced one step, the fact that it was attempted is exactly
+ * what a control reviewer needs. Joining the caller's transaction would discard it on rollback,
+ * so the audit write is deliberately a separate unit of work.
  *
- * <h2>Never breaks the business path</h2>
- * A failure to persist an audit record must not fail a payment-adjacent business operation
- * silently... but it must never be silent either. Failures are logged at ERROR with the
- * correlation id, and the business operation continues: losing a request submission because the
- * audit table is unavailable would be worse. The trade-off is recorded here and in
- * {@code docs/SECURITY_AND_CONFIGURATION_GUIDE.md}; banks that require fail-closed audit can flip
- * {@code edam.audit.fail-closed=true}.
+ * <h2>Failure policy is explicit, not accidental</h2>
+ * By default a failure to persist audit does not fail the business operation, because losing a
+ * completed approval because the audit table is briefly unavailable would be worse than losing the
+ * audit row. It is never <em>silent</em>: the failure is logged at ERROR with the correlation id.
+ * A bank that requires fail-closed audit sets {@code edam.audit.fail-closed=true}, and then the
+ * business operation fails too. Both behaviours are defensible; the choice is configuration, and
+ * the trade-off is documented rather than baked in.
+ *
+ * <h2>Redaction before persistence</h2>
+ * {@link AuditValueRedactor} runs on the maps <em>before</em> serialisation, so no code path exists
+ * in which a password, token or secret reference reaches the JSONB columns.
  */
 @Service
 public class AuditRecorder {
@@ -53,7 +57,7 @@ public class AuditRecorder {
 
 	public AuditRecorder(AuditRepository repository, Auditor auditor, InstitutionContext institutionContext,
 			JsonMapper jsonMapper, ObjectProvider<RequestContext> requestContext,
-			@org.springframework.beans.factory.annotation.Value("${edam.audit.fail-closed:false}") boolean failClosed) {
+			@Value("${edam.audit.fail-closed:false}") boolean failClosed) {
 		this.repository = repository;
 		this.auditor = auditor;
 		this.institutionContext = institutionContext;
@@ -62,55 +66,45 @@ public class AuditRecorder {
 		this.failClosed = failClosed;
 	}
 
-	/** Record an event with no state diff (e.g. export, download, denial). */
+	/** Record an event with no state diff (export, download, denial, sign-in). */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
-	public void record(AuditAction action, String resourceType, Object resourceId, String summary) {
-		write(action, resourceType, resourceId, summary, null, null);
+	public void record(AuditAction action, String entityType, Object entityId) {
+		write(action, entityType, entityId, null, null);
 	}
 
-	/** Record an event with redacted before/after maps. */
+	/** Record a state change with redacted before/after maps. */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
-	public void recordChange(AuditAction action, String resourceType, Object resourceId, String summary,
-			Map<String, Object> before, Map<String, Object> after) {
-		write(action, resourceType, resourceId, summary, before, after);
+	public void recordChange(AuditAction action, String entityType, Object entityId, Map<String, Object> before,
+			Map<String, Object> after) {
+		write(action, entityType, entityId, before, after);
 	}
 
-	private void write(AuditAction action, String resourceType, Object resourceId, String summary,
-			Map<String, Object> before, Map<String, Object> after) {
+	private void write(AuditAction action, String entityType, Object entityId, Map<String, Object> before,
+			Map<String, Object> after) {
 		try {
-			AuditEvent.Builder builder = AuditEvent.builder(action, resourceType)
-				.resourceId(resourceId)
-				.summary(summary)
-				.actor(this.auditor.actor())
-				.actorUsername(this.auditor.username())
-				.actorRoles(rolesOfCurrentUser())
-				.correlationId(CorrelationId.current())
-				.institutionId(this.institutionContext.currentInstitutionId().orElse(null))
-				.beforeState(serialise(AuditValueRedactor.redact(before)))
-				.afterState(serialise(AuditValueRedactor.redact(after)));
+			AuditEvent.Builder builder = AuditEvent.builder(action, entityType)
+				.entityId(entityId)
+				.oldValues(serialise(AuditValueRedactor.redact(before)))
+				.newValues(serialise(AuditValueRedactor.redact(after)))
+				.correlationId(CorrelationId.current());
+			this.institutionContext.currentPrincipal().ifPresent(principal -> {
+				builder.performedBy(principal.userId());
+				builder.performedByUsername(principal.getUsername());
+			});
 			this.requestContext.ifAvailable(context -> {
-				builder.sourceIp(context.clientIp());
+				builder.ipAddress(context.clientIp());
+				builder.userAgent(context.userAgent());
 			});
 			this.repository.save(builder.build());
 		}
 		catch (RuntimeException ex) {
-			// Never log the payload: it may contain business detail even after redaction.
-			log.error("audit.write_failed action={} resourceType={} resourceId={} correlationId={} type={}", action,
-					resourceType, resourceId, CorrelationId.current(), ex.getClass().getName(), ex);
+			// The payload is never logged: even redacted, it carries business detail.
+			log.error("audit.write_failed action={} entityType={} entityId={} correlationId={} type={}", action,
+					entityType, entityId, CorrelationId.current(), ex.getClass().getName(), ex);
 			if (this.failClosed) {
 				throw ex;
 			}
 		}
-	}
-
-	private String rolesOfCurrentUser() {
-		return this.institutionContext.currentPrincipal().map(principal -> {
-			var selected = this.institutionContext.currentInstitution().orElse(null);
-			if (selected == null) {
-				return null;
-			}
-			return String.join(",", principal.rolesIn(selected));
-		}).orElse(null);
 	}
 
 	private String serialise(Map<String, Object> state) {
@@ -121,15 +115,15 @@ public class AuditRecorder {
 			return this.jsonMapper.writeValueAsString(state);
 		}
 		catch (RuntimeException ex) {
-			// A diff that cannot be serialised is replaced by a marker, never by the raw value.
+			// A diff that cannot be serialised is marked, never replaced by the raw value.
 			return "{\"unserialisable\":true}";
 		}
 	}
 
-	/** Actor snapshot for read models, so a caller does not need the principal plumbing. */
-	public record ActorInfo(String employeeId, String username, java.util.Set<String> roles) {
-		public static ActorInfo of(EdamPrincipal principal, String institutionCode) {
-			return new ActorInfo(principal.employeeId(), principal.getUsername(), principal.rolesIn(institutionCode));
+	/** Actor snapshot for read models. */
+	public record ActorInfo(java.util.UUID userId, String username, java.util.Set<String> roleCodes) {
+		public static ActorInfo of(EdamPrincipal principal) {
+			return new ActorInfo(principal.userId(), principal.getUsername(), principal.roleCodes());
 		}
 	}
 

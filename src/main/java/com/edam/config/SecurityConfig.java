@@ -20,7 +20,6 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
@@ -58,28 +57,29 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 public class SecurityConfig {
 
 	/**
-	 * Content-Security-Policy for the server-rendered UI. {@code 'unsafe-inline'} is
-	 * required only for the institution theme's style block; scripts stay external so no
-	 * inline JavaScript can execute.
+	 * Content-Security-Policy for an API that serves JSON only.
+	 *
+	 * <p>{@code default-src 'none'} rather than a page-friendly policy: the React client is deployed
+	 * separately, so nothing this server returns ever needs to load a script, style or font. If a browser
+	 * is ever induced to treat a JSON response as HTML, nothing in it can execute.
+	 * {@code frame-ancestors 'none'} blocks clickjacking of the API explorer and {@code base-uri 'self'}
+	 * stops a base-tag injection from retargeting relative URLs.
 	 */
-	private static final String CONTENT_SECURITY_POLICY = "default-src 'self'; "
-			+ "script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
-			+ "font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'";
+	private static final String CONTENT_SECURITY_POLICY = "default-src 'none'; "
+			+ "frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
 	@Bean
 	SecurityFilterChain securityFilterChain(HttpSecurity http, JsonMapper jsonMapper) throws Exception {
-		RequestMatcher[] publicMatchers = { PathRequest.toStaticResources().atCommonLocations(),
-				PathPatternRequestMatcher.pathPattern("/login"),
-				// Rendered by a view controller. A 403 must explain itself, not redirect to
-				// the login page, which would suggest an authentication problem.
-				PathPatternRequestMatcher.pathPattern("/access-denied"),
+		RequestMatcher[] publicMatchers = {
 				// The container's error dispatch re-enters the filter chain. Without this,
-				// an authenticated 500 would turn into a 302 to /login.
+				// an authenticated 500 would turn into a 302 to the login page.
 				PathPatternRequestMatcher.pathPattern("/error"),
-				PathPatternRequestMatcher.pathPattern("/css/**"),
-				PathPatternRequestMatcher.pathPattern("/js/**"),
-				PathPatternRequestMatcher.pathPattern("/images/**"),
-				PathPatternRequestMatcher.pathPattern("/favicon.ico"),
+				// The OpenAPI schema documents the contract, not the data. It is public so a client can
+				// be generated from it; every operation it lists still requires authentication.
+				PathPatternRequestMatcher.pathPattern("/v3/api-docs"),
+				PathPatternRequestMatcher.pathPattern("/v3/api-docs/**"),
+				PathPatternRequestMatcher.pathPattern("/swagger-ui.html"),
+				PathPatternRequestMatcher.pathPattern("/swagger-ui/**"),
 				PathPatternRequestMatcher.pathPattern("/actuator/health"),
 				PathPatternRequestMatcher.pathPattern("/actuator/health/**"),
 				PathPatternRequestMatcher.pathPattern("/actuator/info") };
@@ -90,12 +90,11 @@ public class SecurityConfig {
 			// present the token; disabling it would undermine the transactional-safety
 			// requirements of the approval workflow.
 			.csrf(csrf -> csrf.ignoringRequestMatchers(PathPatternRequestMatcher.pathPattern("/actuator/**")))
-			.formLogin(form -> form.loginPage("/login")
-				.defaultSuccessUrl("/dashboard", true)
-				.failureUrl("/login?error")
-				.permitAll())
+			// Form login is retained as the fallback local mechanism until the bank decides its identity
+			// provider. It authenticates through the EdamUserDetailsService seam, so an OIDC adapter
+			// replaces it without touching a single authorization rule.
+			.formLogin(form -> form.permitAll())
 			.logout(logout -> logout.logoutUrl("/logout")
-				.logoutSuccessUrl("/login?logout")
 				.invalidateHttpSession(true)
 				.deleteCookies("JSESSIONID"))
 			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
@@ -105,18 +104,10 @@ public class SecurityConfig {
 				.accessDeniedHandler(new JsonApiAccessDeniedHandler(jsonMapper)))
 			.headers(headers -> headers.frameOptions(frame -> frame.deny())
 				.contentSecurityPolicy(csp -> csp.policyDirectives(CONTENT_SECURITY_POLICY)))
-			// The JSP UI owns its own navigation and has no saved-request flow.
+			// No saved-request flow: replaying a stale POST after sign-in would be wrong, and an API
+			// client retries explicitly anyway.
 			.requestCache(cache -> cache.disable());
 		return http.build();
-	}
-
-	/**
-	 * Password hashing for any credential EDAM stores. BCrypt with the default strength;
-	 * a bean so a future identity adapter can swap it without touching call sites.
-	 */
-	@Bean
-	PasswordEncoder passwordEncoder() {
-		return new BCryptPasswordEncoder();
 	}
 
 	/**

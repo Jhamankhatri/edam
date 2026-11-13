@@ -1,79 +1,44 @@
 package com.edam.config;
 
-import com.edam.common.security.InstitutionContext;
-import com.edam.institution.InstitutionProperties;
-import com.edam.institution.InstitutionService;
-import com.edam.web.InstitutionViewAttributesInterceptor;
+import java.time.Clock;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
-import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-import org.springframework.web.servlet.view.InternalResourceViewResolver;
 
 /**
- * MVC wiring for the JSP UI.
+ * MVC configuration.
  *
- * <p>Spring MVC 7 renders {@code redirect:} views as plain relative URLs by default. EDAM is
- * deployed under an arbitrary servlet context path, so redirects must be context-relative
- * or the browser is sent outside the application. The resolver is therefore declared with
- * the {@code defaultViewResolver} bean name — the exact name Spring Boot's auto-configuration
- * uses — which both overrides it and keeps the prefix/suffix in one reviewable place.
+ * <h2>What happened to the view layer</h2>
+ * EDAM's earlier revision shipped a server-rendered JSP interface. The scope is now fixed:
+ * this delivery is <strong>backend only</strong>, with REST APIs that a React client consumes. The JSP
+ * pages, the theme interceptor, the view-attribute interceptor and the Jasper/JSTL dependencies are gone.
  *
- * <p>{@link InstitutionViewAttributesInterceptor} is registered for every path so that pages
- * rendered by view controllers (login, access denied) receive the same model attributes as
- * controller-rendered pages. See that class for why an interceptor rather than a
- * {@code @ControllerAdvice} is required.
+ * <p>Nothing needs a view resolver. The container's error dispatch is handled by
+ * {@code ErrorEndpointAttributes}, which answers with the standard JSON envelope, so a navigation that
+ * fails before reaching a controller still receives a well-formed error rather than a stack trace.
+ * Removing the resolver is deliberate: a resolver with no views is dead configuration that implies a
+ * presentation layer which no longer exists.
  *
- * <p>Localisation is intentionally not enabled yet: supported languages, number formats and
- * RTL support remain open decisions (NFR-10). The UI renders in the institution's configured
- * language tag until that is approved.
+ * <p>{@link WebMvcConfigurer} is still implemented so that future cross-cutting MVC concerns (a
+ * {@code HandlerInterceptor} for metrics, a message converter for a catalogue-specific type) have an
+ * obvious home without introducing a second configuration class.
  */
 @Configuration(proxyBeanMethods = false)
 public class WebMvcConfig implements WebMvcConfigurer {
 
-	private final InstitutionProperties institutionProperties;
-
-	private final InstitutionService institutionService;
-
-	private final InstitutionContext institutionContext;
-
-	public WebMvcConfig(InstitutionProperties institutionProperties, InstitutionService institutionService,
-			InstitutionContext institutionContext) {
-		this.institutionProperties = institutionProperties;
-		this.institutionService = institutionService;
-		this.institutionContext = institutionContext;
-	}
-
 	/**
-	 * JSP resolver. {@code redirectContextRelative} prepends the context path to redirect
-	 * locations; {@code exposeContextBeansAsAttributes} stays disabled so JSPs cannot reach
-	 * arbitrary Spring beans.
+	 * The application clock.
+	 *
+	 * <p>Effective dating makes "now" a business input: whether an exchange rate or a delegation rule
+	 * applies depends on the instant of the decision. Injecting a {@link Clock} rather than calling
+	 * {@code Instant.now()} at each site lets a test place a call on either side of a period boundary
+	 * without sleeping, and it keeps the time-zone question in one place — the clock is UTC, and the
+	 * organization profile decides how a timestamp is <em>rendered</em>.
 	 */
 	@Bean
-	InternalResourceViewResolver defaultViewResolver(@Value("${spring.mvc.view.prefix:/WEB-INF/jsp/}") String prefix,
-			@Value("${spring.mvc.view.suffix:.jsp}") String suffix) {
-		InternalResourceViewResolver resolver = new InternalResourceViewResolver();
-		resolver.setPrefix(prefix);
-		resolver.setSuffix(suffix);
-		resolver.setRedirectContextRelative(true);
-		resolver.setRedirectHttp10Compatible(false);
-		return resolver;
-	}
-
-	@Override
-	public void addInterceptors(InterceptorRegistry registry) {
-		registry.addInterceptor(new InstitutionViewAttributesInterceptor(this.institutionProperties,
-				this.institutionService, this.institutionContext)).addPathPatterns("/**");
-	}
-
-	@Override
-	public void addViewControllers(ViewControllerRegistry registry) {
-		// Spring Security handles the login POST; this mapping renders the form.
-		registry.addViewController("/login").setViewName("login");
-		registry.addViewController("/access-denied").setViewName("access-denied");
+	Clock applicationClock() {
+		return Clock.systemUTC();
 	}
 
 }
