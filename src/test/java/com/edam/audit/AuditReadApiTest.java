@@ -107,7 +107,6 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 	@Autowired private ExpenseCategoryRepository categories;
 	@Autowired private ExpenseNatureRepository natures;
 	@Autowired private UserRepository users;
-	@Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
 	@Autowired private tools.jackson.databind.json.JsonMapper jsonMapper;
 
 	private Department department;
@@ -572,20 +571,16 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 		// -- Keyset pagination integration tests -----------------------------------------------
 
 		/** Clear any synthetic audit events from prior tests so ordering assertions are
-		 * deterministic and counts reflect only this test's state. Production-created rows
-		 * (CREATE/SUBMIT/workflow actions) are retained by the scope of tests that need them. */
-		private void clearSyntheticAuditEvents() {
-			// new_values is a JSONB column; cast to text for LIKE matching.
-			AuditReadApiTest.this.jdbc.update(
-					"delete from audit_events where action = 'UPDATE' and cast(new_values as text) like '%synthetic-%'");
-		}
+		 * other tests — audit_events is append-only and cannot be deleted by application code.
+		 * Each test uses a unique offset (in days) from TIMELINE_ANCHOR and a unique {@code tag}
+		 * in new_values so events never collide.
+		 */
+		private static final Instant TIMELINE_ANCHOR = Instant.parse("2000-01-01T00:00:00Z");
 
 		/** Insert N synthetic UPDATE audit events for the given request, each one minute apart
-		 * starting at {@code start}, in chronological order. Returns the ids in inserted order.
-		 *
-		 * <p>Callers must pass a {@code start} safely before the moment the first page is fetched
-		 * (e.g. a fixed historical instant) so events are not excluded by {@code boundedAt}. */
-		private java.util.List<UUID> seedAuditEvents(UUID requestId, Instant start, int count) {
+		 * starting at {@code start}, tagged with {@code tag} in new_values. Returns the ids in
+		 * inserted order. */
+		private java.util.List<UUID> seedAuditEvents(UUID requestId, Instant start, int count, String tag) {
 			java.util.List<UUID> ids = new java.util.ArrayList<>();
 			for (int i = 0; i < count; i++) {
 				Instant ts = start.plus(i, ChronoUnit.MINUTES);
@@ -594,16 +589,12 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 						.performedBy(AuditReadApiTest.this.requester.getId())
 						.performedByUsername(AuditReadApiTest.this.requester.getUsername())
 						.createdAt(ts)
-						.newValues("{\"note\":\"synthetic-" + i + "\"}")
+						.newValues("{\"note\":\"" + tag + "-" + i + "\"}")
 						.build();
 				ids.add(AuditReadApiTest.this.auditRepository.save(e).getId());
 			}
 			return ids;
 		}
-
-		/** A deterministic historical instant used to anchor seeded timeline events so they
-		 * always fall before the first page's {@code boundedAt}. */
-		private static final Instant TIMELINE_ANCHOR = Instant.parse("2000-01-01T00:00:00Z");
 
 		private record PageResult(List<String> eventIds, List<String> sources, List<Instant> timestamps,
 				String nextCursor, boolean hasNext, Instant boundedAt, int size) {}
@@ -637,13 +628,13 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("cursor pagination walks three+ pages returning every event exactly once in order")
 		void keysetPaginationAcrossPages() throws Exception {
-			clearSyntheticAuditEvents();
+			
 			// Use a clean request so seeded events dominate the timeline.
 			UUID requestId = createAndSubmitRequest();
 			// Seed 20 synthetic events spaced 1 minute apart starting at a fixed historical anchor
-			// so they always fall before boundedAt and deterministically produce multiple pages.
+			// (unique offset for this test so other tests' rows don't interfere).
 			// Page size 5 → at least 5 pages.
-			java.util.List<UUID> seeded = seedAuditEvents(requestId, TIMELINE_ANCHOR, 20);
+			java.util.List<UUID> seeded = seedAuditEvents(requestId, TIMELINE_ANCHOR.plus(100, ChronoUnit.DAYS), 20, "kpa");
 
 			// Collect all events from first page through end.
 			java.util.Set<String> seen = new java.util.LinkedHashSet<>();
@@ -705,14 +696,15 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("equal timestamps within a single source are ordered by id")
 		void sameSourceEqualTimestampOrderedById() throws Exception {
-			clearSyntheticAuditEvents();
+			
 			UUID requestId = createAndSubmitRequest();
 			// Two events at the exact same instant; rely on id tie-breaker (UUID v1 sortable
 			// ordering is not guaranteed, but we only require deterministic: the API must return
 			// the two in a stable, repeatable order across pages).
-			// Use the anchor plus a small offset so these events fall before boundedAt; since they
-			// share the same timestamp, ordering must be deterministic by id.
-			Instant ts = TIMELINE_ANCHOR.plus(30, ChronoUnit.MINUTES);
+			// Use the anchor plus a large per-test offset so these events fall before boundedAt and
+			// do not collide with other tests' synthetic rows; they share the same timestamp so
+			// ordering must be deterministic by id.
+			Instant ts = TIMELINE_ANCHOR.plus(101, ChronoUnit.DAYS);
 			java.util.List<UUID> ids = new java.util.ArrayList<>();
 			for (int i = 0; i < 2; i++) {
 				AuditEvent e = AuditEvent.builder(AuditAction.UPDATE, "ExpenseRequest")
@@ -793,11 +785,11 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("cursor from another request is rejected with 400")
 		void crossRequestCursorIs400() throws Exception {
-			clearSyntheticAuditEvents();
+			
 			UUID requestA = createAndSubmitRequest();
 			UUID requestB = createAndSubmitRequest();
 			// Seed enough events on A so the first page ends with hasNext=true and a cursor.
-			seedAuditEvents(requestA, TIMELINE_ANCHOR, 10);
+			seedAuditEvents(requestA, TIMELINE_ANCHOR.plus(102, ChronoUnit.DAYS), 10, "crc");
 			PageResult page = fetchPage(requestA, 5, null, requesterPrincipal());
 			assertThat(page.nextCursor).isNotNull();
 			AuditReadApiTest.this.mockMvc
@@ -811,10 +803,10 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("authorization is re-evaluated on every page")
 		void authorizationRecheckedOnEachPage() throws Exception {
-			clearSyntheticAuditEvents();
+			
 			UUID requestId = createAndSubmitRequest();
-			// Seed a few events so there are at least two pages (anchor is well before boundedAt).
-			seedAuditEvents(requestId, TIMELINE_ANCHOR, 10);
+			// Seed a few events so there are at least two pages (unique offset for this test).
+			seedAuditEvents(requestId, TIMELINE_ANCHOR.plus(103, ChronoUnit.DAYS), 10, "auth");
 			PageResult page = fetchPage(requestId, 5, null, requesterPrincipal());
 			assertThat(page.nextCursor).isNotNull();
 			// An out-of-department caller cannot use the valid cursor.
@@ -830,7 +822,7 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("events after boundedAt are excluded from the pagination session")
 		void eventsAfterBoundedAtAreExcluded() throws Exception {
-			clearSyntheticAuditEvents();
+			
 			UUID requestId = createAndSubmitRequest();
 			// Insert an event whose timestamp is 1s in the future, take first page (fixes boundedAt).
 			// Wait for boundedAt to be in the past relative to the late event so the late event is
@@ -870,7 +862,7 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 		@Test
 		@DisplayName("exhausted cursor produces no additional records on re-presentation")
 		void exhaustedCursorIsStable() throws Exception {
-			clearSyntheticAuditEvents();
+			
 			UUID requestId = createAndSubmitRequest();
 			// Walk the entire timeline with a small page size; a second fresh walk (same moment,
 			// no new events) must return the identical set of events.
