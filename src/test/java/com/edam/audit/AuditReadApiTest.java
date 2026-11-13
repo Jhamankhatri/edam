@@ -108,6 +108,7 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 	@Autowired private ExpenseNatureRepository natures;
 	@Autowired private UserRepository users;
 	@Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
+	@Autowired private tools.jackson.databind.json.JsonMapper jsonMapper;
 
 	private Department department;
 	private Department otherDepartment;
@@ -759,20 +760,14 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 			payload.put("b", Instant.now().toString());
 			payload.put("r", requestId.toString());
 			payload.put("k", Map.of());
-			try {
-				byte[] bytes = new tools.jackson.databind.json.JsonMapperBuilder().build()
-						.writeValueAsBytes(payload);
-				String encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-				AuditReadApiTest.this.mockMvc
-						.perform(get(REQUESTS + "/{id}/activity", requestId)
-								.queryParam("cursor", encoded)
-								.with(user(requesterPrincipal()))
-								.accept(MediaType.APPLICATION_JSON))
-						.andExpect(status().isBadRequest());
-			}
-			catch (Exception ex) {
-				throw new RuntimeException(ex);
-			}
+			byte[] bytes = AuditReadApiTest.this.jsonMapper.writeValueAsBytes(payload);
+			String encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+			AuditReadApiTest.this.mockMvc
+					.perform(get(REQUESTS + "/{id}/activity", requestId)
+							.queryParam("cursor", encoded)
+							.with(user(requesterPrincipal()))
+							.accept(MediaType.APPLICATION_JSON))
+					.andExpect(status().isBadRequest());
 		}
 
 		@Test
@@ -843,26 +838,19 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 		@DisplayName("exhausted cursor produces no additional records on re-presentation")
 		void exhaustedCursorIsStable() throws Exception {
 			UUID requestId = createAndSubmitRequest();
-			// Walk once with a large page to ensure the timeline is small enough to fit on one
-			// page for the "exhausted" check below.
-			fetchPage(requestId, 200, null, requesterPrincipal());
-			// After exhaustion, nextCursor is null. Also, when the last page returns hasNext=false
-			// its items should be a suffix of the timeline; presenting a previous cursor (the one
-			// before final page) should return identical results.
-			// A simpler proof: walk the entire timeline with a small page size and assert that
-			// following nextCursor twice from the same point returns the same set of items (no
-			// new rows appear once the source is stable).
-			cursor = null;
-			java.util.List<String> firstWalk = new java.util.ArrayList<>();
-			while (cursor != null || firstWalk.isEmpty()) {
+			// Walk the entire timeline with a small page size; a second fresh walk (same moment,
+			// no new events) must return the identical set of events.
+			String cursor = null;
+			List<String> firstWalk = new ArrayList<>();
+			while (true) {
 				PageResult p = fetchPage(requestId, 5, cursor, requesterPrincipal());
 				firstWalk.addAll(p.eventIds);
+				if (!p.hasNext) break;
 				cursor = p.nextCursor;
-				if (firstWalk.size() > 1000) break; // safety
+				if (firstWalk.size() > 1000) {
+					org.junit.jupiter.api.Assertions.fail("first walk did not terminate");
+				}
 			}
-			// Walk again with a fresh cursor (new boundedAt); we inserted no new events, so the
-			// set of events must be identical (membership, not ordering — boundedAt is slightly
-			// later but no events exist in that gap).
 			cursor = null;
 			List<String> secondWalk = new ArrayList<>();
 			while (true) {
