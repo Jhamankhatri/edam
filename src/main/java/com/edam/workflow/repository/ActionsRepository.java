@@ -7,7 +7,6 @@ import java.util.UUID;
 
 import com.edam.workflow.model.WorkflowAction;
 
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -27,32 +26,30 @@ public interface ActionsRepository extends JpaRepository<WorkflowAction, UUID> {
 	List<WorkflowAction> findByWorkflowTaskIdInOrderByActionAtAsc(List<UUID> taskIds);
 
 	/**
-	 * Oldest-first keyset fetch for the timeline: at most {@code fetchLimit} actions whose task
-	 * is in {@code taskIds}, strictly after {@code (afterTs, afterId)} and not after
-	 * {@code boundedAt}. Ordering is {@code (action_at ASC, id ASC)} for deterministic
-	 * tie-breaking.
+	 * Oldest-first keyset fetch for the timeline. Returns at most {@code fetchLimit} actions
+	 * whose task is in {@code taskIds}, with {@code action_at} not after {@code boundedAt} and
+	 * strictly after the cursor key {@code (afterTs, afterId)}. Native query with explicit
+	 * casts keeps Postgres from inferring {@code unknown} for nullable parameters.
 	 */
-	@Query("""
-			select a from WorkflowAction a
-			where a.workflowTaskId in :taskIds
-			  and a.actionAt <= :boundedAt
-			  and (   :afterTs is null
-			       or a.actionAt > :afterTs
-			       or (a.actionAt = :afterTs and (:afterId is null or a.id > :afterId)))
-			order by a.actionAt asc, a.id asc
-			""")
+	@Query(value = """
+			select a.* from workflow_actions a
+			where a.workflow_task_id = any (cast(:taskIds as uuid[]))
+			  and a.action_at <= :boundedAt
+			  and (   cast(:afterTs as timestamptz) is null
+			       or a.action_at > cast(:afterTs as timestamptz)
+			       or (a.action_at = cast(:afterTs as timestamptz)
+			           and (cast(:afterId as uuid) is null or a.id > cast(:afterId as uuid))))
+			order by a.action_at asc, a.id asc
+			limit :fetchLimit
+			""", nativeQuery = true)
 	List<WorkflowAction> findForTasksAfter(@Param("taskIds") List<UUID> taskIds,
 			@Param("boundedAt") Instant boundedAt,
 			@Param("afterTs") Instant afterTs,
 			@Param("afterId") UUID afterId,
-			Pageable pageable);
+			@Param("fetchLimit") int fetchLimit);
 
 	/**
 	 * The full action history of an instance, oldest first.
-	 *
-	 * <p>Callers pass the instance's task ids, which they already hold. Filtering on the ids keeps this a
-	 * scoped read: deriving the instance from the action would require either a join the entity does not map
-	 * or a scan of every action ever recorded. An empty instance simply has no actions.
 	 */
 	default List<WorkflowAction> findForInstance(List<UUID> taskIds) {
 		if (taskIds.isEmpty()) {

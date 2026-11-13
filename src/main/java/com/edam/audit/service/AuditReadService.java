@@ -43,7 +43,6 @@ import com.edam.workflow.repository.TasksRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -307,8 +306,7 @@ public class AuditReadService {
 		if (instance == null) {
 			return List.of();
 		}
-		Pageable pageable = PageRequest.of(0, fetchLimit);
-		return this.tasks.findForInstanceAfter(instance.getId(), boundedAt, after.timestamp(), after.id(), pageable);
+		return this.tasks.findForInstanceAfter(instance.getId(), boundedAt, after.timestamp(), after.id(), fetchLimit);
 	}
 
 	private List<WorkflowAction> fetchActionEventsFor(ExpenseRequest request, Instant boundedAt, CursorKey after,
@@ -318,14 +316,13 @@ public class AuditReadService {
 			return List.of();
 		}
 		// Only load task ids for this instance; keyset filtering happens in SQL so we do NOT
-		// materialise the full history.
+		// materialise the full action history.
 		List<UUID> taskIds = this.tasks.findByWorkflowInstanceIdOrderByAssignedAtAsc(instance.getId())
 				.stream().map(WorkflowTask::getId).toList();
 		if (taskIds.isEmpty()) {
 			return List.of();
 		}
-		Pageable pageable = PageRequest.of(0, fetchLimit);
-		return this.actions.findForTasksAfter(taskIds, boundedAt, after.timestamp(), after.id(), pageable);
+		return this.actions.findForTasksAfter(taskIds, boundedAt, after.timestamp(), after.id(), fetchLimit);
 	}
 
 	private Map<UUID, String> loadStateNames(ExpenseRequest request) {
