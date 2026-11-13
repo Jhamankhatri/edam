@@ -531,10 +531,10 @@ public class AuditReadService {
 			}
 			Instant boundedAt = Instant.parse(root.get("b").asText());
 			Map<String, CursorKey> lastKeys = new LinkedHashMap<>();
-			tools.jackson.databind.JsonNode keys = root.path("k");
-			Iterator<Map.Entry<String, tools.jackson.databind.JsonNode>> fields = keys.fields();
+			tools.jackson.databind.JsonNode keysNode = root.path("k");
+			var fields = keysNode.fields();
 			while (fields.hasNext()) {
-				Map.Entry<String, tools.jackson.databind.JsonNode> entry = fields.next();
+				var entry = fields.next();
 				Instant ts = Instant.parse(entry.getValue().get("t").asText());
 				UUID keyId = UUID.fromString(entry.getValue().get("i").asText());
 				lastKeys.put(entry.getKey(), new CursorKey(ts, keyId));
