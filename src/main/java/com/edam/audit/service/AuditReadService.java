@@ -1,17 +1,25 @@
 package com.edam.audit.service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
+import com.edam.audit.dto.AuditDtos;
 import com.edam.audit.dto.AuditDtos.AuditEventDetail;
 import com.edam.audit.dto.AuditDtos.AuditEventSummary;
 import com.edam.audit.dto.AuditDtos.TimelineEntry;
+import com.edam.audit.dto.AuditDtos.TimelinePage;
 import com.edam.common.api.ErrorCode;
 import com.edam.common.api.PageQuery;
 import com.edam.common.api.PageResponse;
@@ -21,6 +29,7 @@ import com.edam.common.audit.AuditRepository;
 import com.edam.common.audit.AuditValueRedactor;
 import com.edam.common.exception.BusinessException;
 import com.edam.common.exception.ResourceNotFoundException;
+import com.edam.common.security.DataScope;
 import com.edam.common.security.EdamPrincipal;
 import com.edam.expenserequest.model.ExpenseRequest;
 import com.edam.expenserequest.repository.ExpenseRequestRepository;
@@ -37,6 +46,7 @@ import com.edam.workflow.repository.TasksRepository;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -44,6 +54,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -52,18 +63,48 @@ import tools.jackson.databind.json.JsonMapper;
  * <h2>Why this is separate from {@code common.audit}</h2>
  * {@code common.audit} owns the write path, redaction and append-only guarantees; it lives in
  * {@code common} because every business module writes audit. The read side is an application
- * feature — paginated search, detail, timeline — with its own authorization rules. Separating
- * them keeps the write surface narrow and means no controller needs to depend on internal
- * builder methods.
+ * feature — paginated search, detail, timeline — with authorization rules that depend on the
+ * caller's data scopes, so it lives in the {@code audit} package.
  *
  * <h2>Bounded search window</h2>
- * BRD AUD-01 forbids unbounded reads of an append-only table. The service enforces both a
- * default window (last 24 hours) and a hard maximum of 31 days per request. Clients can page
- * through history explicitly; a single request cannot scan the entire table.
+ * BRD AUD-01 forbids unbounded reads of an append-only table. The service enforces both a default
+ * window (last 24 hours) and a hard maximum of 31 days per request.
+ *
+ * <h2>Authorization is applied at the database</h2>
+ * {@link AuditRepository#search} is a native query that joins {@code expense_requests} for events
+ * whose {@code entity_type = 'ExpenseRequest'}, applying the same visibility predicate the
+ * request register uses. This keeps {@code totalElements} accurate (no invisible rows counted)
+ * and avoids N+1 post-filtering. Orphaned request events (the {@code expense_requests} row no
+ * longer exists) are visible only to installation-wide auditors.
+ *
+ * <h2>Timeline pagination is keyset-based</h2>
+ * The timeline endpoint issues one bounded ASC keyset query per source (audit events, workflow
+ * tasks, workflow actions) and performs a k-way merge in memory for one page at a time. Each
+ * source query fetches at most {@code size + 1} rows after the per-source cursor key, so nothing
+ * is loaded beyond what is required for the next merge step. The cursor is an opaque token that
+ * fixes the upper bound ({@code boundedAt}) and the last-returned key per source, so pages stay
+ * stable as new events arrive mid-browse.
+ *
+ * <h3>Consistency guarantee (bounded snapshot, not a DB snapshot)</h3>
+ * The first request captures {@code boundedAt = Instant.now()}; subsequent pages reuse that
+ * instant. Events with {@code timestamp > boundedAt} are excluded from the entire pagination
+ * session, which prevents new events from shifting pages or producing duplicates. This is a
+ * <b>bounded application-level snapshot</b>:
+ * <ul>
+ *   <li>Events that commit after {@code boundedAt} are never returned in this session.</li>
+ *   <li>Events that commit <i>before</i> {@code boundedAt} but whose transaction commits after
+ *       the first page query runs <b>can</b> appear on a later page — we do not hold a
+ *       transaction across HTTP requests, and we do not use REPEATABLE READ / SERIALIZABLE.
+ *       Such events appear in ascending order on a later page, never duplicated.</li>
+ *   <li>Callers that need strict point-in-time semantics must refresh (omit {@code cursor}) and
+ *       re-read from the start.</li>
+ * </ul>
+ * The guarantee is therefore "no duplicates, no misses for events commit-visible before the
+ * first page scan reaches their timestamp, and no events after boundedAt," not a true
+ * cross-request database snapshot.
  *
  * <h2>No logging of payloads</h2>
- * Rule #8 of the task is "do not log audit search results or sensitive audit payloads". Log
- * statements here intentionally exclude old/new values and remarks.
+ * Log statements here intentionally exclude old/new values and remarks (rule #8).
  */
 @Service
 public class AuditReadService {
@@ -76,20 +117,33 @@ public class AuditReadService {
 	/** Default window when the caller supplies no bounds. */
 	static final Duration DEFAULT_WINDOW = Duration.ofHours(24);
 
-	/**
-	 * Hard cap on timeline materialisation. A single request's audit+workflow history is bounded
-	 * by workflow depth and number of updates, but the cap guarantees a pathological request
-	 * (tens of thousands of edits) cannot exhaust memory.
-	 */
-	static final int MAX_TIMELINE_ENTRIES = 2000;
+	/** Maximum page size for the timeline endpoint. */
+	public static final int MAX_TIMELINE_PAGE_SIZE = 200;
 
-	/** Event source tags for timeline entries (visible in the DTO, not persisted). */
+	/** Default timeline page size. */
+	public static final int DEFAULT_TIMELINE_PAGE_SIZE = 50;
+
+	/** Cursor format version — bump on structural changes so stale cursors are rejected cleanly. */
+	private static final int CURSOR_VERSION = 1;
+	private static final String HMAC_ALGORITHM = "HmacSHA256";
+
+	/**
+	 * Per-source cursor keys and response-source strings. The encoding uses these exact keys
+	 * (lower-case identifiers "audit"/"task"/"action"); the human-readable SOURCE_* constants
+	 * are used in the response payload.
+	 */
 	static final String SOURCE_AUDIT = "AUDIT";
 	static final String SOURCE_WORKFLOW = "WORKFLOW_ACTION";
 	static final String SOURCE_TASK = "WORKFLOW_TASK";
-
-	/** Entity type that audit uses for expense request records. */
+	static final int SOURCE_ORDER_AUDIT = 0;
+	static final int SOURCE_ORDER_TASK = 1;
+	static final int SOURCE_ORDER_WORKFLOW = 2;
 	static final String ENTITY_TYPE_REQUEST = "ExpenseRequest";
+
+	/** Cursor payload keys (serialised into the opaque token). */
+	private static final String CURSOR_KEY_AUDIT = "audit";
+	private static final String CURSOR_KEY_TASK = "task";
+	private static final String CURSOR_KEY_ACTION = "action";
 
 	private static final TypeReference<LinkedHashMap<String, Object>> MAP_TYPE =
 			new TypeReference<>() {
@@ -104,10 +158,12 @@ public class AuditReadService {
 	private final StatesRepository states;
 	private final UserRepository users;
 	private final JsonMapper jsonMapper;
+	private final byte[] cursorHmacKey;
 
 	public AuditReadService(AuditRepository audit, ExpenseRequestRepository requests,
 			ExpenseRequestService requestVisibility, InstancesRepository instances, TasksRepository tasks,
-			ActionsRepository actions, StatesRepository states, UserRepository users, JsonMapper jsonMapper) {
+			ActionsRepository actions, StatesRepository states, UserRepository users, JsonMapper jsonMapper,
+			@Value("${edam.cursor-hmac-key:}") String cursorHmacKeyProperty) {
 		this.audit = audit;
 		this.requests = requests;
 		this.requestVisibility = requestVisibility;
@@ -117,19 +173,34 @@ public class AuditReadService {
 		this.states = states;
 		this.users = users;
 		this.jsonMapper = jsonMapper;
+		this.cursorHmacKey = resolveCursorHmacKey(cursorHmacKeyProperty);
+	}
+
+	/**
+	 * Resolves the HMAC key used to sign timeline cursors. If no key is configured (e.g. in a
+	 * local dev environment), derive a deterministic per-process key from an ephemeral random so
+	 * cursors still cannot be forged across process restarts — a client that tampers with a
+	 * cursor in a single running server is still caught. Production deployments must set
+	 * {@code edam.cursor-hmac-key} (or {@code EDAM_CURSOR_HMAC_KEY}) to a stable secret.
+	 */
+	private static byte[] resolveCursorHmacKey(String configured) {
+		String key = (configured == null) ? "" : configured.trim();
+		if (key.isEmpty()) {
+			// Generate a random per-process key; cursors will not survive restart, which is fine
+			// for local development. We use 32 bytes for HS256.
+			byte[] ephemeral = new byte[32];
+			new java.security.SecureRandom().nextBytes(ephemeral);
+			key = Base64.getEncoder().encodeToString(ephemeral);
+			log.warn("edam.cursor-hmac-key is not configured; using an ephemeral per-process key. "
+					+ "Set EDAM_CURSOR_HMAC_KEY in production.");
+		}
+		return key.getBytes(StandardCharsets.UTF_8);
 	}
 
 	// ---------------------------------------------------------------------------------------------
 	// Search
 	// ---------------------------------------------------------------------------------------------
 
-	/**
-	 * Paginated audit search.
-	 *
-	 * <p>The caller must already hold {@code audit:view}. This method does not re-check that
-	 * permission — the aspect does — but it does enforce window bounds and never loads payload
-	 * columns in the list query.
-	 */
 	@Transactional(readOnly = true)
 	public PageResponse<AuditEventSummary> search(SearchCriteria criteria, PageQuery pageQuery,
 			EdamPrincipal caller) {
@@ -137,27 +208,27 @@ public class AuditReadService {
 		String actorName = (criteria.actorName() == null || criteria.actorName().isBlank())
 				? ""
 				: criteria.actorName().trim();
-		Pageable pageable = pageQuery.toPageable(Sort.by(Sort.Direction.DESC, "createdAt"));
-		Page<AuditEvent> page = this.audit.search(window[0], window[1], criteria.action(),
+		Pageable pageable = pageQuery.toPageable(Sort.unsorted());
+		Scope scope = Scope.from(caller);
+		String actionName = criteria.action() == null ? null : criteria.action().name();
+		Page<AuditEvent> page = this.audit.search(window[0], window[1], actionName,
 				normalize(criteria.entityType()), normalize(criteria.entityId()), criteria.actorId(),
-				normalize(criteria.correlationId()), actorName, pageable);
+				normalize(criteria.correlationId()), actorName, caller.userId(), scope.installationWide(),
+				scope.deptIdsArray(), scope.branchIdsArray(), pageable);
 		return PageResponse.of(page, this::toSummary);
 	}
 
-	/** Single event detail. Enforces request-level visibility for request events. */
 	@Transactional(readOnly = true)
 	public AuditEventDetail detail(UUID id, EdamPrincipal caller) {
 		AuditEvent event = this.audit.findById(id)
 				.orElseThrow(() -> new ResourceNotFoundException("AuditEvent", id));
 		if (ENTITY_TYPE_REQUEST.equals(event.getEntityType()) && event.getEntityId() != null) {
-			// The auditor must also be able to see the request to read the request's detail diff.
-			// A bare audit:view lets an auditor browse the register but not read another user's
-			// request diff (rule #2).
 			UUID requestId = parseUuid(event.getEntityId());
 			if (requestId != null) {
 				ExpenseRequest request = this.requests.findById(requestId).orElse(null);
-				if (request == null || !this.requestVisibility.isVisible(request, caller)) {
-					// 404 rather than 403: mirrors the existing request controller.
+				// Mirror search policy: orphaned request events visible only to installation-wide auditors.
+				boolean orphanedVisible = request == null && (caller != null && caller.hasInstallationScope());
+				if (request == null ? !orphanedVisible : !this.requestVisibility.isVisible(request, caller)) {
 					throw new ResourceNotFoundException("AuditEvent", id);
 				}
 			}
@@ -166,97 +237,157 @@ public class AuditReadService {
 	}
 
 	// ---------------------------------------------------------------------------------------------
-	// Request activity timeline
+	// Request activity timeline (keyset pagination)
 	// ---------------------------------------------------------------------------------------------
 
 	/**
-	 * Activity timeline for a request, merged from audit events, workflow actions, and task assignments.
+	 * Returns one page of the request activity timeline.
 	 *
-	 * <p>The caller must already be authorized to read the request. The service re-validates that via
-	 * {@link ExpenseRequestService#isVisible} so the rule is enforced in the service layer, not only
-	 * in the controller.
+	 * <p>Consistency model: every page is evaluated against the {@code boundedAt} instant recorded
+	 * in the cursor (or {@code Instant.now()} on the first request). Events with timestamp after
+	 * {@code boundedAt} are excluded from the entire pagination session, so new events arriving
+	 * mid-browse do not shift pages or produce duplicates. Events that commit before
+	 * {@code boundedAt} but after the page is scanned may appear on later pages; see class
+	 * Javadoc for the exact bounded-snapshot guarantee.
 	 */
 	@Transactional(readOnly = true)
-	public PageResponse<TimelineEntry> requestTimeline(UUID requestId, PageQuery pageQuery,
+	public TimelinePage requestTimeline(UUID requestId, Integer requestedSize, String encodedCursor,
 			EdamPrincipal caller) {
 		ExpenseRequest request = this.requests.findById(requestId)
 				.orElseThrow(() -> new ResourceNotFoundException("ExpenseRequest", requestId));
 		if (!this.requestVisibility.isVisible(request, caller)) {
 			throw new ResourceNotFoundException("ExpenseRequest", requestId);
 		}
+		int size = (requestedSize == null || requestedSize <= 0)
+				? DEFAULT_TIMELINE_PAGE_SIZE
+				: Math.min(requestedSize, MAX_TIMELINE_PAGE_SIZE);
 
-		List<TimelineEntry> entries = new ArrayList<>();
-		// 1. Audit events for the request.
-		for (AuditEvent event : this.audit
-				.findByEntityTypeAndEntityIdOrderByCreatedAtDesc(ENTITY_TYPE_REQUEST,
-						requestId.toString(), Pageable.unpaged())) {
-			entries.add(timelineFromAudit(event));
+		// Re-decode the cursor each request so authorization is re-checked against the URL id.
+		TimelineCursor cursor = decodeCursor(encodedCursor, requestId);
+
+		CursorKey auditKey = cursor.lastKeys.getOrDefault(CURSOR_KEY_AUDIT, new CursorKey(null, null));
+		CursorKey taskKey = cursor.lastKeys.getOrDefault(CURSOR_KEY_TASK, new CursorKey(null, null));
+		CursorKey actionKey = cursor.lastKeys.getOrDefault(CURSOR_KEY_ACTION, new CursorKey(null, null));
+
+		// Fetch size+1 per source: the extra row tells us there is more in that source, and it
+		// stays available for the next merge step after we emit `size` rows.
+		int perSourceLimit = size + 1;
+		List<AuditEvent> auditRows = fetchAuditEventsFor(requestId, cursor.boundedAt, auditKey, perSourceLimit);
+		List<WorkflowTask> taskRows = fetchTaskEventsFor(request, cursor.boundedAt, taskKey, perSourceLimit);
+		List<WorkflowAction> actionRows = fetchActionEventsFor(request, cursor.boundedAt, actionKey, perSourceLimit);
+
+		Map<UUID, String> stateNames = loadStateNames(request);
+		List<TimelineEntry> all = new ArrayList<>(auditRows.size() + taskRows.size() + actionRows.size());
+		auditRows.forEach(e -> all.add(timelineFromAudit(e)));
+		taskRows.forEach(t -> all.add(timelineFromAssignment(t)));
+		actionRows.forEach(a -> all.add(timelineFromAction(a, stateNames)));
+
+		all.sort(TimelineKey.ORDER);
+
+		boolean hasMoreInAnySource = auditRows.size() > size || taskRows.size() > size || actionRows.size() > size;
+		List<TimelineEntry> page;
+		List<TimelineEntry> remainder;
+		if (all.size() <= size) {
+			page = all;
+			remainder = List.of();
+		} else {
+			page = new ArrayList<>(all.subList(0, size));
+			remainder = all.subList(size, all.size());
+		}
+		// hasNext is true iff any source returned a "look-ahead" row OR there are still entries
+		// after the last emitted one in the merged buffer.
+		boolean hasNext = hasMoreInAnySource || !remainder.isEmpty();
+
+		// Build next-page cursor: for each source, record the last (timestamp,id) of an entry from
+		// that source that was actually emitted into `page`. If a source had no emitted entry in
+		// this page (only buffered, or not present), carry forward its previous cursor key so the
+		// next fetch continues from the same point.
+		Map<String, CursorKey> nextLastKeys = new LinkedHashMap<>(cursor.lastKeys);
+		for (TimelineEntry e : page) {
+			String k = cursorKeyFor(e.source());
+			if (k != null) {
+				nextLastKeys.put(k, new CursorKey(e.timestamp(), e.eventId()));
+			}
 		}
 
-		// 2. Workflow actions and task assignments for the current (or only) workflow instance.
-		this.instances.findByExpenseRequestId(requestId).ifPresent(instance ->
-				appendWorkflowEntries(entries, instance));
-
-		if (entries.size() > MAX_TIMELINE_ENTRIES) {
-			// Truncate deterministically by recency rather than failing the read. The paged
-			// response still reports the capped total so the UI can surface the cap.
-			entries.sort((a, b) -> {
-				int c = b.timestamp().compareTo(a.timestamp());
-				if (c != 0) {
-					return c;
-				}
-				return Integer.compare(sourceOrder(b.source()), sourceOrder(a.source()));
-			});
-			List<TimelineEntry> recent = new ArrayList<>(entries.subList(0, MAX_TIMELINE_ENTRIES));
-			entries.clear();
-			entries.addAll(recent);
-		}
-
-		// Deterministic ordering: (timestamp ASC, source_sequence ASC, eventId ASC). The source
-		// sequence guarantees stable ordering even when two entries share a timestamp, and keeps
-		// audit events ahead of workflow events when they describe the same submit (so "submitted"
-		// appears before the resulting assignment, which is the order a reader expects).
-		entries.sort((a, b) -> {
-			int c = a.timestamp().compareTo(b.timestamp());
-			if (c != 0) {
-				return c;
-			}
-			c = Integer.compare(sourceOrder(a.source()), sourceOrder(b.source()));
-			if (c != 0) {
-				return c;
-			}
-			String aid = a.eventId() == null ? "" : a.eventId().toString();
-			String bid = b.eventId() == null ? "" : b.eventId().toString();
-			return aid.compareTo(bid);
-		});
-
-		return paginateEntries(entries, pageQuery);
+		String nextCursor = hasNext
+				? encodeCursor(new TimelineCursor(CURSOR_VERSION, cursor.boundedAt, requestId, nextLastKeys))
+				: null;
+		// "complete" = not hasNext AND this is the first page bounded to now (i.e. there are no
+		// events later than boundedAt visible to this scan). When continuing an existing cursor we
+		// cannot cheaply re-check without a race; report false so the client must issue a fresh
+		// request to see new events.
+		boolean complete = !hasNext && encodedCursor == null;
+		return new TimelinePage(page, size, nextCursor, hasNext, cursor.boundedAt, complete);
 	}
 
 	// ---------------------------------------------------------------------------------------------
-	// Internals
+	// Source fetchers for timeline (ASC keyset queries)
 	// ---------------------------------------------------------------------------------------------
 
-	private void appendWorkflowEntries(List<TimelineEntry> entries, WorkflowInstance instance) {
-		// Task assignments come first (earliest), then workflow actions in their action_at order.
-		Map<UUID, String> stateNames = new LinkedHashMap<>();
-		this.states.findByWorkflowVersionId(instance.getWorkflowVersionId())
-				.forEach(state -> stateNames.put(state.getId(), state.getStateName()));
-		List<WorkflowTask> instanceTasks = this.tasks.findByWorkflowInstanceIdOrderByAssignedAtAsc(instance.getId());
-		for (WorkflowTask task : instanceTasks) {
-			entries.add(timelineFromAssignment(task));
+	private List<AuditEvent> fetchAuditEventsFor(UUID requestId, Instant boundedAt, CursorKey after, int fetchLimit) {
+		return this.audit.findForEntityAfter(ENTITY_TYPE_REQUEST, requestId.toString(),
+				boundedAt, after.timestamp(),
+				after.timestamp() == null ? null : after.msb(),
+				after.timestamp() == null ? null : after.lsb(),
+				fetchLimit);
+	}
+
+	private List<WorkflowTask> fetchTaskEventsFor(ExpenseRequest request, Instant boundedAt, CursorKey after,
+			int fetchLimit) {
+		WorkflowInstance instance = this.instances.findByExpenseRequestId(request.getId()).orElse(null);
+		if (instance == null) {
+			return List.of();
 		}
-		List<UUID> taskIds = instanceTasks.stream().map(WorkflowTask::getId).toList();
-		for (WorkflowAction action : this.actions.findForInstance(taskIds)) {
-			entries.add(timelineFromAction(action, stateNames));
+		Long afterMsb = after.timestamp() == null ? null : after.msb();
+		Long afterLsb = after.timestamp() == null ? null : after.lsb();
+		return this.tasks.findForInstanceAfter(instance.getId(), boundedAt, after.timestamp(), afterMsb, afterLsb,
+				fetchLimit);
+	}
+
+	private List<WorkflowAction> fetchActionEventsFor(ExpenseRequest request, Instant boundedAt, CursorKey after,
+			int fetchLimit) {
+		WorkflowInstance instance = this.instances.findByExpenseRequestId(request.getId()).orElse(null);
+		if (instance == null) {
+			return List.of();
 		}
+		Long afterMsb = after.timestamp() == null ? null : after.msb();
+		Long afterLsb = after.timestamp() == null ? null : after.lsb();
+		// SQL-level join through workflow_tasks — we never materialise the full task list or the
+		// full action history; keyset predicate + LIMIT fetchLimit keeps the result bounded.
+		return this.actions.findForInstanceAfter(instance.getId(), boundedAt, after.timestamp(), afterMsb, afterLsb,
+				fetchLimit);
+	}
+
+	private Map<UUID, String> loadStateNames(ExpenseRequest request) {
+		Map<UUID, String> names = new LinkedHashMap<>();
+		this.instances.findByExpenseRequestId(request.getId()).ifPresent(instance ->
+				this.states.findByWorkflowVersionId(instance.getWorkflowVersionId())
+						.forEach(s -> names.put(s.getId(), s.getStateName())));
+		return names;
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Mapping helpers
+	// ---------------------------------------------------------------------------------------------
+
+	private AuditEventSummary toSummary(AuditEvent event) {
+		return new AuditEventSummary(event.getId(), event.getEntityType(), event.getEntityId(),
+				event.getAction(), event.getPerformedBy(), event.getPerformedByUsername(),
+				event.getCorrelationId(), event.getCreatedAt());
+	}
+
+	private AuditEventDetail toDetail(AuditEvent event) {
+		return new AuditEventDetail(event.getId(), event.getEntityType(), event.getEntityId(),
+				event.getAction(), parseAndRedact(event.getOldValues()),
+				parseAndRedact(event.getNewValues()), event.getPerformedBy(), event.getPerformedByUsername(),
+				event.getIpAddress(), event.getCorrelationId(), event.getCreatedAt());
 	}
 
 	private TimelineEntry timelineFromAudit(AuditEvent event) {
-		String description = describeAction(event.getAction());
 		return new TimelineEntry(SOURCE_AUDIT, event.getId(), event.getCreatedAt(), event.getPerformedBy(),
-				event.getPerformedByUsername(), event.getAction().name(), description, null, null,
-				extractReason(event.getNewValues()), event.getCorrelationId());
+				event.getPerformedByUsername(), event.getAction().name(), describeAction(event.getAction()), null,
+				null, extractReason(event.getNewValues()), event.getCorrelationId());
 	}
 
 	private TimelineEntry timelineFromAssignment(WorkflowTask task) {
@@ -266,8 +397,8 @@ public class AuditReadService {
 		}
 		return new TimelineEntry(SOURCE_TASK, task.getId(), task.getAssignedAt(), task.getAssignedUserId(),
 				actorName, "ASSIGNED",
-				"Approval task assigned" + (task.getAssignedUserId() == null ? " to a role" : ""), null,
-				null, null, null);
+				"Approval task assigned" + (task.getAssignedUserId() == null ? " to a role" : ""), null, null, null,
+				null);
 	}
 
 	private TimelineEntry timelineFromAction(WorkflowAction action, Map<UUID, String> stateNames) {
@@ -322,31 +453,22 @@ public class AuditReadService {
 
 	private static int sourceOrder(String source) {
 		return switch (source) {
-			case SOURCE_AUDIT -> 0;
-			case SOURCE_TASK -> 1;
-			case SOURCE_WORKFLOW -> 2;
+			case SOURCE_AUDIT -> SOURCE_ORDER_AUDIT;
+			case SOURCE_TASK -> SOURCE_ORDER_TASK;
+			case SOURCE_WORKFLOW -> SOURCE_ORDER_WORKFLOW;
 			default -> 9;
 		};
 	}
 
-	private AuditEventSummary toSummary(AuditEvent event) {
-		// Summary deliberately excludes old/new/IP: list rows are for triage.
-		return new AuditEventSummary(event.getId(), event.getEntityType(), event.getEntityId(),
-				event.getAction(), event.getPerformedBy(), event.getPerformedByUsername(),
-				event.getCorrelationId(), event.getCreatedAt());
+	private static String cursorKeyFor(String responseSource) {
+		return switch (responseSource) {
+			case SOURCE_AUDIT -> CURSOR_KEY_AUDIT;
+			case SOURCE_TASK -> CURSOR_KEY_TASK;
+			case SOURCE_WORKFLOW -> CURSOR_KEY_ACTION;
+			default -> null;
+		};
 	}
 
-	private AuditEventDetail toDetail(AuditEvent event) {
-		return new AuditEventDetail(event.getId(), event.getEntityType(), event.getEntityId(),
-				event.getAction(), parseAndRedact(event.getOldValues()),
-				parseAndRedact(event.getNewValues()), event.getPerformedBy(), event.getPerformedByUsername(),
-				// ipAddress is part of BRD §26 "context"; we return it only to auditors (who hold
-				// audit:view). It is already column-level, not a secret, and useful for incident
-				// investigation.
-				event.getIpAddress(), event.getCorrelationId(), event.getCreatedAt());
-	}
-
-	/** Defensive second pass over the persisted JSON in case a future write path forgets redaction. */
 	private Map<String, Object> parseAndRedact(String json) {
 		if (json == null || json.isBlank()) {
 			return Map.of();
@@ -356,8 +478,6 @@ public class AuditReadService {
 			return AuditValueRedactor.redact(parsed);
 		}
 		catch (Exception ex) {
-			// If a stored payload is unreadable for any reason, surface a marker rather than the
-			// raw string — the raw string could contain anything.
 			log.warn("audit.parse_failed for event; returning marker");
 			return Map.of("_unparseable", true);
 		}
@@ -369,16 +489,14 @@ public class AuditReadService {
 		return reason == null ? null : redactFreeText(String.valueOf(reason));
 	}
 
-	/** Redact suspicious-value-shaped strings in free-text fields (e.g. remarks). */
 	private static String redactFreeText(String text) {
 		if (text == null) {
 			return null;
 		}
-		return text.replaceAll("(?i)(bearer\\s+\\S+|\\S{40,}={0,2})",
-				AuditValueRedactor.REDACTED);
+		return text.replaceAll("(?i)(bearer\\s+\\S+|\\S{40,}={0,2})", AuditValueRedactor.REDACTED);
 	}
 
-	private Instant[] resolveWindow(Instant from, Instant to) {
+	private static Instant[] resolveWindow(Instant from, Instant to) {
 		Instant end = (to == null) ? Instant.now() : to;
 		Instant start = from;
 		if (start == null) {
@@ -393,21 +511,6 @@ public class AuditReadService {
 					"The date range must not exceed " + MAX_WINDOW.toDays() + " days.");
 		}
 		return new Instant[] { start, end };
-	}
-
-	private PageResponse<TimelineEntry> paginateEntries(List<TimelineEntry> entries, PageQuery pageQuery) {
-		Pageable pageable = pageQuery.toPageable(Sort.unsorted());
-		// Timeline is naturally ordered above; apply pagination in-memory because a single request's
-		// timeline is bounded (one request ⇒ a handful of events; bounded by workflow depth and
-		// updates) and a DB Page over an in-memory merge would be more complex and no safer.
-		int size = pageable.getPageSize();
-		int page = pageable.getPageNumber();
-		int fromIndex = Math.min(page * size, entries.size());
-		int toIndex = Math.min(fromIndex + size, entries.size());
-		List<TimelineEntry> slice = entries.subList(fromIndex, toIndex);
-		int totalPages = size == 0 ? 0 : (entries.size() + size - 1) / size;
-		return new PageResponse<>(slice, page, size, entries.size(), totalPages, toIndex < entries.size(),
-				page > 0);
 	}
 
 	private static String normalize(String value) {
@@ -429,10 +532,184 @@ public class AuditReadService {
 		}
 	}
 
+	// ---------------------------------------------------------------------------------------------
+	// Cursor encoding
+	// ---------------------------------------------------------------------------------------------
+
 	/**
-	 * Input for {@link #search}. Every filter is optional; the window defaults to the last 24
-	 * hours and is capped at {@link #MAX_WINDOW}.
+	 * An opaque continuation pointer.
+	 *
+	 * <p>Wire format: {@code base64url( json({v,b,r,k,s}) )} where:
+	 * <ul>
+	 *   <li>{@code v} = cursor format version (1)</li>
+	 *   <li>{@code b} = boundedAt instant (ISO-8601)</li>
+	 *   <li>{@code r} = request id the cursor is bound to</li>
+	 *   <li>{@code k} = per-source last-emitted keys {@code {source: {t,i}}}</li>
+	 *   <li>{@code s} = HMAC-SHA256 over the canonical JSON of {@code {v,b,r,k}}, base64url-encoded</li>
+	 * </ul>
+	 * The signature prevents a client from tampering with boundedAt, request id, or per-source
+	 * keys; modification yields 400. The cursor is still NOT an authorization token — every
+	 * request re-validates visibility against the caller and ignores the request id inside the
+	 * cursor until it is compared to the URL.
 	 */
+	private record TimelineCursor(int version, Instant boundedAt, UUID requestId, Map<String, CursorKey> lastKeys) {
+	}
+
+	private record CursorKey(Instant timestamp, UUID id, long msb, long lsb) {
+		CursorKey(Instant timestamp, UUID id) {
+			this(timestamp, id, id == null ? 0L : id.getMostSignificantBits(),
+					id == null ? 0L : id.getLeastSignificantBits());
+		}
+	}
+
+	private TimelineCursor decodeCursor(String encoded, UUID requestId) {
+		if (encoded == null || encoded.isBlank()) {
+			return new TimelineCursor(CURSOR_VERSION, Instant.now(), requestId, new LinkedHashMap<>());
+		}
+		byte[] raw;
+		try {
+			raw = Base64.getUrlDecoder().decode(encoded);
+		}
+		catch (IllegalArgumentException ex) {
+			throw new BusinessException(ErrorCode.INVALID_REQUEST, "The pagination cursor is not valid.");
+		}
+		try {
+			JsonNode root = this.jsonMapper.readTree(raw);
+			if (!root.isObject()) {
+				throw new BusinessException(ErrorCode.INVALID_REQUEST, "The pagination cursor is not valid.");
+			}
+			// Verify HMAC before trusting any field — signature covers v,b,r,k.
+			String providedSig = root.path("s").asText(null);
+			if (providedSig == null) {
+				throw new BusinessException(ErrorCode.INVALID_REQUEST, "The pagination cursor is not valid.");
+			}
+			String expectedSig = signPayload(root);
+			if (!constantTimeEquals(expectedSig, providedSig)) {
+				throw new BusinessException(ErrorCode.INVALID_REQUEST, "The pagination cursor is not valid.");
+			}
+			int version = root.path("v").asInt(-1);
+			if (version != CURSOR_VERSION) {
+				throw new BusinessException(ErrorCode.INVALID_REQUEST,
+						"The pagination cursor version is not supported.");
+			}
+			if (!root.has("b") || !root.has("r")) {
+				throw new BusinessException(ErrorCode.INVALID_REQUEST, "The pagination cursor is not valid.");
+			}
+			UUID cursorReq;
+			try {
+				cursorReq = UUID.fromString(root.get("r").asText());
+			}
+			catch (IllegalArgumentException ex) {
+				throw new BusinessException(ErrorCode.INVALID_REQUEST, "The pagination cursor is not valid.");
+			}
+			if (!cursorReq.equals(requestId)) {
+				throw new BusinessException(ErrorCode.INVALID_REQUEST,
+						"The pagination cursor does not belong to this request.");
+			}
+			Instant boundedAt = Instant.parse(root.get("b").asText());
+			Map<String, CursorKey> lastKeys = new LinkedHashMap<>();
+			JsonNode keysNode = root.path("k");
+			for (String src : new String[] { CURSOR_KEY_AUDIT, CURSOR_KEY_TASK, CURSOR_KEY_ACTION }) {
+				JsonNode kv = keysNode.get(src);
+				if (kv == null || kv.isNull()) {
+					continue;
+				}
+				Instant ts = Instant.parse(kv.get("t").asText());
+				UUID keyId = UUID.fromString(kv.get("i").asText());
+				lastKeys.put(src, new CursorKey(ts, keyId));
+			}
+			return new TimelineCursor(version, boundedAt, requestId, lastKeys);
+		}
+		catch (BusinessException ex) {
+			throw ex;
+		}
+		catch (Exception ex) {
+			throw new BusinessException(ErrorCode.INVALID_REQUEST, "The pagination cursor is not valid.");
+		}
+	}
+
+	private String encodeCursor(TimelineCursor cursor) {
+		try {
+			Map<String, Object> payload = new LinkedHashMap<>();
+			payload.put("v", cursor.version());
+			payload.put("b", cursor.boundedAt().toString());
+			payload.put("r", cursor.requestId() == null ? "" : cursor.requestId().toString());
+			Map<String, Object> keys = new LinkedHashMap<>();
+			cursor.lastKeys().forEach((source, key) -> {
+				Map<String, Object> entry = new LinkedHashMap<>();
+				entry.put("t", key.timestamp().toString());
+				entry.put("i", key.id().toString());
+				keys.put(source, entry);
+			});
+			payload.put("k", keys);
+			byte[] signable = this.jsonMapper.writeValueAsBytes(payload);
+			String signature = hmacHex(signable);
+			// Re-serialize with the signature appended, so parsing and verification use identical bytes.
+			// We build the signed JSON manually to preserve the key order used for signing (v,b,r,k,s).
+			String signedJson = new String(signable, StandardCharsets.UTF_8);
+			// Insert "s":"<sig>" before the closing brace.
+			int close = signedJson.lastIndexOf('}');
+			String withSig = signedJson.substring(0, close)
+					+ ",\"s\":" + this.jsonMapper.writeValueAsString(signature)
+					+ signedJson.substring(close);
+			return Base64.getUrlEncoder().withoutPadding().encodeToString(withSig.getBytes(StandardCharsets.UTF_8));
+		}
+		catch (Exception ex) {
+			throw new IllegalStateException("Failed to encode timeline cursor", ex);
+		}
+	}
+
+	/**
+	 * Computes the HMAC-SHA256 signature for the signed portion of the cursor (the {@code {v,b,r,k}}
+	 * JSON object, serialized via Jackson to guarantee field order matches {@link #encodeCursor}).
+	 */
+	private String signPayload(JsonNode root) throws Exception {
+		Map<String, Object> canonical = new LinkedHashMap<>();
+		canonical.put("v", root.get("v").asInt());
+		canonical.put("b", root.get("b").asText());
+		canonical.put("r", root.get("r").asText());
+		Map<String, Object> keys = new LinkedHashMap<>();
+		JsonNode keysNode = root.path("k");
+		for (String src : new String[] { CURSOR_KEY_AUDIT, CURSOR_KEY_TASK, CURSOR_KEY_ACTION }) {
+			JsonNode kv = keysNode.get(src);
+			if (kv == null || kv.isNull()) {
+				continue;
+			}
+			Map<String, Object> entry = new LinkedHashMap<>();
+			entry.put("t", kv.get("t").asText());
+			entry.put("i", kv.get("i").asText());
+			keys.put(src, entry);
+		}
+		canonical.put("k", keys);
+		byte[] signable = this.jsonMapper.writeValueAsBytes(canonical);
+		return hmacHex(signable);
+	}
+
+	private String hmacHex(byte[] data) throws NoSuchAlgorithmException, InvalidKeyException {
+		Mac mac = Mac.getInstance(HMAC_ALGORITHM);
+		mac.init(new SecretKeySpec(this.cursorHmacKey, HMAC_ALGORITHM));
+		byte[] digest = mac.doFinal(data);
+		return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+	}
+
+	/** Constant-time comparison to prevent timing attacks on the signature. */
+	private static boolean constantTimeEquals(String a, String b) {
+		if (a == null || b == null || a.length() != b.length()) {
+			return false;
+		}
+		int result = 0;
+		for (int i = 0; i < a.length(); i++) {
+			result |= a.charAt(i) ^ b.charAt(i);
+		}
+		return result == 0;
+	}
+
+
+
+	// ---------------------------------------------------------------------------------------------
+	// Input + scopes
+	// ---------------------------------------------------------------------------------------------
+
 	public record SearchCriteria(
 			Instant from,
 			Instant to,
@@ -442,6 +719,61 @@ public class AuditReadService {
 			String entityId,
 			AuditAction action,
 			String correlationId) {
+	}
+
+	/**
+	 * Resolved visibility scope for the current caller, used to bind parameters to the native
+	 * audit search query.
+	 */
+	record Scope(boolean installationWide, List<UUID> deptIds, List<UUID> branchIds) {
+
+		static Scope from(EdamPrincipal caller) {
+			if (caller == null || caller.hasInstallationScope()) {
+				return new Scope(true, List.of(), List.of());
+			}
+			List<UUID> dept = caller.dataScopes().stream()
+					.filter(s -> s.type() == DataScope.Type.DEPARTMENT)
+					.map(DataScope::referenceId).filter(java.util.Objects::nonNull).toList();
+			List<UUID> branch = caller.dataScopes().stream()
+					.filter(s -> s.type() == DataScope.Type.BRANCH)
+					.map(DataScope::referenceId).filter(java.util.Objects::nonNull).toList();
+			return new Scope(false, dept, branch);
+		}
+
+		UUID[] deptIdsArray() {
+			return this.deptIds.toArray(UUID[]::new);
+		}
+
+		UUID[] branchIdsArray() {
+			return this.branchIds.toArray(UUID[]::new);
+		}
+	}
+
+	/** Composite sort key used by the timeline k-way merge and cursor comparisons.
+	 *
+	 * <p>The id tie-break uses {@link UUID#compareTo}, which compares the two 64-bit halves as
+	 * signed longs. The SQL keyset predicate uses the same split (MSB signed, LSB signed) so the
+	 * database ordering matches Java exactly.
+	 */
+	static final class TimelineKey {
+
+		static final Comparator<TimelineEntry> ORDER = (a, b) -> {
+			int c = a.timestamp().compareTo(b.timestamp());
+			if (c != 0) {
+				return c;
+			}
+			c = Integer.compare(sourceOrder(a.source()), sourceOrder(b.source()));
+			if (c != 0) {
+				return c;
+			}
+			if (a.eventId() == null || b.eventId() == null) {
+				return 0;
+			}
+			return a.eventId().compareTo(b.eventId());
+		};
+
+		private TimelineKey() {
+		}
 	}
 
 }

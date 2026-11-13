@@ -4,7 +4,9 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -179,6 +181,7 @@ public class ExpenseRequestService {
 	public RequestResponse update(UUID id, UpdateRequest payload, EdamPrincipal caller) {
 		ExpenseRequest request = require(id);
 		requireEditableBy(request, caller);
+		Map<String, Object> before = requestSnapshot(request);
 		Configuration configuration = resolveConfiguration(payload.requestTypeId(), payload.expenseCategoryId(),
 				payload.expenseSubcategoryId(), payload.expenseNatureId());
 		Instant now = Instant.now(this.clock);
@@ -188,8 +191,32 @@ public class ExpenseRequestService {
 		RequestValidationContext context = validationContext(payload.opex(), payload.capex(), request, configuration,
 				null);
 		RequestValidator.validate(request, context, false);
-		this.audit.record(AuditAction.UPDATE, "ExpenseRequest", id);
+		Map<String, Object> after = requestSnapshot(request);
+		this.audit.recordChange(AuditAction.UPDATE, "ExpenseRequest", id, before, after);
 		return RequestResponse.from(request, configuration.classification());
+	}
+
+	/**
+	 * Stable subset of request fields recorded in audit diffs.
+	 *
+	 * <p>Only fields that drive routing or approval decisions are captured — the large nested
+	 * collections (quotations, items, allocations, invoices, budget summaries) are mutable through
+	 * their own endpoints and are audited separately when those endpoints are added. This
+	 * matches the established pattern for {@code OrganizationProfile} and {@code User}.
+	 */
+	static Map<String, Object> requestSnapshot(ExpenseRequest r) {
+		java.util.LinkedHashMap<String, Object> m = new java.util.LinkedHashMap<>();
+		m.put("requestTypeId", r.getRequestTypeId());
+		m.put("expenseCategoryId", r.getExpenseCategoryId());
+		m.put("expenseSubcategoryId", r.getExpenseSubcategoryId());
+		m.put("expenseNatureId", r.getExpenseNatureId());
+		m.put("departmentId", r.getDepartmentId());
+		m.put("branchId", r.getBranchId());
+		m.put("currencyId", r.getCurrencyId());
+		m.put("requestedAmount", r.getRequestedAmount());
+		m.put("baseCurrencyAmount", r.getBaseCurrencyAmount());
+		m.put("justification", r.getJustification());
+		return m;
 	}
 
 	// ---------------------------------------------------------------------------------------------
