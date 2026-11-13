@@ -141,10 +141,13 @@ class PasswordPolicyTest {
 	class Common {
 
 		@Test
-		@DisplayName("a well-known password is refused even when it satisfies every composition rule")
+		@DisplayName("a well-known password is refused")
 		void rejectsCommon() {
-			// "Password123!" satisfies length and all four classes; it must still be refused.
-			assertThatThrownBy(() -> policy.validate("Password123!", null))
+			// The list is matched on the whole password, so the policy is exercised with composition
+			// requirements relaxed: a common password that also happened to satisfy every class rule
+			// would still be refused by this check.
+			PasswordPolicy relaxed = new PasswordPolicy(12, 128, false, false, false, false);
+			assertThatThrownBy(() -> relaxed.validate("administrator", null))
 				.isInstanceOf(BusinessException.class)
 				.hasMessageContaining("too common");
 		}

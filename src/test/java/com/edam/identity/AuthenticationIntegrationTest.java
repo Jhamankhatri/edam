@@ -3,7 +3,6 @@ package com.edam.identity;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -23,7 +22,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Authentication behaviour against real PostgreSQL.
@@ -34,10 +32,16 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>Every test creates its own user with a random username, so they neither depend on nor disturb each
  * other, and none of them relies on fixture data that a migration might one day change.
+ *
+ * <h2>Deliberately not {@code @Transactional}</h2>
+ * {@code AuthService#authenticate} runs in {@code REQUIRES_NEW} so that a failed sign-in persists its
+ * evidence — if it joined the caller's transaction, the rollback caused by the failure would erase the
+ * record of it and the lockout would never engage. A test-level transaction therefore cannot be seen by
+ * the code under test, and every fixture would appear not to exist. Creating real, committed rows is the
+ * only way to test this path honestly; unique usernames keep the tests independent.
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Transactional
 class AuthenticationIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 
 	@Autowired
