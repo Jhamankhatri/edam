@@ -195,10 +195,19 @@ class ApprovalActionsApiTest extends AbstractPostgreSqlIntegrationTest {
 				this.requestType.getId(), this.category.getId(), null, this.nature.getId(),
 				this.department.getId(), null, this.currency.getId(), new java.math.BigDecimal("1500.0000"),
 				"Approval test",
-				null, // opex details: optional
-				null, // capex details: absent for an OPEX request
-				List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-				List.of()),
+				// OPEX detail is required by the OPEX branch of the validator.
+				new com.edam.expenserequest.dto.ExpenseRequestDtos.OpexDetailPayload(true, "MONTHLY",
+						null, null, null, null, null, null, null, null, null, null, null),
+				null, // CAPEX detail is meaningless for an OPEX request
+				// An allocation is mandatory at submission: an unallocated expense has no department to
+				// charge. A quotation is what makes the amount defensible, so one is supplied too.
+				List.of(new com.edam.expenserequest.dto.ExpenseRequestDtos.AllocationPayload(
+						this.department.getId(), null, null, new java.math.BigDecimal("1500.0000"), null)),
+				List.of(),
+				List.of(new com.edam.expenserequest.dto.ExpenseRequestDtos.QuotationPayload(null, "Q-APR-1",
+						java.time.LocalDate.now(), new java.math.BigDecimal("1500.0000"), this.currency.getId(),
+						null)),
+				List.of(), List.of(), List.of(), List.of(), List.of()),
 				owner());
 		// The envelope carries a UUID id, so no string round-trip is needed at either end.
 		return this.requests.submit(created.id(), owner()).id();
