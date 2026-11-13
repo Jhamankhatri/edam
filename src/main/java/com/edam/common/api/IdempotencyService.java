@@ -83,16 +83,26 @@ public class IdempotencyService {
 	}
 
 	/** Outcome of the pre-check: either proceed, or replay a previously recorded response. */
-	public sealed interface Decision {
+	public interface Decision {
+	}
 
-		/** The caller should proceed with the operation; the key is claimed. */
-		record Proceed() implements Decision {
+	/** The caller should proceed with the operation; the key is claimed. */
+	public static final class Proceed implements Decision {
+		public static final Proceed INSTANCE = new Proceed();
+		private Proceed() {
 		}
+	}
 
-		/** Replay the previously recorded response without invoking the business operation. */
-		record Replay(int httpStatus, String responseJson) implements Decision {
+	/** Replay the previously recorded response without invoking the business operation. */
+	public static final class Replay implements Decision {
+		private final int httpStatus;
+		private final String responseJson;
+		public Replay(int httpStatus, String responseJson) {
+			this.httpStatus = httpStatus;
+			this.responseJson = responseJson;
 		}
-
+		public int httpStatus() { return this.httpStatus; }
+		public String responseJson() { return this.responseJson; }
 	}
 
 	/**
@@ -107,7 +117,7 @@ public class IdempotencyService {
 	@Transactional
 	public Decision check(String operationType, UUID actorId, String key, String fingerprint) {
 		if (key == null || key.isBlank()) {
-			return new Decision.Proceed();
+			return Proceed.INSTANCE;
 		}
 		validateKey(key);
 		String keyHash = sha256(key);
@@ -123,7 +133,7 @@ public class IdempotencyService {
 				throw new BusinessException(ErrorCode.PRECONDITION_FAILED,
 						"An identical request is already being processed. Retry once it completes.");
 			}
-			return new Decision.Proceed();
+			return Proceed.INSTANCE;
 		}
 		IdempotencyRecord record = existing.get();
 		if (!record.matchesRequest(fingerprint)) {
@@ -140,7 +150,7 @@ public class IdempotencyService {
 					this.records.flush();
 					this.records.saveAndFlush(new IdempotencyRecord(keyHash, operationType, actorId, fingerprint,
 							Instant.now().plus(RETENTION)));
-					yield new Decision.Proceed();
+					yield Proceed.INSTANCE;
 				}
 				throw new BusinessException(ErrorCode.PRECONDITION_FAILED,
 						"An identical request is already being processed. Retry once it completes.");
@@ -152,12 +162,12 @@ public class IdempotencyService {
 				this.records.flush();
 				this.records.saveAndFlush(new IdempotencyRecord(keyHash, operationType, actorId, fingerprint,
 						Instant.now().plus(RETENTION)));
-				yield new Decision.Proceed();
+				yield Proceed.INSTANCE;
 			}
 			case COMPLETED -> {
 				log.info("idempotency.replay operation={} actor={} status={}", operationType, actorId,
 						record.getResponseStatus());
-				yield new Decision.Replay(record.getResponseStatus(), record.getResponseSnapshot());
+				yield new Replay(record.getResponseStatus(), record.getResponseSnapshot());
 			}
 		};
 	}
