@@ -1,112 +1,157 @@
 package com.edam.common.api;
 
 import java.time.Instant;
+import java.util.UUID;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 
+import org.hibernate.annotations.Generated;
+import org.hibernate.generator.EventType;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 /**
- * A recorded idempotency key for a state-changing request (BRD API-04).
+ * A recorded idempotency key for a state-changing request (Module O).
  *
- * <h2>Why the database and not a cache</h2>
- * BRD approval flows are financial transactions: a retried submit must not create a second
- * request, and a retried approval must not approve twice. A cache eviction would silently reopen
- * that window, so the key is durable and scoped to the institution.
+ * <h2>Why this is a table and not a cache entry</h2>
+ * Submitting a request and approving one are financial actions. A retried submit must not create a second
+ * request, and a retried approval must not approve twice. A cache eviction — by TTL, by memory pressure,
+ * by a restart — would silently reopen that exact window, and it would do so at the worst possible moment:
+ * under load, when clients retry. The key is therefore durable.
  *
- * <h2>What is stored, and what is not</h2>
- * Only a hash of the request body plus the recorded response status and a correlation pointer.
- * Storing the response body would put business data in a technical table with its own retention
- * and access rules; instead a replay returns the recorded status and the caller re-reads current
- * state, which is also correct when the resource has changed legitimately since.
+ * <h2>What is stored</h2>
+ * A SHA-256 of the caller's key and a fingerprint of the request body, plus the recorded status. The key
+ * itself is hashed so that a stolen backup cannot be used to replay a client's requests, and the response
+ * body is not stored at all: a replay returns the recorded status and the caller re-reads current state,
+ * which is also correct when the resource has changed legitimately since.
+ *
+ * <h2>State machine</h2>
+ * {@code IN_PROGRESS} → {@code COMPLETED} or {@code FAILED}. The in-progress state is what makes a
+ * concurrent duplicate detectable: two simultaneous retries cannot both find "no record" and both proceed.
  */
 @Entity
-@Table(name = "idempotency_record")
+@Table(name = "idempotency_records")
 public class IdempotencyRecord {
 
-	@Id
-	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	private Long id;
+	/** Lifecycle of one key. */
+	public enum Status {
 
-	@Column(name = "institution_id", nullable = false, updatable = false)
-	private Long institutionId;
+		/** A request is executing under this key; a concurrent duplicate must not start. */
+		IN_PROGRESS,
+		/** The operation completed; the recorded status is what a replay receives. */
+		COMPLETED,
+		/** The operation failed; a retry under the same key is allowed once the failure is recorded. */
+		FAILED
 
-	/** Caller-supplied {@code Idempotency-Key}, hashed so long or sensitive values are not stored. */
-	@Column(name = "key_hash", nullable = false, updatable = false, length = 64)
+	}
+
+	@jakarta.persistence.Id
+	@Generated(event = EventType.INSERT)
+	@Column(name = "id", nullable = false, updatable = false)
+	private UUID id;
+
+	/** Caller-supplied {@code Idempotency-Key}, hashed. Never stored in clear. */
+	@Column(name = "idempotency_key", nullable = false, updatable = false, length = 200)
 	private String keyHash;
 
-	@Column(name = "endpoint", nullable = false, updatable = false, length = 200)
-	private String endpoint;
+	@Column(name = "operation_type", nullable = false, updatable = false, length = 100)
+	private String operationType;
 
 	/** SHA-256 of the canonical request body, to detect key reuse with different content. */
-	@Column(name = "request_fingerprint", nullable = false, updatable = false, length = 64)
-	private String requestFingerprint;
+	@Column(name = "request_hash", nullable = false, updatable = false, length = 64)
+	private String requestHash;
 
-	@Column(name = "response_status", nullable = false)
-	private int responseStatus;
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(name = "response_snapshot")
+	private String responseSnapshot;
 
-	@Column(name = "correlation_id", length = 64)
-	private String correlationId;
+	@Enumerated(EnumType.STRING)
+	@Column(name = "processing_status", nullable = false, length = 20)
+	private Status status;
 
-	@Column(name = "created_at", nullable = false, updatable = false)
-	private Instant createdAt;
+	@Column(name = "response_status")
+	private Integer responseStatus;
 
 	@Column(name = "expires_at", nullable = false, updatable = false)
 	private Instant expiresAt;
+
+	@Column(name = "created_at", nullable = false, updatable = false)
+	private Instant createdAt;
 
 	protected IdempotencyRecord() {
 		// JPA
 	}
 
-	public IdempotencyRecord(Long institutionId, String keyHash, String endpoint, String requestFingerprint,
-			int responseStatus, String correlationId, Instant createdAt, Instant expiresAt) {
-		this.institutionId = institutionId;
+	public IdempotencyRecord(String keyHash, String operationType, String requestHash, Instant expiresAt) {
 		this.keyHash = keyHash;
-		this.endpoint = endpoint;
-		this.requestFingerprint = requestFingerprint;
-		this.responseStatus = responseStatus;
-		this.correlationId = correlationId;
-		this.createdAt = createdAt;
+		this.operationType = operationType;
+		this.requestHash = requestHash;
+		this.status = Status.IN_PROGRESS;
 		this.expiresAt = expiresAt;
+		this.createdAt = Instant.now();
 	}
 
-	public Long getId() {
+	/** Marks the operation complete and records the status a replay should receive. */
+	public void complete(int responseStatus) {
+		this.status = Status.COMPLETED;
+		this.responseStatus = responseStatus;
+	}
+
+	/** Marks the operation failed so that the caller may correct the input and retry. */
+	public void fail() {
+		this.status = Status.FAILED;
+	}
+
+	public boolean isCompleted() {
+		return this.status == Status.COMPLETED;
+	}
+
+	public boolean isInProgress() {
+		return this.status == Status.IN_PROGRESS;
+	}
+
+	public boolean matchesRequest(String hash) {
+		return this.requestHash.equals(hash);
+	}
+
+	public UUID getId() {
 		return this.id;
-	}
-
-	public Long getInstitutionId() {
-		return this.institutionId;
 	}
 
 	public String getKeyHash() {
 		return this.keyHash;
 	}
 
-	public String getEndpoint() {
-		return this.endpoint;
+	public String getOperationType() {
+		return this.operationType;
 	}
 
-	public String getRequestFingerprint() {
-		return this.requestFingerprint;
+	public String getRequestHash() {
+		return this.requestHash;
 	}
 
-	public int getResponseStatus() {
+	public String getResponseSnapshot() {
+		return this.responseSnapshot;
+	}
+
+	public Status getStatus() {
+		return this.status;
+	}
+
+	public Integer getResponseStatus() {
 		return this.responseStatus;
-	}
-
-	public String getCorrelationId() {
-		return this.correlationId;
-	}
-
-	public Instant getCreatedAt() {
-		return this.createdAt;
 	}
 
 	public Instant getExpiresAt() {
 		return this.expiresAt;
+	}
+
+	public Instant getCreatedAt() {
+		return this.createdAt;
 	}
 
 }

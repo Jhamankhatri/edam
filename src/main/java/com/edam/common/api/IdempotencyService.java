@@ -9,7 +9,6 @@ import java.util.HexFormat;
 import java.util.Optional;
 
 import com.edam.common.exception.BusinessException;
-import com.edam.common.logging.CorrelationId;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,9 +30,14 @@ import org.springframework.transaction.annotation.Transactional;
  *       executing it would defeat the point.</li>
  * </ul>
  *
- * <h2>Recording happens after success</h2>
- * A failed attempt is not recorded, so the caller can correct the input and retry with the same
- * key. The record is written in a new transaction so it survives the caller's commit ordering.
+ * <h2>When the key is claimed, and why</h2>
+ * The key is claimed <em>before</em> the work runs, not after it succeeds. Recording only on success leaves
+ * a window in which two concurrent retries both see "no record" and both execute — precisely the
+ * double-submit the mechanism exists to stop. Claiming first makes the unique index the arbiter: the loser
+ * of the race is told to retry rather than being allowed to act twice.
+ *
+ * <p>A failed attempt is then marked {@code FAILED} so the caller may correct the input and retry under the
+ * same key. Only a completed operation replays.
  */
 @Service
 public class IdempotencyService {
@@ -63,44 +67,69 @@ public class IdempotencyService {
 	/**
 	 * Check a key before executing the operation.
 	 *
-	 * @param institutionId resolved tenant (never from request input)
-	 * @param endpoint stable operation identifier, e.g. {@code POST /api/v1/requests/{id}/submit}
+	 * @param operationType stable operation identifier, e.g. {@code REQUEST_SUBMIT}
 	 * @param key caller-supplied key, may be null or blank
 	 * @param body canonical request body used for the fingerprint; null is treated as empty
 	 */
-	@Transactional(readOnly = true)
-	public Decision check(Long institutionId, String endpoint, String key, String body) {
+	@Transactional
+	public Decision check(String operationType, String key, String body) {
 		if (key == null || key.isBlank()) {
 			return new Decision.Proceed();
 		}
 		String hash = sha256(key.trim());
 		String fingerprint = sha256(body == null ? "" : body);
-		Optional<IdempotencyRecord> existing = this.records.findByInstitutionIdAndEndpointAndKeyHash(institutionId,
-				endpoint, hash);
+		Optional<IdempotencyRecord> existing = this.records.findByIdempotencyKeyAndOperationType(hash, operationType);
 		if (existing.isEmpty()) {
+			// Claim the key before the work starts. The unique index makes this the winner; a concurrent
+			// duplicate loses on insert and is told to retry rather than executing the action twice.
+			Instant now = Instant.now();
+			try {
+				this.records.saveAndFlush(new IdempotencyRecord(hash, operationType, fingerprint, now.plus(RETENTION)));
+			}
+			catch (org.springframework.dao.DataIntegrityViolationException ex) {
+				throw new BusinessException(ErrorCode.PRECONDITION_FAILED,
+						"An identical request is already being processed. Retry once it completes.");
+			}
 			return new Decision.Proceed();
 		}
 		IdempotencyRecord record = existing.get();
-		if (!record.getRequestFingerprint().equals(fingerprint)) {
+		if (!record.matchesRequest(fingerprint)) {
 			throw new BusinessException(ErrorCode.IDEMPOTENCY_CONFLICT);
 		}
-		log.info("idempotency.replay endpoint={} status={}", endpoint, record.getResponseStatus());
+		if (record.isInProgress()) {
+			throw new BusinessException(ErrorCode.PRECONDITION_FAILED,
+					"An identical request is already being processed. Retry once it completes.");
+		}
+		if (record.getResponseStatus() == null) {
+			// A failed attempt is not a replay; let the caller retry under the same key.
+			return new Decision.Proceed();
+		}
+		log.info("idempotency.replay operation={} status={}", operationType, record.getResponseStatus());
 		return new Decision.Replay(record.getResponseStatus());
 	}
 
-	/** Record a successful execution so a retry is a replay. No-op without a key. */
+	/** Record the outcome so a retry becomes a replay. No-op without a key. */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
-	public void record(Long institutionId, String endpoint, String key, String body, int status) {
+	public void record(String operationType, String key, int status) {
 		if (key == null || key.isBlank()) {
 			return;
 		}
-		String hash = sha256(key.trim());
-		if (this.records.findByInstitutionIdAndEndpointAndKeyHash(institutionId, endpoint, hash).isPresent()) {
+		this.records.findByIdempotencyKeyAndOperationType(sha256(key.trim()), operationType).ifPresent(record -> {
+			record.complete(status);
+			this.records.save(record);
+		});
+	}
+
+	/** Mark a claimed key failed so the caller may correct the input and retry. */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public void markFailed(String operationType, String key) {
+		if (key == null || key.isBlank()) {
 			return;
 		}
-		Instant now = Instant.now();
-		this.records.save(new IdempotencyRecord(institutionId, hash, endpoint, sha256(body == null ? "" : body), status,
-				CorrelationId.current(), now, now.plus(RETENTION)));
+		this.records.findByIdempotencyKeyAndOperationType(sha256(key.trim()), operationType).ifPresent(record -> {
+			record.fail();
+			this.records.save(record);
+		});
 	}
 
 	private static String sha256(String value) {
