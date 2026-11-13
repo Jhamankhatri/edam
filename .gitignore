@@ -1,0 +1,12 @@
+# Build output
+target/
+
+# Python bytecode from tools/ (ci-report.py is run by the workflow)
+__pycache__/
+*.py[cod]
+
+# IDE / OS noise
+.idea/
+*.iml
+.vscode/
+.DS_Store

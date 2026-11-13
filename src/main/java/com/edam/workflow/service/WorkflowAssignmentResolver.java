@@ -57,12 +57,16 @@ public class WorkflowAssignmentResolver {
 
 	private final UserRoleRepository userRoles;
 
+	private final com.edam.approvallimits.service.RecommendingAuthorityService recommendingAuthorities;
+
 	public WorkflowAssignmentResolver(UserRepository users, RoleRepository roles, DepartmentRepository departments,
-			UserRoleRepository userRoles) {
+			UserRoleRepository userRoles,
+			com.edam.approvallimits.service.RecommendingAuthorityService recommendingAuthorities) {
 		this.users = users;
 		this.roles = roles;
 		this.departments = departments;
 		this.userRoles = userRoles;
+		this.recommendingAuthorities = recommendingAuthorities;
 	}
 
 	/**
@@ -81,13 +85,57 @@ public class WorkflowAssignmentResolver {
 				case DEPARTMENT_HEAD -> addDepartmentHead(resolved, context.requestingDepartmentId());
 				case MANAGER -> addManager(resolved, context.requestingUserId());
 				case CEO, CFO, HEAD_OF_ADMIN_GSD -> addOfficeHolder(resolved, approver.getApproverType());
-				// The committee and recommending-authority resolutions read tables the committee module owns;
-				// they are delegated through the same seam rather than duplicated here.
-				case EXPENSE_COMMITTEE, RECOMMENDING_AUTHORITY ->
-					log.debug("workflow.approver_resolution_deferred type={}", approver.getApproverType());
+				// Recommending authorities are resolved from the department's configured designation
+				// (Module D). An unresolved authority contributes nobody, so the engine refuses to start the
+				// step with "no approver could be resolved" rather than routing to a substitute.
+				case RECOMMENDING_AUTHORITY -> addRecommendingAuthority(resolved, approver.getApproverType(),
+						context);
+				// The committee module is Phase 3; its members are resolved there. Until then a committee step
+				// resolves to nobody and fails loudly, which is the honest behaviour for an unimplemented
+				// designation.
+				case EXPENSE_COMMITTEE ->
+					log.warn("workflow.approver_resolution_unsupported type={} reason=committee_module_not_yet_available",
+							approver.getApproverType());
 			}
 		}
 		return new ArrayList<>(resolved);
+	}
+
+	/**
+	 * The department's configured recommending authority for this classification.
+	 *
+	 * <p>The classification comes from the request's expense category, which the assignment context does not
+	 * carry — so the resolution asks for {@code BOTH}-or-specific matching against OPEX and CAPEX both. That
+	 * is deliberately conservative: an authority designated for one classification only must not be treated
+	 * as designated for the other, so the lookup accepts a row only when it applies to a classification the
+	 * caller has stated.
+	 *
+	 * <p>The effective-dated designation is resolved at <em>this instant</em>, never at the task's due
+	 * date: "who recommends today" is a fact about staffing, and resolving it against a future deadline
+	 * would assign the task to whoever holds the post when the request is due rather than who must
+	 * recommend it now.
+	 *
+	 * @param resolved the accumulating approver set
+	 * @param type the designation being resolved (kept for logging)
+	 * @param context the requesting department
+	 */
+	private void addRecommendingAuthority(Set<UUID> resolved, WorkflowStepApprover.ApproverType type,
+			WorkflowEngine.AssignmentContext context) {
+		if (context.requestingDepartmentId() == null) {
+			log.warn("workflow.recommending_authority_unresolved reason=no_department type={}", type);
+			return;
+		}
+		java.time.Instant at = java.time.Instant.now();
+		java.util.Optional<com.edam.approvallimits.dto.ApprovalLimitDtos.ResolvedAuthority> opex =
+				this.recommendingAuthorities.resolve(context.requestingDepartmentId(), "OPEX", at);
+		java.util.Optional<com.edam.approvallimits.dto.ApprovalLimitDtos.ResolvedAuthority> capex =
+				this.recommendingAuthorities.resolve(context.requestingDepartmentId(), "CAPEX", at);
+		opex.ifPresent(authority -> resolved.add(authority.userId()));
+		capex.ifPresent(authority -> resolved.add(authority.userId()));
+		if (opex.isEmpty() && capex.isEmpty()) {
+			log.warn("workflow.recommending_authority_unresolved departmentId={} type={}",
+					context.requestingDepartmentId(), type);
+		}
 	}
 
 	private void addIfActive(Set<UUID> target, UUID userId) {

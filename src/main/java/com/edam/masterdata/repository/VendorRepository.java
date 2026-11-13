@@ -23,7 +23,7 @@ public interface VendorRepository extends JpaRepository<Vendor, UUID> {
 
 	@Query("""
 			select v from Vendor v
-			where :search is null
+			where :search = ''
 			   or lower(v.name) like lower(concat('%', :search, '%'))
 			   or lower(v.code) like lower(concat('%', :search, '%'))
 			order by v.name

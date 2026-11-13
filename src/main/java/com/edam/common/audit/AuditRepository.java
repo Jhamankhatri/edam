@@ -44,7 +44,7 @@ public interface AuditRepository extends Repository<AuditEvent, UUID> {
 			  and (:entityId is null or e.entityId = :entityId)
 			  and (:performedBy is null or e.performedBy = :performedBy)
 			  and (:correlationId is null or e.correlationId = :correlationId)
-			  and (:search is null or lower(e.performedByUsername) like lower(concat('%', :search, '%')))
+			  and (:search = '' or lower(e.performedByUsername) like lower(concat('%', :search, '%')))
 			order by e.createdAt desc
 			""")
 	Page<AuditEvent> search(@Param("from") Instant from,

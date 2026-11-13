@@ -43,7 +43,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
 	@Query("""
 			select u from User u
-			where (:search is null
+			where (:search = ''
 			       or lower(u.username) like lower(concat('%', :search, '%'))
 			       or lower(u.firstName) like lower(concat('%', :search, '%'))
 			       or lower(u.lastName) like lower(concat('%', :search, '%'))
@@ -76,7 +76,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 	 */
 	@Query("""
 			select u from User u
-			where (:search is null
+			where (:search = ''
 			       or lower(u.username) like lower(concat('%', :search, '%'))
 			       or lower(u.firstName) like lower(concat('%', :search, '%'))
 			       or lower(u.lastName) like lower(concat('%', :search, '%'))
