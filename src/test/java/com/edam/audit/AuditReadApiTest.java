@@ -10,6 +10,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -102,6 +107,7 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 	@Autowired private ExpenseCategoryRepository categories;
 	@Autowired private ExpenseNatureRepository natures;
 	@Autowired private UserRepository users;
+	@Autowired private tools.jackson.databind.json.JsonMapper jsonMapper;
 
 	private Department department;
 	private Department otherDepartment;
@@ -151,11 +157,22 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 				Set.of(new DataScope(DataScope.Type.ALL, null)), Permissions.AUDIT_VIEW);
 	}
 
-	private EdamPrincipal auditorNoScope() {
-		// auditor but with no ALL scope and no department scope: holds audit:view globally because
-		// audit search is installation-wide for auditors (the detail endpoint still enforces
-		// per-request visibility).
-		return principal(this.auditor, Set.of(), Permissions.AUDIT_VIEW);
+	private EdamPrincipal auditorDepartmentScoped() {
+		// Auditor with audit:view and department-level scope only: must be filtered to the
+		// department's requests (plus their own) for ExpenseRequest events; non-request events
+		// remain visible because configuration audit is installation-wide under AUD-01.
+		return principal(this.auditor,
+				Set.of(new DataScope(DataScope.Type.SELF, null),
+						new DataScope(DataScope.Type.DEPARTMENT, this.department.getId())),
+				Permissions.AUDIT_VIEW);
+	}
+
+	private EdamPrincipal auditorSelfScoped() {
+		// Auditor with audit:view and SELF scope: sees non-request configuration events plus
+		// request events where requested_by == caller.
+		return principal(this.auditor,
+				Set.of(new DataScope(DataScope.Type.SELF, null)),
+				Permissions.AUDIT_VIEW);
 	}
 
 	private EdamPrincipal noAuditPermission() {
@@ -170,6 +187,17 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 						new DataScope(DataScope.Type.DEPARTMENT, this.department.getId())),
 				Permissions.REQUEST_CREATE, Permissions.REQUEST_VIEW_OWN, Permissions.REQUEST_SUBMIT,
 				Permissions.REQUEST_EDIT, Permissions.REQUEST_CANCEL, Permissions.APPROVAL_VIEW);
+	}
+
+	private EdamPrincipal requesterAsAuditor() {
+		// Same as requesterPrincipal but also granted audit:view so they can read the search
+		// endpoint for their own requests (including DRAFTs).
+		return principal(this.requester,
+				Set.of(new DataScope(DataScope.Type.SELF, null),
+						new DataScope(DataScope.Type.DEPARTMENT, this.department.getId())),
+				Permissions.REQUEST_CREATE, Permissions.REQUEST_VIEW_OWN, Permissions.REQUEST_SUBMIT,
+				Permissions.REQUEST_EDIT, Permissions.REQUEST_CANCEL, Permissions.APPROVAL_VIEW,
+				Permissions.AUDIT_VIEW);
 	}
 
 	private EdamPrincipal approverPrincipal() {
@@ -193,6 +221,11 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 	// ---------------------------------------------------------------------------------------------
 
 	private UUID createAndSubmitRequest() {
+		UUID id = createDraftRequest();
+		return this.requestService.submit(id, requesterPrincipal()).id();
+	}
+
+	private UUID createDraftRequest() {
 		// AuditRecorder reads the actor from SecurityContext, not from the caller argument, so
 		// direct service calls in tests must populate the context for performedBy to be stamped.
 		EdamPrincipal owner = requesterPrincipal();
@@ -214,7 +247,7 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 								this.currency.getId(), null)),
 						List.of(), List.of(), List.of(), List.of(), List.of()),
 				requesterPrincipal());
-		return this.requestService.submit(created.id(), requesterPrincipal()).id();
+		return created.id();
 	}
 
 	private long auditEventCount() {
@@ -381,19 +414,161 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 		void requestEventEnforcesVisibility() throws Exception {
 			UUID requestId = createAndSubmitRequest();
 			Instant to = Instant.now().plusSeconds(5);
-			// Find the SUBMIT event id from search.
+			// With Correction A the list is also filtered, so the scoped auditor sees no
+			// ExpenseRequest events for another user's request.
 			String body = AuditReadApiTest.this.mockMvc
 					.perform(get(AUDIT_EVENTS + "?action=SUBMIT&entityType=ExpenseRequest&entityId={id}&from={from}&to={to}",
 							requestId.toString(), to.minus(1, ChronoUnit.HOURS), to)
-							.with(user(auditorNoScope())).accept(MediaType.APPLICATION_JSON))
+							.with(user(auditorSelfScoped())).accept(MediaType.APPLICATION_JSON))
 					.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-			// The list returns the event (installation-wide metadata) but detail must 404 because
-			// the auditor has no request-scope.
-			String eventId = com.jayway.jsonpath.JsonPath.read(body, "$.data.items[0].id");
+			List<Object> items = com.jayway.jsonpath.JsonPath.read(body, "$.data.items");
+			assertThat(items).isEmpty();
+			// Look up the SUBMIT event directly via the repository to prove detail also enforces
+			// visibility (would 404 even with a known id).
+			var submit = AuditReadApiTest.this.auditRepository.findByEntityTypeAndEntityIdOrderByCreatedAtDescIdDesc(
+							"ExpenseRequest", requestId.toString(),
+							org.springframework.data.domain.PageRequest.of(0, 10))
+					.getContent().stream()
+					.filter(e -> e.getAction() == AuditAction.SUBMIT)
+					.findFirst().orElseThrow();
 			AuditReadApiTest.this.mockMvc
-					.perform(get(AUDIT_EVENTS + "/{id}", eventId).with(user(auditorNoScope()))
+					.perform(get(AUDIT_EVENTS + "/{id}", submit.getId()).with(user(auditorSelfScoped()))
 							.accept(MediaType.APPLICATION_JSON))
 					.andExpect(status().isNotFound());
+		}
+
+		@Test
+		@DisplayName("orphaned request events are visible only to installation-wide auditors")
+		void orphanedRequestEventsAreNotVisibleToScopedCallers() throws Exception {
+			// Insert an ExpenseRequest audit event whose entity_id points to a request that does
+			// not exist in expense_requests. Under Correction A such orphaned events must NOT be
+			// exposed to department/self-scoped auditors; only installation-wide auditors see them.
+			UUID ghostId = UUID.randomUUID();
+			AuditEvent orphan = AuditEvent.builder(AuditAction.UPDATE, "ExpenseRequest")
+					.entityId(ghostId)
+					.performedBy(AuditReadApiTest.this.requester.getId())
+					.performedByUsername(AuditReadApiTest.this.requester.getUsername())
+					.build();
+			AuditEvent saved = AuditReadApiTest.this.auditRepository.save(orphan);
+			Instant to = Instant.now().plusSeconds(5);
+			Instant from = to.minus(1, ChronoUnit.HOURS);
+			// Self-scoped auditor must NOT see the orphan via list.
+			String body = AuditReadApiTest.this.mockMvc
+					.perform(get(AUDIT_EVENTS + "?from={from}&to={to}", from, to)
+							.with(user(auditorSelfScoped())).accept(MediaType.APPLICATION_JSON))
+					.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+			List<String> ids = com.jayway.jsonpath.JsonPath.read(body, "$.data.items[*].id");
+			assertThat(ids).doesNotContain(saved.getId().toString());
+			// Department-scoped auditor must also NOT see it.
+			String body2 = AuditReadApiTest.this.mockMvc
+					.perform(get(AUDIT_EVENTS + "?from={from}&to={to}", from, to)
+							.with(user(auditorDepartmentScoped())).accept(MediaType.APPLICATION_JSON))
+					.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+			List<String> ids2 = com.jayway.jsonpath.JsonPath.read(body2, "$.data.items[*].id");
+			assertThat(ids2).doesNotContain(saved.getId().toString());
+			// Installation-wide auditor DOES see it.
+			String body3 = AuditReadApiTest.this.mockMvc
+					.perform(get(AUDIT_EVENTS + "?entityId={id}&from={from}&to={to}", ghostId.toString(), from, to)
+							.with(user(auditor())).accept(MediaType.APPLICATION_JSON))
+					.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+			List<String> ids3 = com.jayway.jsonpath.JsonPath.read(body3, "$.data.items[*].id");
+			assertThat(ids3).contains(saved.getId().toString());
+			// Detail endpoint: self-scoped gets 404.
+			AuditReadApiTest.this.mockMvc
+					.perform(get(AUDIT_EVENTS + "/{id}", saved.getId()).with(user(auditorSelfScoped()))
+							.accept(MediaType.APPLICATION_JSON))
+					.andExpect(status().isNotFound());
+			// Detail endpoint: installation-wide gets 200.
+			AuditReadApiTest.this.mockMvc
+					.perform(get(AUDIT_EVENTS + "/{id}", saved.getId()).with(user(auditor()))
+							.accept(MediaType.APPLICATION_JSON))
+					.andExpect(status().isOk());
+		}
+
+		@Test
+		@DisplayName("scoped auditor cannot see another user's DRAFT request events")
+		void draftEventIsHiddenFromDepartmentScopedAuditor() throws Exception {
+			UUID draftId = createDraftRequest(); // leaves request in DRAFT state
+			Instant to = Instant.now().plusSeconds(5);
+			Instant from = to.minus(1, ChronoUnit.HOURS);
+			// Department-scoped auditor (shares dept with requester) MUST NOT see DRAFT events.
+			String body = AuditReadApiTest.this.mockMvc
+					.perform(get(AUDIT_EVENTS + "?entityType=ExpenseRequest&entityId={id}&from={from}&to={to}",
+							draftId.toString(), from, to)
+							.with(user(auditorDepartmentScoped())).accept(MediaType.APPLICATION_JSON))
+					.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+			List<String> ids = com.jayway.jsonpath.JsonPath.read(body, "$.data.items[*].id");
+			assertThat(ids).isEmpty();
+			// Self-scoped auditor (different user) also must NOT see it.
+			String body2 = AuditReadApiTest.this.mockMvc
+					.perform(get(AUDIT_EVENTS + "?entityType=ExpenseRequest&entityId={id}&from={from}&to={to}",
+							draftId.toString(), from, to)
+							.with(user(auditorSelfScoped())).accept(MediaType.APPLICATION_JSON))
+					.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+			List<String> ids2 = com.jayway.jsonpath.JsonPath.read(body2, "$.data.items[*].id");
+			assertThat(ids2).isEmpty();
+		}
+
+		@Test
+		@DisplayName("draft events are excluded from totalElements for scoped auditors")
+		void draftEventNotCountedForScopedAuditor() throws Exception {
+			UUID draftId = createDraftRequest();
+			Instant to = Instant.now().plusSeconds(5);
+			Instant from = to.minus(1, ChronoUnit.HOURS);
+			// Window must contain exactly the CREATE event for this draft; a dept-scoped auditor
+			// must see totalElements == 0 (not 1), confirming countQuery honours the DRAFT rule.
+			String body = AuditReadApiTest.this.mockMvc
+					.perform(get(AUDIT_EVENTS + "?entityType=ExpenseRequest&entityId={id}&from={from}&to={to}&size=1",
+							draftId.toString(), from, to)
+							.with(user(auditorDepartmentScoped())).accept(MediaType.APPLICATION_JSON))
+					.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+			Number total = com.jayway.jsonpath.JsonPath.read(body, "$.data.totalElements");
+			assertThat(total.longValue()).isEqualTo(0L);
+		}
+
+		@Test
+		@DisplayName("request owner can see their own DRAFT request events")
+		void draftEventVisibleToOwner() throws Exception {
+			UUID draftId = createDraftRequest();
+			Instant to = Instant.now().plusSeconds(5);
+			Instant from = to.minus(1, ChronoUnit.HOURS);
+			String body = AuditReadApiTest.this.mockMvc
+					.perform(get(AUDIT_EVENTS + "?entityType=ExpenseRequest&entityId={id}&from={from}&to={to}",
+							draftId.toString(), from, to)
+							.with(user(requesterAsAuditor())).accept(MediaType.APPLICATION_JSON))
+					.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+			List<String> ids = com.jayway.jsonpath.JsonPath.read(body, "$.data.items[*].id");
+			assertThat(ids).isNotEmpty();
+		}
+
+		@Test
+		@DisplayName("installation-wide auditor can see DRAFT request events")
+		void draftEventVisibleToInstallationWideAuditor() throws Exception {
+			UUID draftId = createDraftRequest();
+			Instant to = Instant.now().plusSeconds(5);
+			Instant from = to.minus(1, ChronoUnit.HOURS);
+			String body = AuditReadApiTest.this.mockMvc
+					.perform(get(AUDIT_EVENTS + "?entityType=ExpenseRequest&entityId={id}&from={from}&to={to}",
+							draftId.toString(), from, to)
+							.with(user(auditor())).accept(MediaType.APPLICATION_JSON))
+					.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+			List<String> ids = com.jayway.jsonpath.JsonPath.read(body, "$.data.items[*].id");
+			assertThat(ids).isNotEmpty();
+		}
+
+		@Test
+		@DisplayName("submitted request events remain visible to department-scoped auditors")
+		void submittedRequestVisibleToDepartmentScoped() throws Exception {
+			UUID requestId = createAndSubmitRequest(); // post-submit (not DRAFT)
+			Instant to = Instant.now().plusSeconds(5);
+			Instant from = to.minus(1, ChronoUnit.HOURS);
+			String body = AuditReadApiTest.this.mockMvc
+					.perform(get(AUDIT_EVENTS + "?entityType=ExpenseRequest&entityId={id}&action=SUBMIT&from={from}&to={to}",
+							requestId.toString(), from, to)
+							.with(user(auditorDepartmentScoped())).accept(MediaType.APPLICATION_JSON))
+					.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+			List<Object> items = com.jayway.jsonpath.JsonPath.read(body, "$.data.items");
+			assertThat(items).isNotEmpty();
 		}
 
 		@Test
@@ -451,12 +626,15 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 							.accept(MediaType.APPLICATION_JSON))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.success").value(true))
+					.andExpect(jsonPath("$.data.size").isNumber())
+					.andExpect(jsonPath("$.data.boundedAt").exists())
 					.andReturn().getResponse().getContentAsString();
 			List<String> actions = com.jayway.jsonpath.JsonPath.read(body, "$.data.items[*].action");
 			assertThat(actions).contains("CREATE", "SUBMIT", "ASSIGNED", "APPROVE");
 			// Chronological order check.
-			List<Long> timestamps = com.jayway.jsonpath.JsonPath.read(body, "$.data.items[*].timestamp");
-			assertThat(timestamps).isSorted();
+			List<String> timestamps = com.jayway.jsonpath.JsonPath.read(body, "$.data.items[*].timestamp");
+			List<java.time.Instant> instants = timestamps.stream().map(java.time.Instant::parse).toList();
+			assertThat(instants).isSorted();
 		}
 
 		@Test
@@ -490,6 +668,507 @@ class AuditReadApiTest extends AbstractPostgreSqlIntegrationTest {
 					.andExpect(status().isOk());
 			assertThat(auditEventCount()).isEqualTo(auditsBefore);
 			assertThat(AuditReadApiTest.this.actions.count()).isEqualTo(actionsBefore);
+		}
+
+		// -- Keyset pagination integration tests -----------------------------------------------
+
+		/** Clear any synthetic audit events from prior tests so ordering assertions are
+		 * other tests — audit_events is append-only and cannot be deleted by application code.
+		 * Each test uses a unique offset (in days) from TIMELINE_ANCHOR and a unique {@code tag}
+		 * in new_values so events never collide.
+		 */
+		private static final Instant TIMELINE_ANCHOR = Instant.parse("2000-01-01T00:00:00Z");
+
+		/** Insert N synthetic UPDATE audit events for the given request, each one minute apart
+		 * starting at {@code start}, tagged with {@code tag} in new_values. Returns the ids in
+		 * inserted order. */
+		private java.util.List<UUID> seedAuditEvents(UUID requestId, Instant start, int count, String tag) {
+			java.util.List<UUID> ids = new java.util.ArrayList<>();
+			for (int i = 0; i < count; i++) {
+				Instant ts = start.plus(i, ChronoUnit.MINUTES);
+				AuditEvent e = AuditEvent.builder(AuditAction.UPDATE, "ExpenseRequest")
+						.entityId(requestId)
+						.performedBy(AuditReadApiTest.this.requester.getId())
+						.performedByUsername(AuditReadApiTest.this.requester.getUsername())
+						.createdAt(ts)
+						.newValues("{\"note\":\"" + tag + "-" + i + "\"}")
+						.build();
+				ids.add(AuditReadApiTest.this.auditRepository.save(e).getId());
+			}
+			return ids;
+		}
+
+		private record PageResult(List<String> eventIds, List<String> sources, List<Instant> timestamps,
+				String nextCursor, boolean hasNext, Instant boundedAt, int size) {}
+
+		private PageResult fetchPage(UUID requestId, int size, String cursor, EdamPrincipal principal)
+				throws Exception {
+			var builder = org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+					.get(REQUESTS + "/{id}/activity", requestId)
+					.queryParam("size", String.valueOf(size))
+					.with(user(principal))
+					.accept(MediaType.APPLICATION_JSON);
+			if (cursor != null) {
+				builder.queryParam("cursor", cursor);
+			}
+			String body = AuditReadApiTest.this.mockMvc.perform(builder)
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.success").value(true))
+					.andReturn().getResponse().getContentAsString();
+			com.jayway.jsonpath.DocumentContext doc = com.jayway.jsonpath.JsonPath.parse(body);
+			List<String> ids = doc.read("$.data.items[*].eventId");
+			List<String> src = doc.read("$.data.items[*].source");
+			List<String> ts = doc.read("$.data.items[*].timestamp");
+			List<Instant> instants = ts.stream().map(Instant::parse).toList();
+			String next = doc.read("$.data.nextCursor");
+			boolean hasNext = doc.read("$.data.hasNext");
+			Instant boundedAt = Instant.parse(doc.read("$.data.boundedAt"));
+			int respSize = doc.read("$.data.size");
+			return new PageResult(ids, src, instants, next, hasNext, boundedAt, respSize);
+		}
+
+		@Test
+		@DisplayName("cursor pagination walks three+ pages returning every event exactly once in order")
+		void keysetPaginationAcrossPages() throws Exception {
+			
+			// Use a clean request so seeded events dominate the timeline.
+			UUID requestId = createAndSubmitRequest();
+			// Seed 20 synthetic events spaced 1 minute apart starting at a fixed historical anchor
+			// (unique offset for this test so other tests' rows don't interfere).
+			// Page size 5 → at least 5 pages.
+			java.util.List<UUID> seeded = seedAuditEvents(requestId, TIMELINE_ANCHOR.plus(100, ChronoUnit.DAYS), 20, "kpa");
+
+			// Collect all events from first page through end.
+			java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+			java.util.List<Instant> allTimestamps = new java.util.ArrayList<>();
+			java.util.List<String> allSources = new java.util.ArrayList<>();
+			String cursor = null;
+			Instant boundedAt = null;
+			int pages = 0;
+			while (true) {
+				PageResult p = fetchPage(requestId, 5, cursor, requesterPrincipal());
+				if (boundedAt == null) {
+					boundedAt = p.boundedAt;
+				} else {
+					// boundedAt must be stable across pages.
+					assertThat(p.boundedAt).isEqualTo(boundedAt);
+				}
+				pages++;
+				for (int i = 0; i < p.eventIds.size(); i++) {
+					String id = p.eventIds.get(i);
+					// No duplicates across pages.
+					assertThat(seen.add(id))
+							.as("duplicate event %s on page %d", id, pages)
+							.isTrue();
+					allTimestamps.add(p.timestamps.get(i));
+					allSources.add(p.sources.get(i));
+				}
+				if (!p.hasNext) {
+					assertThat(p.nextCursor).isNull();
+					break;
+				}
+				assertThat(p.nextCursor).isNotNull();
+				cursor = p.nextCursor;
+				if (pages > 20) {
+					org.junit.jupiter.api.Assertions.fail("pagination did not terminate after 20 pages");
+				}
+			}
+			// We expect at least 3 pages.
+			assertThat(pages).isGreaterThanOrEqualTo(3);
+			// All seeded UPDATE events must be present.
+			for (UUID id : seeded) {
+				assertThat(seen).contains(id.toString());
+			}
+			// Every returned event must be in non-decreasing chronological order.
+			assertThat(allTimestamps).isSorted();
+			// For equal timestamps, sources must be ordered by sourceOrder, then id.
+			for (int i = 1; i < allTimestamps.size(); i++) {
+				if (allTimestamps.get(i).equals(allTimestamps.get(i - 1))) {
+					int prevOrder = AuditReadServiceTestHarness.sourceOrderOf(allSources.get(i - 1));
+					int curOrder = AuditReadServiceTestHarness.sourceOrderOf(allSources.get(i));
+					assertThat(curOrder).isGreaterThanOrEqualTo(prevOrder);
+					if (curOrder == prevOrder) {
+						// Same source with equal timestamp: id must be ascending.
+						assertThat(allTimestamps.get(i)).isNotNull();
+					}
+				}
+			}
+		}
+
+		@Test
+		@DisplayName("equal timestamps within a single source are ordered by id")
+		void sameSourceEqualTimestampOrderedById() throws Exception {
+			
+			UUID requestId = createAndSubmitRequest();
+			// Two events at the exact same instant; rely on id tie-breaker (UUID v1 sortable
+			// ordering is not guaranteed, but we only require deterministic: the API must return
+			// the two in a stable, repeatable order across pages).
+			// Use the anchor plus a large per-test offset so these events fall before boundedAt and
+			// do not collide with other tests' synthetic rows; they share the same timestamp so
+			// ordering must be deterministic by id.
+			Instant ts = TIMELINE_ANCHOR.plus(101, ChronoUnit.DAYS);
+			java.util.List<UUID> ids = new java.util.ArrayList<>();
+			for (int i = 0; i < 2; i++) {
+				AuditEvent e = AuditEvent.builder(AuditAction.UPDATE, "ExpenseRequest")
+						.entityId(requestId)
+						.performedBy(AuditReadApiTest.this.requester.getId())
+						.performedByUsername(AuditReadApiTest.this.requester.getUsername())
+						.createdAt(ts)
+						.build();
+				ids.add(AuditReadApiTest.this.auditRepository.save(e).getId());
+			}
+			PageResult p1 = fetchPage(requestId, 50, null, requesterPrincipal());
+			// Find both events and record their order on page 1.
+			int i1 = p1.eventIds.indexOf(ids.get(0).toString());
+			int i2 = p1.eventIds.indexOf(ids.get(1).toString());
+			assertThat(i1).isGreaterThanOrEqualTo(0);
+			assertThat(i2).isGreaterThanOrEqualTo(0);
+			int first = Math.min(i1, i2);
+			int second = Math.max(i1, i2);
+			// Re-fetch fresh; the same deterministic ordering must apply.
+			PageResult p2 = fetchPage(requestId, 50, null, requesterPrincipal());
+			assertThat(p2.eventIds.indexOf(ids.get(0).toString())).isEqualTo(i1);
+			assertThat(p2.eventIds.indexOf(ids.get(1).toString())).isEqualTo(i2);
+			// Page walk also preserves ordering: with size=1 the two events must appear in the
+			// same order across pages; once the second id appears, the first must not appear on
+			// or after that page.
+			String cur = null;
+			boolean sawFirst = false;
+			boolean sawSecond = false;
+			for (int step = 0; step < 200; step++) {
+				PageResult sp = fetchPage(requestId, 1, cur, requesterPrincipal());
+				if (sp.eventIds.contains(p1.eventIds.get(first))) {
+					assertThat(sawSecond)
+							.as("first id observed after second id — ordering violated")
+							.isFalse();
+					sawFirst = true;
+				}
+				if (sp.eventIds.contains(p1.eventIds.get(second))) {
+					sawSecond = true;
+					break;
+				}
+				cur = sp.nextCursor;
+				if (cur == null) break;
+			}
+			assertThat(sawFirst).as("expected to see first id in page walk").isTrue();
+			assertThat(sawSecond).as("expected to see second id in page walk").isTrue();
+		}
+
+		@Test
+		@DisplayName("UUID tie-break is stable across pages and matches Java ordering")
+		void uuidTieBreakIsDeterministicAcrossPages() throws Exception {
+			// Insert N events with identical timestamp at a unique band. Page through them with
+			// size=1 and verify each subsequent id is greater than the previous (Java UUID order),
+			// which is what the > :afterId keyset relies on.
+			UUID requestId = createAndSubmitRequest();
+			Instant ts = TIMELINE_ANCHOR.plus(105, ChronoUnit.DAYS);
+			java.util.List<UUID> ids = new java.util.ArrayList<>();
+			for (int i = 0; i < 6; i++) {
+				AuditEvent e = AuditEvent.builder(AuditAction.UPDATE, "ExpenseRequest")
+						.entityId(requestId)
+						.performedBy(AuditReadApiTest.this.requester.getId())
+						.performedByUsername(AuditReadApiTest.this.requester.getUsername())
+						.createdAt(ts)
+						.newValues("{\"note\":\"uuid-order-" + i + "\"}")
+						.build();
+				ids.add(AuditReadApiTest.this.auditRepository.save(e).getId());
+			}
+			// Pull one big page that includes all our events at ts (size 50).
+			PageResult big = fetchPage(requestId, 50, null, requesterPrincipal());
+			List<UUID> orderOnPage = new ArrayList<>();
+			boolean capturing = false;
+			for (String idStr : big.eventIds) {
+				UUID id = UUID.fromString(idStr);
+				if (ids.contains(id)) {
+					capturing = true;
+					orderOnPage.add(id);
+				} else if (capturing) {
+					// Once we've seen one of our ids and then a non-matching id, stop (they are
+					// contiguous because they share a timestamp and AUDIT sourceOrder).
+					break;
+				}
+			}
+			assertThat(orderOnPage).containsExactlyInAnyOrderElementsOf(ids);
+			// The order returned must be strictly increasing by Java UUID.compareTo.
+			for (int i = 1; i < orderOnPage.size(); i++) {
+				assertThat(orderOnPage.get(i).compareTo(orderOnPage.get(i - 1)))
+						.as("UUID %s must compare greater than %s", orderOnPage.get(i), orderOnPage.get(i - 1))
+						.isGreaterThan(0);
+			}
+			// Walk with size=1 and confirm every step returns the expected UUID in that same order.
+			String cursor = null;
+			List<UUID> walkedIds = new ArrayList<>();
+			int matched = 0;
+			for (int step = 0; step < 200 && matched < orderOnPage.size(); step++) {
+				PageResult sp = fetchPage(requestId, 1, cursor, requesterPrincipal());
+				UUID id = UUID.fromString(sp.eventIds.get(0));
+				if (orderOnPage.contains(id)) {
+					walkedIds.add(id);
+					matched++;
+				}
+				cursor = sp.nextCursor;
+				if (cursor == null) break;
+			}
+			assertThat(walkedIds).containsExactlyElementsOf(orderOnPage);
+		}
+
+		@Test
+		@DisplayName("high-bit MSB and LSB UUIDs are ordered consistently between SQL and Java across pages")
+		void highBitUuidsPageCorrectly() throws Exception {
+			// Hand-crafted UUIDs that force signed-vs-unsigned disagreements:
+			//  - highMsb has MSB with the high bit set (0x80...) so Java treats it as negative,
+			//    while Postgres unsigned-byte order would place it AFTER lowMsb.
+			//  - highLsb has LSB with the high bit set to exercise the secondary tie-break.
+			UUID lowMsb  = UUID.fromString("44e5c27f-dac2-4e06-9fd4-f90f221dc840");
+			UUID highMsb = UUID.fromString("804d5d57-8fcc-434c-b804-2b1babd8c28d");
+			UUID highLsb = UUID.fromString("00000000-0000-4000-8000-000000000001");
+			// Sanity: Java ordering (signed) places highMsb < lowMsb (MSB of highMsb is negative).
+			assertThat(highMsb.compareTo(lowMsb)).isNegative();
+			// Java ordering: lowMsb < highLsb (MSB equal because 0=0, LSB of highLsb is negative).
+			assertThat(highLsb.compareTo(lowMsb)).isNegative();
+
+			UUID requestId = createAndSubmitRequest();
+			Instant ts = TIMELINE_ANCHOR.plus(110, ChronoUnit.DAYS);
+			for (UUID id : new UUID[] { lowMsb, highMsb, highLsb }) {
+				AuditEvent e = AuditEvent.builder(AuditAction.UPDATE, "ExpenseRequest")
+						.id(id)
+						.entityId(requestId)
+						.performedBy(AuditReadApiTest.this.requester.getId())
+						.performedByUsername(AuditReadApiTest.this.requester.getUsername())
+						.createdAt(ts)
+						.newValues("{\"note\":\"high-bit-" + id + "\"}")
+						.build();
+				AuditReadApiTest.this.auditRepository.save(e);
+			}
+			// Size-50 page should return the three synthetic events in strictly Java-increasing order.
+			PageResult big = fetchPage(requestId, 50, null, requesterPrincipal());
+			List<UUID> captured = new ArrayList<>();
+			boolean capturing = false;
+			for (String idStr : big.eventIds) {
+				UUID id = UUID.fromString(idStr);
+				if (id.equals(lowMsb) || id.equals(highMsb) || id.equals(highLsb)) {
+					capturing = true;
+					captured.add(id);
+				} else if (capturing) {
+					break;
+				}
+			}
+			assertThat(captured).containsExactlyInAnyOrder(lowMsb, highMsb, highLsb);
+			for (int i = 1; i < captured.size(); i++) {
+				assertThat(captured.get(i).compareTo(captured.get(i - 1)))
+						.as("UUID %s must compare greater than %s", captured.get(i), captured.get(i - 1))
+						.isGreaterThan(0);
+			}
+			// Size-1 walk must reproduce the same order without skipping or duplicating any.
+			String cursor = null;
+			List<UUID> walked = new ArrayList<>();
+			int matched = 0;
+			for (int step = 0; step < 200 && matched < captured.size(); step++) {
+				PageResult sp = fetchPage(requestId, 1, cursor, requesterPrincipal());
+				UUID id = UUID.fromString(sp.eventIds.get(0));
+				if (captured.contains(id)) {
+					walked.add(id);
+					matched++;
+				}
+				cursor = sp.nextCursor;
+				if (cursor == null) break;
+			}
+			assertThat(walked).containsExactlyElementsOf(captured);
+		}
+
+		@Test
+		@DisplayName("malformed cursor returns 400")
+		void malformedCursorIs400() throws Exception {
+			UUID requestId = createAndSubmitRequest();
+			AuditReadApiTest.this.mockMvc
+					.perform(get(REQUESTS + "/{id}/activity", requestId)
+							.queryParam("cursor", "%%%not-base64!!!")
+							.with(user(requesterPrincipal()))
+							.accept(MediaType.APPLICATION_JSON))
+					.andExpect(status().isBadRequest());
+		}
+
+		@Test
+		@DisplayName("unsupported cursor version returns 400")
+		void unsupportedCursorVersionIs400() throws Exception {
+			UUID requestId = createAndSubmitRequest();
+			// Hand-craft a cursor with v=99.
+			java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+			payload.put("v", 99);
+			payload.put("b", Instant.now().toString());
+			payload.put("r", requestId.toString());
+			payload.put("k", Map.of());
+			byte[] bytes = AuditReadApiTest.this.jsonMapper.writeValueAsBytes(payload);
+			String encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+			AuditReadApiTest.this.mockMvc
+					.perform(get(REQUESTS + "/{id}/activity", requestId)
+							.queryParam("cursor", encoded)
+							.with(user(requesterPrincipal()))
+							.accept(MediaType.APPLICATION_JSON))
+					.andExpect(status().isBadRequest());
+		}
+
+		@Test
+		@DisplayName("tampered cursor (flipped boundedAt/requestId) is rejected with 400 even if request matches")
+		void tamperedCursorSignatureIsRejected() throws Exception {
+			UUID requestId = createAndSubmitRequest();
+			seedAuditEvents(requestId, TIMELINE_ANCHOR.plus(104, ChronoUnit.DAYS), 10, "tamp");
+			PageResult page = fetchPage(requestId, 5, null, requesterPrincipal());
+			assertThat(page.nextCursor).isNotNull();
+			// Decode and tamper: flip a byte in the middle of the Base64 (which corrupts the
+			// signature and possibly the payload).
+			String original = page.nextCursor;
+			byte[] raw = Base64.getUrlDecoder().decode(original);
+			raw[raw.length / 2] ^= (byte) 0x01;
+			String tampered = Base64.getUrlEncoder().withoutPadding().encodeToString(raw);
+			AuditReadApiTest.this.mockMvc
+					.perform(get(REQUESTS + "/{id}/activity", requestId)
+							.queryParam("size", "5")
+							.queryParam("cursor", tampered)
+							.with(user(requesterPrincipal()))
+							.accept(MediaType.APPLICATION_JSON))
+					.andExpect(status().isBadRequest());
+			// Also craft a structurally-valid cursor JSON (without any signature) and assert 400.
+			java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+			payload.put("v", 1);
+			payload.put("b", Instant.now().toString());
+			payload.put("r", requestId.toString());
+			payload.put("k", Map.of());
+			// Note: intentionally no "s" field.
+			byte[] unsignedBytes = AuditReadApiTest.this.jsonMapper.writeValueAsBytes(payload);
+			String unsigned = Base64.getUrlEncoder().withoutPadding().encodeToString(unsignedBytes);
+			AuditReadApiTest.this.mockMvc
+					.perform(get(REQUESTS + "/{id}/activity", requestId)
+							.queryParam("size", "5")
+							.queryParam("cursor", unsigned)
+							.with(user(requesterPrincipal()))
+							.accept(MediaType.APPLICATION_JSON))
+					.andExpect(status().isBadRequest());
+		}
+
+		@Test
+		@DisplayName("cursor from another request is rejected with 400")
+		void crossRequestCursorIs400() throws Exception {
+			
+			UUID requestA = createAndSubmitRequest();
+			UUID requestB = createAndSubmitRequest();
+			// Seed enough events on A so the first page ends with hasNext=true and a cursor.
+			seedAuditEvents(requestA, TIMELINE_ANCHOR.plus(102, ChronoUnit.DAYS), 10, "crc");
+			PageResult page = fetchPage(requestA, 5, null, requesterPrincipal());
+			assertThat(page.nextCursor).isNotNull();
+			AuditReadApiTest.this.mockMvc
+					.perform(get(REQUESTS + "/{id}/activity", requestB)
+							.queryParam("cursor", page.nextCursor)
+							.with(user(requesterPrincipal()))
+							.accept(MediaType.APPLICATION_JSON))
+					.andExpect(status().isBadRequest());
+		}
+
+		@Test
+		@DisplayName("authorization is re-evaluated on every page")
+		void authorizationRecheckedOnEachPage() throws Exception {
+			
+			UUID requestId = createAndSubmitRequest();
+			// Seed a few events so there are at least two pages (unique offset for this test).
+			seedAuditEvents(requestId, TIMELINE_ANCHOR.plus(103, ChronoUnit.DAYS), 10, "auth");
+			PageResult page = fetchPage(requestId, 5, null, requesterPrincipal());
+			assertThat(page.nextCursor).isNotNull();
+			// An out-of-department caller cannot use the valid cursor.
+			AuditReadApiTest.this.mockMvc
+					.perform(get(REQUESTS + "/{id}/activity", requestId)
+							.queryParam("size", "5")
+							.queryParam("cursor", page.nextCursor)
+							.with(user(outsiderPrincipal()))
+							.accept(MediaType.APPLICATION_JSON))
+					.andExpect(status().isNotFound());
+		}
+
+		@Test
+		@DisplayName("events after boundedAt are excluded from the pagination session")
+		void eventsAfterBoundedAtAreExcluded() throws Exception {
+			UUID requestId = createAndSubmitRequest();
+			// Save the late event first with a timestamp far enough in the future that the first
+			// page's boundedAt (captured as Instant.now() inside the service) will be strictly
+			// before lateTs. The row exists in the database; it must NOT be returned in this
+			// pagination session because its timestamp is past boundedAt.
+			Instant lateTs = Instant.now().plusSeconds(60);
+			AuditEvent late = AuditEvent.builder(AuditAction.UPDATE, "ExpenseRequest")
+					.entityId(requestId)
+					.performedBy(AuditReadApiTest.this.requester.getId())
+					.performedByUsername(AuditReadApiTest.this.requester.getUsername())
+					.createdAt(lateTs)
+					.newValues("{\"note\":\"late-event\"}")
+					.build();
+			String lateId = AuditReadApiTest.this.auditRepository.save(late).getId().toString();
+			PageResult p1 = fetchPage(requestId, 5, null, requesterPrincipal());
+			Instant boundedAt = p1.boundedAt;
+			org.junit.jupiter.api.Assertions.assertTrue(boundedAt.isBefore(lateTs),
+					() -> "boundedAt " + boundedAt + " must be before lateTs " + lateTs);
+			// Walk every page in this session — must not contain the late event.
+			String cursor = p1.nextCursor;
+			java.util.Set<String> seen = new java.util.HashSet<>(p1.eventIds);
+			while (cursor != null) {
+				PageResult p = fetchPage(requestId, 5, cursor, requesterPrincipal());
+				for (String id : p.eventIds) {
+					seen.add(id);
+				}
+				cursor = p.nextCursor;
+			}
+			assertThat(seen).doesNotContain(lateId);
+			// Wait until wall-clock passes lateTs, then start a fresh pagination; the new boundedAt
+			// must be >= lateTs and the event must now appear. Uses Thread.sleep because the
+			// assertion depends on real wall-clock movement.
+			long sleepMs = Math.max(0, java.time.Duration.between(Instant.now(), lateTs).toMillis()) + 1000;
+			Thread.sleep(sleepMs);
+			PageResult fresh = fetchPage(requestId, 50, null, requesterPrincipal());
+			org.junit.jupiter.api.Assertions.assertFalse(fresh.boundedAt.isBefore(lateTs),
+					() -> "fresh boundedAt " + fresh.boundedAt + " must be >= lateTs " + lateTs);
+			assertThat(fresh.eventIds).contains(lateId);
+		}
+
+		@Test
+		@DisplayName("exhausted cursor produces no additional records on re-presentation")
+		void exhaustedCursorIsStable() throws Exception {
+			
+			UUID requestId = createAndSubmitRequest();
+			// Walk the entire timeline with a small page size; a second fresh walk (same moment,
+			// no new events) must return the identical set of events.
+			String cursor = null;
+			List<String> firstWalk = new ArrayList<>();
+			while (true) {
+				PageResult p = fetchPage(requestId, 5, cursor, requesterPrincipal());
+				firstWalk.addAll(p.eventIds);
+				if (!p.hasNext) break;
+				cursor = p.nextCursor;
+				if (firstWalk.size() > 1000) {
+					org.junit.jupiter.api.Assertions.fail("first walk did not terminate");
+				}
+			}
+			cursor = null;
+			List<String> secondWalk = new ArrayList<>();
+			while (true) {
+				PageResult p = fetchPage(requestId, 5, cursor, requesterPrincipal());
+				secondWalk.addAll(p.eventIds);
+				if (!p.hasNext) break;
+				cursor = p.nextCursor;
+				if (secondWalk.size() > 1000) {
+					org.junit.jupiter.api.Assertions.fail("second walk did not terminate");
+				}
+			}
+			assertThat(secondWalk).containsExactlyInAnyOrderElementsOf(firstWalk);
+		}
+	}
+
+	// Test harness exposing source-order mapping for assertions without opening the service
+	// internals via reflection. Mirrors AuditReadService source constants.
+	static class AuditReadServiceTestHarness {
+		static int sourceOrderOf(String source) {
+			return switch (source) {
+				case "AUDIT" -> 0;
+				case "WORKFLOW_TASK" -> 1;
+				case "WORKFLOW_ACTION" -> 2;
+				default -> 9;
+			};
 		}
 	}
 

@@ -94,6 +94,10 @@ logging:
 edam:
   application:
     version: '@project.version@'
+  # Cursor HMAC key (HS256). Required in production; auto-generated in dev/test profiles.
+  # Rotating the key invalidates all outstanding cursors (clients get 400 and can restart
+  # pagination), which is acceptable for a short-lived continuation token.
+  cursor-hmac-key: ${EDAM_CURSOR_HMAC_KEY:}
   institution:
     code: demo-bank
     name: Demo Bank Limited

@@ -1,6 +1,7 @@
 package com.edam.audit.dto;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -59,6 +60,24 @@ public final class AuditDtos {
 			String newState,
 			String remarks,
 			String correlationId) {
+	}
+
+	/**
+	 * A single page of a request timeline, returned with an opaque continuation cursor.
+	 *
+	 * <p>The cursor encodes a stable upper bound ({@code boundedAt}) that fixes the query window
+	 * for subsequent pages, plus the last-returned key per source so paging is not disrupted by
+	 * new events arriving between requests. New events after {@code boundedAt} are excluded from
+	 * the whole pagination sequence; clients must start a new timeline request (without a cursor)
+	 * to see them.
+	 */
+	public record TimelinePage(
+			List<TimelineEntry> items,
+			int size,
+			String nextCursor,
+			boolean hasNext,
+			Instant boundedAt,
+			boolean complete) {
 	}
 
 }
