@@ -10,6 +10,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import com.edam.common.exception.BusinessException;
+import com.edam.common.security.EdamPrincipal;
 import com.edam.common.security.InstitutionContext;
 
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -62,7 +63,7 @@ public class IdempotencyAspect {
 			// Opt-out: clients that do not send the header get the existing behaviour unchanged.
 			return joinPoint.proceed();
 		}
-		com.edam.common.security.EdamPrincipal principal = this.institutionContext.principal();
+		EdamPrincipal principal = this.institutionContext.principal();
 		if (principal == null) {
 			// Should not happen on authenticated endpoints; if it does, behave as if no key was sent
 			// rather than blocking the request with an NPE.
@@ -75,8 +76,8 @@ public class IdempotencyAspect {
 		String operation = idempotentOperation.value();
 		IdempotencyService.Decision decision = this.idempotency.check(operation, actorId, key.trim(), fingerprint);
 		if (decision instanceof IdempotencyService.Replay replay) {
-			return writeReplay(replay, joinPoint);
-		}
+				return writeReplay(replay);
+			}
 		// Proceed: invoke the controller and finalise the record based on outcome.
 		Object result;
 		try {
@@ -92,7 +93,7 @@ public class IdempotencyAspect {
 		return result;
 	}
 
-	private Object writeReplay(IdempotencyService.Replay replay, ProceedingJoinPoint joinPoint) throws IOException {
+	private Object writeReplay(IdempotencyService.Replay replay) throws IOException {
 		HttpServletResponse response = currentResponse();
 		if (response == null) {
 			// Should not happen in a Servlet dispatcher; fall back to a 500-safe exception.

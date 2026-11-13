@@ -1,13 +1,11 @@
 package com.edam.common.api;
 
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.TreeMap;
 
 import jakarta.servlet.http.HttpServletRequest;
 
-import tools.jackson.core.JsonProcessingException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -78,12 +76,10 @@ public final class RequestFingerprint {
 			JsonNode tree = jsonMapper.readTree(body);
 			return jsonMapper.writeValueAsString(tree);
 		}
-		catch (JsonProcessingException ex) {
+		catch (RuntimeException ex) {
 			// Not JSON (e.g. form-urlencoded or empty); fall back to the raw trimmed body.
+			// tools.jackson.core.exc.StreamReadException is a RuntimeException in this Jackson variant.
 			return body.trim();
-		}
-		catch (IOException ex) {
-			throw new IllegalStateException("Failed to canonicalise JSON body", ex);
 		}
 	}
 
