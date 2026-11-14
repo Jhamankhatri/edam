@@ -233,7 +233,7 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 				"after first createDraft, no idempotency record was found for the test key");
 		IdempotencyRecord existing = mine.get(0);
 		assertThat(existing.getStatus()).isEqualTo(IdempotencyRecord.Status.COMPLETED);
-		// Diagnostic: ask the service directly to evaluate a different-payload attempt.
+		// Assert the stored fingerprint matches the first (original) body and differs from the tampered body:
 		String tamperedFp = com.edam.common.api.RequestFingerprint.canonicalJson(null,
 				opexBody("200.0000", "tampered"));
 		String origFp = com.edam.common.api.RequestFingerprint.canonicalJson(null,
@@ -248,28 +248,6 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 				"stored hash must match orig fingerprint");
 		org.junit.jupiter.api.Assertions.assertNotEquals(tamperedFullFp, existing.getRequestHash(),
 				"stored hash must differ from tampered");
-		System.out.println("DEBUG origCanonical=" + origFp);
-		System.out.println("DEBUG tamperedCanonical=" + tamperedFp);
-		System.out.println("DEBUG existing.requestHash=" + existing.getRequestHash());
-		System.out.println("DEBUG tamperedFullFp=" + tamperedFullFp);
-		// Direct repository lookup using the same parameters the service will use:
-		String keyHash = com.edam.common.api.IdempotencyService.sha256(key);
-		java.util.Optional<IdempotencyRecord> directLookup = this.idempotencyRecords
-				.findByKey(keyHash, "POST /api/v1/expense-requests", caller.userId());
-		org.junit.jupiter.api.Assertions.assertTrue(directLookup.isPresent(),
-				"direct findByKey must find the COMPLETED record immediately before retry");
-		// Also ask the service's decision logic directly (bypass HTTP).
-		this.idempotencyService.clearInFlightForTests();
-		try {
-			this.idempotencyService.check("POST /api/v1/expense-requests", caller.userId(), key,
-					com.edam.common.api.IdempotencyService.fingerprint(
-							"POST /api/v1/expense-requests\0\0" + tamperedFp));
-			org.junit.jupiter.api.Assertions.fail("direct service.check() with tampered fp must throw CONFLICT");
-		}
-		catch (BusinessException bex) {
-			org.junit.jupiter.api.Assertions.assertEquals(ErrorCode.IDEMPOTENCY_CONFLICT, bex.getErrorCode(),
-					"direct check() should return CONFLICT but got " + bex.getErrorCode());
-		}
 		this.mockMvc.perform(post(BASE).with(user(caller)).with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
 						.accept(MediaType.APPLICATION_JSON)
