@@ -191,40 +191,23 @@ public final class RequestFingerprint {
 	}
 
 	/**
-	 * Reflectively invoke {@code fieldNames()} on a JsonNode, walking the class hierarchy to
-	 * find the declaring class (tools.jackson declares this method on {@code ContainerNode}, a
-	 * supertype of {@code ObjectNode}, so {@code getMethod} on the leaf class alone may not
-	 * resolve it in all environments). The returned object is a raw {@link Iterator} whose
-	 * elements are {@link String}s; callers must cast defensively.
-	 *
-	 * <p>This helper exists solely to work around a javac target-type inference bug: assigning
-	 * {@code obj.fieldNames()} directly to a generic-typed variable fails in this build because
-	 * tools.jackson declares the return type as raw {@code Iterator}, and javac refuses to
-	 * narrow the raw type through the target-type witness. Reflective invocation bypasses the
-	 * compile-time generic signature entirely.
+	 * Reflectively invoke {@code fieldNames()} on a JsonNode and return the raw Iterator as
+	 * {@code Object}. We use reflection exclusively because tools.jackson declares fieldNames()
+	 * with a raw {@code Iterator} return type, and javac's target-type inference in this build
+	 * refuses to narrow that raw type even when the assignment target is generic. Invoking via
+	 * reflection sidesteps the compile-time generic signature entirely.
 	 */
 	private static Object invokeFieldNames(Object target) {
-		Class<?> c = target.getClass();
-		while (c != null) {
-			try {
-				java.lang.reflect.Method m = c.getDeclaredMethod("fieldNames");
-				m.setAccessible(true);
-				return m.invoke(target);
-			}
-			catch (NoSuchMethodException nsme) {
-				// fall through to superclass
-			}
-			catch (Exception ex) {
-				// Security / IllegalAccess / InvocationTarget: try superclass before giving up.
-			}
-			c = c.getSuperclass();
-		}
-		// Public API lookup as a last resort (method declared on an interface).
 		try {
-			java.lang.reflect.Method m = target.getClass().getMethod("fieldNames");
+			// getMethod walks public methods including inherited ones; fieldNames() is public on
+			// tools.jackson.databind.JsonNode (the common base of ObjectNode / ArrayNode).
+			java.lang.reflect.Method m = JsonNode.class.getMethod("fieldNames");
 			return m.invoke(target);
 		}
 		catch (Exception ex) {
+			// JsonNode is always assignable from ObjectNode; this catch is just for the reflective
+			// exceptions. Log nothing — if fieldNames() truly isn't found, names stays empty and
+			// canonicalJson degrades to "{}", which the property-order test will catch.
 			return null;
 		}
 	}
