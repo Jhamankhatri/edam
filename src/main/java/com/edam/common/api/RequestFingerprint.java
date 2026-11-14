@@ -1,5 +1,6 @@
 package com.edam.common.api;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.TreeMap;
@@ -60,10 +61,26 @@ public final class RequestFingerprint {
 
 	private static String readBody(HttpServletRequest request) {
 		if (request instanceof CachedBodyHttpServletRequest cached) {
-			return cached.cachedBodyAsString();
+			String body = cached.cachedBodyAsString();
+			if (request.getAttribute("X-Idempotency-CachedBodyLen") == null) {
+				request.setAttribute("X-Idempotency-CachedBodyLen", body.length());
+			}
+			return body;
 		}
 		// Requests that aren't wrapped carry no body (GET/HEAD) or should not be fingerprinted;
 		// returning an empty string is safe because those endpoints are not annotated.
+		// But if content-length suggests there IS a body, it means the filter didn't wrap and we'd
+		// compute an empty fingerprint (a dangerous false-match). Read the stream directly as a
+		// fallback.
+		if (request.getContentLength() > 0) {
+			try {
+				byte[] bytes = request.getInputStream().readAllBytes();
+				return new String(bytes, StandardCharsets.UTF_8);
+			}
+			catch (IOException ex) {
+				return "";
+			}
+		}
 		return "";
 	}
 
