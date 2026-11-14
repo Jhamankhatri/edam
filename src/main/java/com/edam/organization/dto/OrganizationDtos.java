@@ -139,7 +139,8 @@ public final class OrganizationDtos {
 	// ------------------------------------------------------------------
 
 	@Schema(name = "DepartmentResponse")
-	public record DepartmentResponse(UUID id, UUID unitId, String code, String name, String description, boolean active) {
+	public record DepartmentResponse(UUID id, UUID unitId, String code, String name,
+			UUID headUserId, String headName, boolean active) {
 	}
 
 	@Schema(name = "SaveDepartmentRequest")
@@ -156,7 +157,8 @@ public final class OrganizationDtos {
 	// ------------------------------------------------------------------
 
 	@Schema(name = "BranchResponse")
-	public record BranchResponse(UUID id, UUID unitId, String code, String name, String description, boolean active) {
+	public record BranchResponse(UUID id, UUID unitId, String code, String name,
+			String address, boolean active) {
 	}
 
 	@Schema(name = "SaveBranchRequest")
