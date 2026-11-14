@@ -60,8 +60,12 @@ public class IdempotencyAspect {
 	@Around("@annotation(idempotentOperation)")
 	public Object enforce(ProceedingJoinPoint joinPoint, IdempotentOperation idempotentOperation) throws Throwable {
 		HttpServletRequest request = currentRequest();
-		String key = request == null ? null : request.getHeader(IDEMPOTENCY_HEADER);
-		if (key == null || key.isBlank()) {
+		String rawKey = request == null ? null : request.getHeader(IDEMPOTENCY_HEADER);
+		// Trim once and reuse; calling key.trim() in some places but not others caused the claim
+		// and finalizer to hash different strings (leading to orphaned IN_PROGRESS rows that
+		// broke replay semantics).
+		String key = rawKey == null ? null : rawKey.trim();
+		if (key == null || key.isEmpty()) {
 			return joinPoint.proceed();
 		}
 		EdamPrincipal principal = this.institutionContext.principal();
@@ -73,7 +77,7 @@ public class IdempotencyAspect {
 		Map<String, String> uriVariables = extractPathVariables(joinPoint, request);
 		String fingerprint = RequestFingerprint.forRequest(this.jsonMapper, request, uriVariables);
 		String operation = idempotentOperation.value();
-		IdempotencyService.Decision decision = this.idempotency.check(operation, actorId, key.trim(), fingerprint);
+		IdempotencyService.Decision decision = this.idempotency.check(operation, actorId, key, fingerprint);
 		if (decision instanceof IdempotencyService.Replay replay) {
 			// Replay bypasses the controller, so we must re-enforce the method-level permission
 			// here. The actorId scoping of the key lookup already proves the caller is the same
@@ -88,12 +92,12 @@ public class IdempotencyAspect {
 			result = joinPoint.proceed();
 		}
 		catch (Throwable t) {
-			this.idempotency.markFailed(operation, actorId, key.trim());
+			this.idempotency.markFailed(operation, actorId, key);
 			throw t;
 		}
 		int httpStatus = resolveStatus(result, request);
 		String snapshot = serialiseResult(result);
-		this.idempotency.recordSuccess(operation, actorId, key.trim(), httpStatus, snapshot);
+		this.idempotency.recordSuccess(operation, actorId, key, httpStatus, snapshot);
 		return result;
 	}
 
