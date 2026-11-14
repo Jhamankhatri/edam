@@ -163,37 +163,30 @@ public final class RequestFingerprint {
 			return;
 		}
 		ObjectNode obj = (ObjectNode) node;
-		// Collect field names via JsonNode.fields(), which returns Iterator<Map.Entry<String,JsonNode>>
-		// (a properly generic signature in tools.jackson). The raw-typed fieldNames() Iterator
-		// returned by earlier approaches tripped javac target-type inference bugs and in one
-		// iteration also returned an empty iterator due to a reflective dispatch quirk, so we
-		// avoid fieldNames() entirely and use fields() instead.
 		List<String> names = new ArrayList<>();
-		// obj.fields() returns a raw Iterator in tools.jackson (same javac inference quirk as
-		// fieldNames()); cast through Object and iterate with instanceof checks so we never
-		// have to mention the raw type at the declaration site.
-		Object rawFields = obj.fields();
-		if (rawFields instanceof Iterator<?> it) {
-			while (it.hasNext()) {
-				Object entry = it.next();
-				if (entry instanceof Map.Entry<?, ?> e && e.getKey() instanceof String s) {
-					names.add(s);
-				}
+		// Collect field names reflectively. tools.jackson's ObjectNode declares fieldNames()
+		// with a raw Iterator return type that trips javac's target-type inference when
+		// assigned directly; we dispatch through java.lang.reflect.Method and iterate the
+		// returned object via Iterator<?> to bypass javac's raw-type strictness. We also
+		// try propertyNames() and properties() as fallbacks in case this tools.jackson
+		// build exposes a different public method.
+		for (String methodName : new String[] { "propertyNames", "fieldNames", "names" }) {
+			Object result = invokeReflectiveNoArg(obj, methodName);
+			if (result instanceof Iterable<?> itr) {
+				for (Object o : itr) { if (o instanceof String s) names.add(s); }
 			}
+			else if (result instanceof Iterator<?> it) {
+				while (it.hasNext()) { Object o = it.next(); if (o instanceof String s) names.add(s); }
+			}
+			if (!names.isEmpty()) break;
 		}
+		// Last resort: try properties() which returns Iterator<Map.Entry>
 		if (names.isEmpty()) {
-			// Fallback: reflective fieldNames() in case fields() returned nothing for this
-			// tools.jackson version.
-			//noinspection unchecked
-			// Last-resort fallback: use reflection on fieldNames() if fields() is unavailable for
-			// some reason (defensive).
-			Object rawIterable = invokeFieldNamesRaw(obj);
-			if (rawIterable instanceof Iterator it) {
+			Object props = invokeReflectiveNoArg(obj, "properties");
+			if (props instanceof Iterator<?> it) {
 				while (it.hasNext()) {
-					Object n = it.next();
-					if (n instanceof String s) {
-						names.add(s);
-					}
+					Object e = it.next();
+					if (e instanceof Map.Entry<?, ?> me && me.getKey() instanceof String s) names.add(s);
 				}
 			}
 		}
@@ -211,20 +204,24 @@ public final class RequestFingerprint {
 	}
 
 	/**
-	 * Invoke {@code fieldNames()} reflectively so we don't trigger javac's raw-to-generic
-	 * inference bug on the direct call. Uses the declaring class from JsonNode's hierarchy.
+	 * Invoke a no-arg method on the JsonNode class hierarchy reflectively so we don't trigger
+	 * javac's raw-to-generic inference bug on methods whose declared return types are raw
+	 * Iterator (tools.jackson quirk).
 	 */
-	private static Object invokeFieldNamesRaw(Object target) {
-		try {
-			java.lang.reflect.Method m = JsonNode.class.getMethod("fieldNames");
-			return m.invoke(target);
+	private static Object invokeReflectiveNoArg(Object target, String methodName) {
+		for (Class<?> cls = target.getClass(); cls != null; cls = cls.getSuperclass()) {
+			try {
+				java.lang.reflect.Method m = cls.getMethod(methodName);
+				return m.invoke(target);
+			}
+			catch (NoSuchMethodException ignored) {
+				// walk up
+			}
+			catch (Exception ex) {
+				return null;
+			}
 		}
-		catch (Exception ex) {
-			// Field-names lookup failed; fall through to empty names (canonical form will be
-			// "{}" for this object, which is incorrect but will fail loudly in tests rather
-			// than silently double-execute).
-			return null;
-		}
+		return null;
 	}
 
 }
