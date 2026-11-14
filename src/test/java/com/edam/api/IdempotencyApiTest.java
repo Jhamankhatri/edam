@@ -289,11 +289,13 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 	void staleInProgressBecomesUnknown() throws Exception {
 		String key = "key-stale-" + UUID.randomUUID();
 		EdamPrincipal caller = owner();
-		// Insert a dangling IN_PROGRESS record aged past the grace window.
+		String body = opexBody("25.0000", "stale");
+		// Build the same canonical fingerprint the aspect will compute for the retry.
+		String fp = IdempotencyService.fingerprint(RequestFingerprint.canonicalJson(this.jsonMapper, body));
+		// Insert a dangling IN_PROGRESS record aged past the grace window with the matching fingerprint.
 		com.edam.common.api.IdempotencyRecord stale = new com.edam.common.api.IdempotencyRecord(
 				IdempotencyService.sha256(key), "POST /api/v1/expense-requests", caller.userId(),
-				IdempotencyService.fingerprint("dummy"),
-				Instant.now().plus(IdempotencyService.RETENTION));
+				fp, Instant.now().plus(IdempotencyService.RETENTION));
 		// Force created-at back via reflection since IdempotencyRecord constructor sets it to now().
 		try {
 			java.lang.reflect.Field f = com.edam.common.api.IdempotencyRecord.class.getDeclaredField("createdAt");
@@ -309,7 +311,7 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		this.mockMvc.perform(post(BASE).with(user(caller)).with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
 						.accept(MediaType.APPLICATION_JSON)
-						.content(opexBody("25.0000", "stale"))
+						.content(body)
 						.header("Idempotency-Key", key))
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.error.code").value("EDAM-1006"));
@@ -323,7 +325,7 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		this.mockMvc.perform(post(BASE).with(user(caller)).with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
 						.accept(MediaType.APPLICATION_JSON)
-						.content(opexBody("25.0000", "stale"))
+						.content(body)
 						.header("Idempotency-Key", key))
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.error.code").value("EDAM-1006"));
@@ -335,15 +337,17 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		// Insert an IN_PROGRESS row aged well within the grace window; retry must be 409 EDAM-1005.
 		String key = "key-ip-" + UUID.randomUUID();
 		EdamPrincipal caller = owner();
+		String body = opexBody("30.0000", "inprog");
+		// The stored requestHash must match the full fingerprint the aspect computes
+		// (method+URI+pathVars+canonical JSON), not just the body hash.
+		String fp = buildFingerprint("POST", BASE, java.util.Map.of(), body);
 		this.idempotencyRecords.saveAndFlush(new com.edam.common.api.IdempotencyRecord(
 				IdempotencyService.sha256(key), "POST /api/v1/expense-requests", caller.userId(),
-				IdempotencyService.fingerprint(RequestFingerprint.canonicalJson(
-						this.jsonMapper, opexBody("30.0000", "inprog"))),
-				Instant.now().plus(IdempotencyService.RETENTION)));
+				fp, Instant.now().plus(IdempotencyService.RETENTION)));
 		this.mockMvc.perform(post(BASE).with(user(caller)).with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
 						.accept(MediaType.APPLICATION_JSON)
-						.content(opexBody("30.0000", "inprog"))
+						.content(body)
 						.header("Idempotency-Key", key))
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.error.code").value("EDAM-1005"));
