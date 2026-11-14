@@ -2,9 +2,10 @@
 
 **PR:** #12 (OPEN, not merged)
 **Branch:** `feature/phase-4a-step2-idempotency` (pushed to origin; workspace on `arena/ec446659-edam`)
-**Final commit:** `55a1522d9b7a6cffb57ca3b61470ad0678adcad6`
-**CI run:** https://github.com/Jhamankhatri/edam/actions/runs/43589188797
-**Status:** ✅ All 338 tests pass (0 failures, 0 errors, 3 skipped); prod-profile and war-package smoke tests both green.
+**Final commit:** `9add0c1`
+**Final CI run:** https://github.com/Jhamankhatri/edam/actions/runs/43602343592
+**Prior CI run (pre-late-completion fix):** https://github.com/Jhamankhatri/edam/actions/runs/43589188797 (commit `55a1522`, all green)
+**Status:** ✅ All 339 tests pass (0 failures, 0 errors, 3 skipped); prod-profile and war-package smoke tests both green.
 
 ---
 
@@ -36,6 +37,25 @@ Trimmed the `Idempotency-Key` header exactly once at the aspect entry point and 
 **File:** `src/main/java/com/edam/common/api/IdempotencyService.java`
 
 Changed `recordSuccess`'s programmatic transaction call from `execute(lambdaReturningNull)` (which did not compile against `TransactionTemplate` after a lambda refactor) to `executeWithoutResult(...)`. Also added an `ERROR` log `idempotency.finalize_miss` if `findByKey` returns empty from inside the finalizer (defensive: previously this was a silent no-op that would leave an orphaned IN_PROGRESS row).
+
+### 1d. Late-completion UNKNOWN overwrite (fail-OPEN defect found in finalization review)
+
+**File:** `src/main/java/com/edam/common/api/IdempotencyService.java`
+
+While verifying concern #3, a close inspection of `recordSuccess()` revealed that after writing the code that let retries transition stale IN_PROGRESS rows to UNKNOWN (the fail-closed crash-recovery path), the success finalizer still did an **unconditional** `record.complete(httpStatus, responseJson); records.saveAndFlush(record);` — with no guard on the current status. That meant the following fail-OPEN race was possible:
+
+1. Request A claims IN_PROGRESS, then stalls past the 60-second grace (GC pause, slow workflow, multi-node case where a retry hits a different JVM).
+2. A retry arrives, observes the stale-grace window with no local in-flight marker, transitions the record to UNKNOWN, and returns EDAM-1006 ("query the resource, don't retry"). The client is told the outcome is uncertain.
+3. Request A finally completes and calls `recordSuccess()`, which blindly overwrites UNKNOWN → COMPLETED and stores a response snapshot.
+4. A subsequent retry (by a client that didn't get the memo) gets a byte-identical 201 replay as though the server had authoritative knowledge the whole time — defeating the entire purpose of UNKNOWN.
+
+**Fix:** Added a status switch inside the `REQUIRES_NEW` finalizer:
+- `IN_PROGRESS` → `complete()` + save (normal path).
+- `COMPLETED` → idempotent refresh + `warn` log (duplicate finalizer; harmless).
+- `UNKNOWN` → **leave UNKNOWN in place**, clear response snapshot if any, log `idempotency.finalize_late_completion` at ERROR so operators can see over-grace requests.
+- `FAILED` → leave FAILED in place + `warn` log.
+
+This makes the finalizer state-aware and keeps UNKNOWN fail-closed even for late completions. Added regression test `lateCompletionDoesNotOverwriteUnknown` that plants a stale IN_PROGRESS row, transitions it to UNKNOWN via the real `check()` path, then invokes `recordSuccess()` and asserts the record is still UNKNOWN with a null response snapshot.
 
 ---
 
@@ -87,7 +107,7 @@ Changed `recordSuccess`'s programmatic transaction call from `execute(lambdaRetu
 - `concurrentInProgressReturns409`, `differentActorCreatesOwnRecord`, `differentOperationIsScoped` — scoping by (actorId, operationType).
 - `noKeyRunsNormally`, `oversizeKeyRejected`, key with control characters rejected.
 
-Total: **338 tests, 0 failures, 0 errors, 3 skipped** (across 25 test classes including OptimisticLockingIntegrationTest, AuthenticationIntegrationTest, PackagedWarTest, EndpointAuthorizationArchitectureTest, etc.).
+Total: **339 tests, 0 failures, 0 errors, 3 skipped** (across 25 test classes including OptimisticLockingIntegrationTest, AuthenticationIntegrationTest, PackagedWarTest, EndpointAuthorizationArchitectureTest, etc.).
 
 ---
 
@@ -110,7 +130,7 @@ Production:
 - `src/main/resources/db/migration/V19__idempotency_unknown_state.sql`
 
 Tests:
-- `src/test/java/com/edam/api/IdempotencyApiTest.java` (new, 17 test methods)
+- `src/test/java/com/edam/api/IdempotencyApiTest.java` (new, 18 test methods — adds `lateCompletionDoesNotOverwriteUnknown`)
 
 Docs:
 - `docs/idempotency/IDEMPOTENCY_DESIGN.md`
@@ -118,11 +138,11 @@ Docs:
 
 ---
 
-## 5. Exact test results (CI run 43589188797)
+## 5. Exact test results (final CI run 43602343592)
 
 ```
-- Classes: 25, Tests run: 338, Failures: 0, Errors: 0, Skipped: 3
-  IdempotencyApiTest ApprovalLimitApiTest EndpointAuthorizationArchitectureTest
+- Classes: 25, Tests run: 339, Failures: 0, Errors: 0, Skipped: 3
+  IdempotencyApiTest (18 tests) ApprovalLimitApiTest EndpointAuthorizationArchitectureTest
   AuditReadApiTest ApiPathsTest GlobalExceptionHandlerTest CorrelationIdFilterTest
   CorrelationIdTest OptimisticLockingIntegrationTest EdamPrincipalTest
   InstitutionContextTest ApprovalLimitResolutionTest ExpenseRequestApiTest
@@ -133,17 +153,20 @@ Docs:
 
 ✓ build-and-test
 ✓ prod-profile-smoke-test (48s)
-✓ war-package-smoke-test (48s)
+✓ war-package-smoke-test (52s)
 ```
 
 ---
 
 ## 6. Remaining limitations (intentionally NOT addressed in this PR, per scope)
 
-1. **Multi-JVM in-flight tracking.** The `inFlightByLocalJvm` map only protects long-running operations on the same JVM. Cross-node long-running ops will fall through to UNKNOWN (fail-closed). A proper fix needs a distributed lease (Redis / DB heartbeat) and is documented as Phase 4A+ work.
-2. **Outer-filter transactions.** If any non-controller filter wraps a full request in `@Transactional`, the COMPLETED row can be written before that outer TX commits. EDAM's current configuration does not do this; documented as fail-safe.
-3. **AfterCommit sync path not used.** An earlier design registered an `afterCommit` synchronization, but because EDAM's business services commit at the service-method boundary (before controller return), there is no active transaction at aspect-return time to attach such a sync to. The immediate finalizer is therefore correct for EDAM's AOP ordering; the design note explains why.
-4. **Seven-day retention remains provisional** pending explicit Bank Operations sign-off (per standing constraint). UNKNOWN records are retained for 90 days independent of this decision.
-5. **Replay authorization.** The aspect re-validates method-level permissions on replay (via `enforceReplayAuthorization`) but does not re-evaluate dynamic business rules (e.g. "is the request still editable?") because the response body was already computed once the business operation completed. Documented in design doc.
+All of these are explicitly documented in `IDEMPOTENCY_DESIGN.md` §10.
 
-**PR #12 remains OPEN and unmerged**, ready for review. Phase 4B has not been started.
+1. **JVM-local in-flight tracking.** The `inFlightByLocalJvm` map only protects long-running operations on the same JVM. Cross-node long-running ops may fall through to UNKNOWN (fail-closed). A proper fix needs a distributed lease (Redis / DB heartbeat) and is Phase 4A+ work. Mitigated in this PR by the late-completion guard in `recordSuccess()` that refuses to overwrite UNKNOWN → COMPLETED.
+2. **Multi-node false UNKNOWN.** On a multi-pod deployment, a retry hitting a different pod can brand a still-running request UNKNOWN after 60s. Client must reconcile via GET; fail-closed, no duplicate execution possible.
+3. **Outer-filter transactions.** If any non-controller filter wraps a full request in `@Transactional`, the COMPLETED row can be written before that outer TX commits. EDAM's current configuration does not do this; documented as fail-safe.
+4. **Seven-day retention for COMPLETED/FAILED remains provisional** pending explicit Bank Operations sign-off. UNKNOWN records are retained for 90 days from transition and excluded from `deleteExpired` regardless of this setting.
+5. **Replay authorization is method-level only.** The aspect re-validates `@EdamPermission` on replay but does not re-evaluate dynamic business rules (department membership, data-scope, request editability); the snapshot reflects state at original-completion time. Clients that need current state issue GET.
+6. **AfterCommit sync path not used.** See §2 Concern 1 of this report for why: EDAM services commit at the service-method boundary so no business TX is active when the aspect runs the finalizer.
+
+**PR #12 remains OPEN and unmerged**, ready for human review. Phase 4B has not been started.
