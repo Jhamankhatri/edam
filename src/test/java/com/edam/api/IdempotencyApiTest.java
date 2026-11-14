@@ -310,15 +310,18 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		// Direct service call with no live local claim must transition to UNKNOWN.
 		try {
 			shortGrace.check(op, caller.userId(), key, fp);
-			org.junit.jupiter.api.Assertions.fail("expected IDEMPOTENCY_UNKNOWN_OUTCOME");
+			org.junit.jupiter.api.Assertions.fail("expected IDEMPOTENCY_UNKNOWN_OUTCOME, got Proceed");
 		}
 		catch (BusinessException ex) {
-			assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.IDEMPOTENCY_UNKNOWN_OUTCOME);
+			org.junit.jupiter.api.Assertions.assertEquals(
+					ErrorCode.IDEMPOTENCY_UNKNOWN_OUTCOME, ex.getErrorCode(),
+					"first check threw " + ex.getErrorCode() + ": " + ex.getMessage());
 		}
 		// Record must be UNKNOWN (not deleted), protecting against double-execution on retry.
 		IdempotencyRecord after = this.idempotencyRecords
 				.findByKey(IdempotencyService.sha256(key), op, caller.userId()).orElseThrow();
-		assertThat(after.getStatus()).isEqualTo(IdempotencyRecord.Status.UNKNOWN);
+		org.junit.jupiter.api.Assertions.assertEquals(IdempotencyRecord.Status.UNKNOWN, after.getStatus(),
+				"after first check, status=" + after.getStatus() + " createdAt=" + after.getCreatedAt());
 		assertThat(after.getExpiresAt()).isAfter(Instant.now().plus(Duration.ofDays(89)));
 		// Second check on the now-UNKNOWN record also throws EDAM-1006 (does not double-execute).
 		try {
@@ -327,9 +330,6 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		}
 		catch (BusinessException ex) {
 			assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.IDEMPOTENCY_UNKNOWN_OUTCOME);
-		}
-		finally {
-			shortGrace.recordSuccess(op, caller.userId(), key, 201, "{}");
 		}
 	}
 
@@ -557,17 +557,23 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 						IdempotencyService.sha256(key), op, caller.userId(), fp,
 						Instant.now().plus(IdempotencyService.RETENTION),
 						Instant.now().minus(Duration.ofMinutes(10))));
+		IdempotencyRecord preCheck = this.idempotencyRecords.findById(staleId).orElseThrow();
+		System.err.println("preCheck: status=" + preCheck.getStatus() + " createdAt=" + preCheck.getCreatedAt()
+				+ " age_ms=" + java.time.Duration.between(preCheck.getCreatedAt(), Instant.now()).toMillis());
 		try {
 			shortGrace.check(op, caller.userId(), key, fp);
-			org.junit.jupiter.api.Assertions.fail("expected IDEMPOTENCY_UNKNOWN_OUTCOME");
+			org.junit.jupiter.api.Assertions.fail("expected IDEMPOTENCY_UNKNOWN_OUTCOME, got Proceed");
 		}
 		catch (BusinessException expected) {
-			assertThat(expected.getErrorCode()).isEqualTo(ErrorCode.IDEMPOTENCY_UNKNOWN_OUTCOME);
+			org.junit.jupiter.api.Assertions.assertEquals(
+					ErrorCode.IDEMPOTENCY_UNKNOWN_OUTCOME, expected.getErrorCode(),
+					"check threw " + expected.getErrorCode() + ": " + expected.getMessage());
 		}
 		// No in-flight marker to clear: check(...) threw before returning Proceed, so nothing was
 		// added to the in-flight map.
 		// The record should now be UNKNOWN with expires_at pushed out ~90 days.
 		IdempotencyRecord unknown = this.idempotencyRecords.findById(staleId).orElseThrow();
+		System.err.println("postCheck: status=" + unknown.getStatus() + " expires=" + unknown.getExpiresAt());
 		assertThat(unknown.getStatus()).isEqualTo(IdempotencyRecord.Status.UNKNOWN);
 		assertThat(unknown.getExpiresAt()).isAfter(Instant.now().plus(Duration.ofDays(89)));
 		// Run the retention sweep at cutoff=now: the UNKNOWN row must survive.
