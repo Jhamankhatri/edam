@@ -233,6 +233,19 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 				"after first createDraft, no idempotency record was found for the test key");
 		IdempotencyRecord existing = mine.get(0);
 		assertThat(existing.getStatus()).isEqualTo(IdempotencyRecord.Status.COMPLETED);
+		// Diagnostic: ask the service directly to evaluate a different-payload attempt.
+		String tamperedFp = com.edam.common.api.RequestFingerprint.canonicalJson(null,
+				opexBody("200.0000", "tampered"));
+		String origFp = com.edam.common.api.RequestFingerprint.canonicalJson(null,
+				opexBody("100.0000", "original"));
+		System.out.println("DEBUG origCanonical=" + origFp);
+		System.out.println("DEBUG tamperedCanonical=" + tamperedFp);
+		System.out.println("DEBUG existing.requestHash=" + existing.getRequestHash());
+		org.junit.jupiter.api.Assertions.assertNotEquals("orig+tampered canonical bodies must differ",
+				origFp, tamperedFp);
+		org.junit.jupiter.api.Assertions.assertNotEquals("stored hash must differ from tampered",
+				existing.getRequestHash(), com.edam.common.api.IdempotencyService.fingerprint(
+						"POST /api/v1/expense-requests\0\0" + tamperedFp));
 		this.mockMvc.perform(post(BASE).with(user(caller)).with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
 						.accept(MediaType.APPLICATION_JSON)
