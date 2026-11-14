@@ -59,7 +59,7 @@ class ConfigurationApiTest extends AbstractPostgreSqlIntegrationTest {
 				"Test Dark", "Dark variant", ThemeType.DARK,
 				"#111111", "#222222", "#333333", "#000000", "#0a0a0a",
 				"#eeeeee", "#ffffff", "#111111", "#eeeeee",
-				"#111111", "#eeeeee", "#22c55e", "#facc15", "#ef4444", "#3b82f6",
+				"#111111", "#eeeeee", "#22c55e", "#facc15", "#ef4444", "#3b82f6", "#3b82f6",
 				List.of(new ThemeTokenRequest("fontFamily", "Inter, sans-serif", ThemeTokenType.FONT))));
 		assertThat(created.id()).isNotNull();
 		assertThat(created.tokens()).containsEntry("fontFamily", "Inter, sans-serif");
@@ -77,7 +77,7 @@ class ConfigurationApiTest extends AbstractPostgreSqlIntegrationTest {
 		BusinessException ex = assertThrows(BusinessException.class,
 				() -> this.themes.create(new SaveThemeRequest("BadColor", null, ThemeType.LIGHT,
 						"not-a-color", null, null, "#fff", null, null, null, null, null, null,
-						null, null, null, null, null, null, List.of())));
+						null, null, null, null, null, null, null, List.of())));
 		assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
 	}
 
@@ -86,7 +86,7 @@ class ConfigurationApiTest extends AbstractPostgreSqlIntegrationTest {
 		BusinessException ex = assertThrows(BusinessException.class,
 				() -> this.themes.create(new SaveThemeRequest("Xss", null, ThemeType.LIGHT,
 						"#fff", null, null, "#fff", null, null, null, null, null, null,
-						null, null, null, null, null, null,
+						null, null, null, null, null, null, null,
 						List.of(new ThemeTokenRequest("evil", "<script>alert(1)</script>", ThemeTokenType.OTHER)))));
 		assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
 	}
