@@ -8,11 +8,14 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import com.edam.common.exception.BusinessException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -90,11 +93,34 @@ public class IdempotencyService {
 	private final IdempotencyRecordRepository records;
 	private final TransactionTemplate newTxTemplate;
 
+	/**
+	 * In-flight claim tracker.
+	 *
+	 * <p>When the local JVM is actively processing an {@code IN_PROGRESS} claim on this node, its
+	 * composite key is registered here. A concurrent retry on the same node that arrives after
+	 * {@link #STALE_IN_PROGRESS_GRACE_DEFAULT} can use this set to distinguish a genuinely
+	 * long-running operation (claim still live on this JVM → return 409 EDAM-1005 "in progress")
+	 * from a crashed-request row (claim nowhere in memory → transition to UNKNOWN). Without this
+	 * guard, a slow endpoint (large payload, synchronous workflow evaluation) would be falsely
+	 * branded UNKNOWN after 60 seconds and force the caller into out-of-band reconciliation even
+	 * though the original request is still executing.
+	 *
+	 * <p>In a multi-node WAR deployment this map only tracks claims held by <em>this</em> JVM. A
+	 * retry that hits a different node cannot see the local in-flight set and will fall through
+	 * to the UNKNOWN path. That is fail-closed (no double execution) and only affects usability:
+	 * the client sees EDAM-1006 instead of EDAM-1005 and reconciles. Documented in the design
+	 * doc. A proper cross-node lease would require a shared distributed component (e.g. DB
+	 * heartbeat row or Redis) which is explicitly out of scope for Phase 4A Step 2.
+	 */
+	private final ConcurrentMap<String, Boolean> inFlightByLocalJvm = new ConcurrentHashMap<>();
+
+	@Autowired
 	public IdempotencyService(IdempotencyRecordRepository records, PlatformTransactionManager txManager) {
 		this(records, txManager, STALE_IN_PROGRESS_GRACE_DEFAULT);
 	}
 
-	public IdempotencyService(IdempotencyRecordRepository records, PlatformTransactionManager txManager,
+	/** Test-only constructor that lets callers override the stale-grace window. */
+	IdempotencyService(IdempotencyRecordRepository records, PlatformTransactionManager txManager,
 			Duration staleGrace) {
 		this.records = records;
 		this.staleGrace = staleGrace;
@@ -153,6 +179,7 @@ public class IdempotencyService {
 		// join the outer transaction if the caller's TX happened to be open already).
 		return this.newTxTemplate.execute(status -> {
 			Optional<IdempotencyRecord> existing = this.records.findByKey(keyHash, operationType, actorId);
+			String claimKey = claimKey(keyHash, operationType, actorId);
 			if (existing.isEmpty()) {
 				Instant now = Instant.now();
 				try {
@@ -167,17 +194,20 @@ public class IdempotencyService {
 						throw new BusinessException(ErrorCode.IDEMPOTENCY_IN_PROGRESS,
 								"An identical request is already being processed. Retry after a short delay.");
 					}
-					return decideForExisting(existing.get(), keyHash, operationType, actorId, fingerprint);
+					return decideForExisting(existing.get(), claimKey, keyHash, operationType, actorId, fingerprint);
 				}
+				// Claim registered on this JVM — register before returning Proceed so the stale-grace
+				// path in decideForExisting recognises long-running local claims.
+				this.inFlightByLocalJvm.put(claimKey, Boolean.TRUE);
 				return (Decision) Proceed.INSTANCE;
 			}
-			return decideForExisting(existing.get(), keyHash, operationType, actorId, fingerprint);
+			return decideForExisting(existing.get(), claimKey, keyHash, operationType, actorId, fingerprint);
 		});
 	}
 
 	/** Resolve the decision for an existing IN_PROGRESS / UNKNOWN / FAILED / COMPLETED record. */
-	private Decision decideForExisting(IdempotencyRecord record, String keyHash, String operationType,
-			UUID actorId, String fingerprint) {
+	private Decision decideForExisting(IdempotencyRecord record, String claimKey, String keyHash,
+			String operationType, UUID actorId, String fingerprint) {
 		if (!record.matchesRequest(fingerprint)) {
 			// Same key, different payload — HTTP 409 Conflict (not 400): the key is in use by a
 			// conflicting request state.
@@ -186,10 +216,13 @@ public class IdempotencyService {
 		return switch (record.getStatus()) {
 			case IN_PROGRESS -> {
 				Instant abandonedAfter = record.getCreatedAt().plus(this.staleGrace);
-				if (Instant.now().isAfter(abandonedAfter)) {
-					// Crash window: business TX may have committed without the afterCommit callback
-					// firing. Mark UNKNOWN (fail-closed) rather than deleting and double-executing.
-					// The retry gets 409 and must reconcile out-of-band (GET the resource).
+				boolean localClaimActive = this.inFlightByLocalJvm.containsKey(claimKey);
+				if (Instant.now().isAfter(abandonedAfter) && !localClaimActive) {
+					// Crash window: the record is past the grace window AND this JVM has no live
+					// claim for it. The business TX may have committed without the afterCommit
+					// callback firing (process crashed, OOM kill, pod restart). Mark UNKNOWN
+					// (fail-closed) rather than deleting and double-executing. The retry gets 409
+					// and must reconcile out-of-band (GET the resource).
 					log.error("idempotency.unknown_outcome operation={} actor={} keyHash={} created={}",
 							operationType, actorId, keyHash, record.getCreatedAt());
 					record.markUnknown();
@@ -198,6 +231,8 @@ public class IdempotencyService {
 							"A prior request with this idempotency key did not complete normally. "
 									+ "Query the resource to determine its state before retrying.");
 				}
+				// Either within grace, or the claim is still live on this JVM (long-running op).
+				// Return EDAM-1005 "in progress" — the client retries with backoff.
 				throw new BusinessException(ErrorCode.IDEMPOTENCY_IN_PROGRESS,
 						"An identical request is already being processed. Retry after a short delay.");
 			}
@@ -211,6 +246,7 @@ public class IdempotencyService {
 				this.records.flush();
 				this.records.saveAndFlush(new IdempotencyRecord(keyHash, operationType, actorId, fingerprint,
 						Instant.now().plus(RETENTION)));
+				this.inFlightByLocalJvm.put(claimKey, Boolean.TRUE);
 				yield Proceed.INSTANCE;
 			}
 			case COMPLETED -> {
@@ -219,6 +255,11 @@ public class IdempotencyService {
 				yield new Replay(record.getResponseStatus(), record.getResponseSnapshot());
 			}
 		};
+	}
+
+	/** Composite in-flight map key for a (keyHash, operationType, actorId) claim. */
+	private static String claimKey(String keyHash, String operationType, UUID actorId) {
+		return keyHash + '|' + operationType + '|' + actorId;
 	}
 
 	/**
@@ -239,12 +280,24 @@ public class IdempotencyService {
 			return;
 		}
 		String keyHash = sha256(key.trim());
-		Runnable finalizer = () -> this.newTxTemplate.executeWithoutResult(status -> {
-			this.records.findByKey(keyHash, operationType, actorId).ifPresent(record -> {
-				record.complete(httpStatus, responseJson);
-				this.records.save(record);
-			});
-		});
+		String claimKey = claimKey(keyHash, operationType, actorId);
+		Runnable finalizer = () -> {
+			try {
+				this.newTxTemplate.executeWithoutResult(status -> {
+					this.records.findByKey(keyHash, operationType, actorId).ifPresent(record -> {
+						record.complete(httpStatus, responseJson);
+						this.records.save(record);
+					});
+				});
+			}
+			finally {
+				// Always clear the in-flight marker so a future reuse of the same key (after
+				// expiration + deletion) starts clean. If the finalizer threw we still drop the
+				// local claim — the row remains IN_PROGRESS/UNKNOWN so the stale-grace path takes
+				// over for retries, and we do not want to perpetually mask crash detection.
+				this.inFlightByLocalJvm.remove(claimKey);
+			}
+		};
 		if (TransactionSynchronizationManager.isActualTransactionActive()) {
 			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
 				@Override
@@ -280,10 +333,12 @@ public class IdempotencyService {
 		if (key == null || key.isBlank()) {
 			return;
 		}
-		this.records.findByKey(sha256(key.trim()), operationType, actorId).ifPresent(record -> {
+		String keyHash = sha256(key.trim());
+		this.records.findByKey(keyHash, operationType, actorId).ifPresent(record -> {
 			record.fail();
 			this.records.save(record);
 		});
+		this.inFlightByLocalJvm.remove(claimKey(keyHash, operationType, actorId));
 	}
 
 	/** Canonical SHA-256 fingerprint for a request body (or an empty string for bodiless requests). */

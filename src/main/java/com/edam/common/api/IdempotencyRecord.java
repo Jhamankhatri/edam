@@ -1,5 +1,6 @@
 package com.edam.common.api;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -89,7 +90,7 @@ public class IdempotencyRecord {
 	@Column(name = "response_status")
 	private Integer responseStatus;
 
-	@Column(name = "expires_at", nullable = false, updatable = false)
+	@Column(name = "expires_at", nullable = false)
 	private Instant expiresAt;
 
 	@Column(name = "created_at", nullable = false, updatable = false)
@@ -125,10 +126,15 @@ public class IdempotencyRecord {
 	/**
 	 * Marks the record UNKNOWN: the in-progress claim is older than the grace window and the
 	 * outcome cannot be determined from the record alone. The caller must reconcile out-of-band;
-	 * the record will not be automatically deleted or replaced.
+	 * the record is retained for an extended period (90 days) instead of the normal seven-day
+	 * window, because automatic deletion of UNKNOWN rows would reopen the double-execution window
+	 * the status exists to close.
 	 */
 	public void markUnknown() {
 		this.status = Status.UNKNOWN;
+		this.responseSnapshot = null;
+		this.responseStatus = null;
+		this.expiresAt = Instant.now().plus(Duration.ofDays(90));
 	}
 
 	public boolean isCompleted() {

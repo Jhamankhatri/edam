@@ -217,17 +217,38 @@ Step 2. The UNKNOWN-state approach:
 - **Is simple enough to reason about**: there is no timer-based deletion of unknown rows,
   no background resurrection job, no silent "best guess."
 
-The 7-day retention sweep (existing `deleteExpired` scheduled job) does eventually purge
-records past `expires_at`, which includes UNKNOWN rows that have aged out; clients that
-retry beyond the retention window create a fresh claim. In practice the crash window is
-measured in milliseconds (the time between the business TX commit and the afterCommit
-callback firing), so the UNKNOWN state will rarely be encountered in production.
+UNKNOWN records are **never auto-deleted** by the retention sweep: the JPQL `deleteExpired`
+predicate explicitly excludes rows whose `status = 'UNKNOWN'`, and `markUnknown()` extends
+`expires_at` to 90 days as a second layer of defence. This closes a correctness window in
+which the original 7-day sweep could purge an UNKNOWN row and let a later retry silently
+double-execute. Reconciliation of UNKNOWN rows is an operator / out-of-band responsibility.
+(The 7-day retention for COMPLETED / FAILED rows remains provisional pending bank ops
+sign-off; UNKNOWN retention at 90 days is a safety floor, not a policy choice.)
 
-### Active-operation protection
+### Active-operation protection (long-running requests)
 While a request is executing (IN_PROGRESS within the grace window), retries get 409
 EDAM-1005 "retry after a short delay" and never proceed. The unique constraint on
 `(idempotency_key, operation_type, actor_id)` provides an additional backstop: a retry
-that somehow bypassed the IN_PROGRESS check would hit a `DataIntegrityViolationException`
+that somehow bypassed the IN_PROGRESS check would hit a `DataIntegrityViolationException`.
+
+A request that legitimately exceeds the 60-second grace window (large payload, slow
+workflow resolution, transient DB latency) must not be misclassified as UNKNOWN while it
+is still executing on the local JVM. To that end `IdempotencyService` maintains a small
+in-memory `ConcurrentMap` of claims currently held by this JVM; the stale-grace check in
+`decideForExisting` transitions to UNKNOWN **only** when (a) the record is older than the
+grace window **and** (b) the local JVM does not hold a live in-flight claim for that key.
+Long-running requests therefore continue returning EDAM-1005 for as long as the original
+thread is alive. When the request completes (success or failure) the in-flight marker is
+cleared in a `finally` block, restoring crash detection.
+
+**Multi-node limitation.** The in-flight map is JVM-local. In a multi-pod WAR deployment
+a retry routed to a pod that is not running the original request will not see the
+in-flight marker and will transition the record to UNKNOWN after 60 seconds. This is
+fail-closed (no double execution) — the client sees EDAM-1006 instead of EDAM-1005 and
+reconciles via GET. A cross-node lease (DB heartbeat row or shared cache) would be needed
+to cover this case; that is out of scope for Phase 4A Step 2 and tracked as future work.
+The current EDAM deployment topology is a single WAR instance, where the local map is
+fully sufficient.
 on the INSERT and be converted to the same 409 EDAM-1005 response.
 
 ---
@@ -379,6 +400,10 @@ and `SELECT … FOR UPDATE` cannot lock a row that does not exist yet.
   afterCommit finaliser leaves the record IN_PROGRESS; after the grace window, retries get
   409 EDAM-1006 and must reconcile out-of-band (§5). The server never double-executes,
   but it cannot in this state prove the original outcome either.
+- **Multi-pod long-running detection.** In a multi-instance deployment the in-flight
+  tracker is JVM-local; a retry hitting a different pod can mark a still-running request
+  UNKNOWN after 60 seconds. Fail-closed (no duplicate execution); client reconciliation
+  is required. A distributed lease is future work.
 - **Not applied to every unsafe HTTP method.** Only the eight endpoints listed in §2 are
   annotated; adding idempotency to a new endpoint is a one-line `@IdempotentOperation`
   plus an operation string.
@@ -388,7 +413,8 @@ and `SELECT … FOR UPDATE` cannot lock a row that does not exist yet.
 - **No protection against a malicious client that sends a key without sending the body
   twice.** The server computes fingerprints from what it receives; a client that lies
   about the body still executes once.
-- **7-day retention is provisional** pending bank ops sign-off (§1).
+- **7-day retention is provisional** pending bank ops sign-off (§1). UNKNOWN rows are
+  retained for 90 days and excluded from auto-deletion regardless of this setting.
 
 ---
 
@@ -421,9 +447,14 @@ and `SELECT … FOR UPDATE` cannot lock a row that does not exist yet.
 11. Path variables distinguish resources: same body against two different `{id}` values
     produces different fingerprints.
 12. Permission revocation before replay → 403 EDAM-2005.
-13. Stale IN_PROGRESS (age > grace window) → UNKNOWN, returns 409 EDAM-1006; subsequent
-    retries continue to return 409 (no double-execution).
+13. Stale IN_PROGRESS (age > grace window, no local in-flight claim) → UNKNOWN, returns
+    409 EDAM-1006; subsequent retries continue to return 409 (no double-execution).
 14. Fresh IN_PROGRESS → 409 EDAM-1005.
+15. Long-running (>60s) request still executing on this JVM: retry returns 409 EDAM-1005
+    ("in progress") rather than EDAM-1006 ("unknown outcome"), even past the grace window.
+16. UNKNOWN records are retained past the 7-day sweep (deleteExpired excludes them and
+    markUnknown extends expires_at to 90 days), preventing double-execution after
+    retention.
 
 Tests use real controllers, real repositories, and a real PostgreSQL instance through
 Testcontainers; they do not mock the idempotency service.

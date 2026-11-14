@@ -30,7 +30,7 @@ public interface IdempotencyRecordRepository extends JpaRepository<IdempotencyRe
 			@Param("actorId") UUID actorId);
 
 	@Modifying
-	@Query("delete from IdempotencyRecord r where r.expiresAt < :cutoff")
+	@Query("delete from IdempotencyRecord r where r.expiresAt < :cutoff and r.status <> 'UNKNOWN'")
 	int deleteExpired(@Param("cutoff") Instant cutoff);
 
 }

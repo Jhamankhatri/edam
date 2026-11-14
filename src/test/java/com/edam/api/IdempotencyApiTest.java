@@ -10,10 +10,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import com.edam.common.api.ErrorCode;
 import com.edam.common.api.IdempotencyRecord;
 import com.edam.common.api.IdempotencyRecordRepository;
 import com.edam.common.api.IdempotencyService;
 import com.edam.common.api.RequestFingerprint;
+import com.edam.common.exception.BusinessException;
 import com.edam.common.security.DataScope;
 import com.edam.common.security.EdamPrincipal;
 import com.edam.common.security.Permissions;
@@ -39,9 +41,11 @@ import com.edam.usermanagement.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -87,6 +91,7 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 	@Autowired private ExpenseRequestRepository requests;
 	@Autowired private IdempotencyRecordRepository idempotencyRecords;
 	@Autowired private IdempotencyService idempotencyService;
+	@Autowired private ApplicationContext applicationContext;
 
 	private Department department;
 	private User requester;
@@ -486,6 +491,81 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		// created id as the other user must fail visibility. This is enforced by the existing
 		// request:view-own rule and not bypassed by idempotency.
 		// (Test kept as a documentation marker; idempotency does NOT replay across actors.)
+	}
+
+	@Test
+	@DisplayName("long-running request still executing on this JVM is not marked UNKNOWN past grace window")
+	void longRunningLocalRequestIsNotMarkedUnknown() {
+		// Construct a service with a 1ms grace window and use it directly: insert a claim via
+		// check(...) (which registers the in-flight marker in this JVM), sleep past the grace,
+		// then call check(...) again. The second call must see IN_PROGRESS (EDAM-1005), not
+		// UNKNOWN (EDAM-1006), because the local in-flight marker is still live.
+		IdempotencyService shortGrace = new IdempotencyService(this.idempotencyRecords,
+				this.applicationContext.getBean(org.springframework.transaction.PlatformTransactionManager.class),
+				Duration.ofMillis(1));
+		String key = "key-longrun-" + UUID.randomUUID();
+		UUID actor = this.requester.getId();
+		String op = "POST /api/v1/expense-requests";
+		String fp = IdempotencyService.fingerprint("longrun-body");
+		IdempotencyService.Decision d1 = shortGrace.check(op, actor, key, fp);
+		assertThat(d1).isInstanceOf(IdempotencyService.Proceed.class);
+		// Sleep well past the 1ms grace window.
+		try { Thread.sleep(20); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+		try {
+			shortGrace.check(op, actor, key, fp);
+			org.junit.jupiter.api.Assertions.fail("expected IDEMPOTENCY_IN_PROGRESS");
+		}
+		catch (BusinessException ex) {
+			// Must be IN_PROGRESS (EDAM-1005), NOT UNKNOWN_OUTCOME (EDAM-1006).
+			assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.IDEMPOTENCY_IN_PROGRESS);
+			// Record should still be IN_PROGRESS (not transitioned to UNKNOWN).
+			IdempotencyRecord rec = this.idempotencyRecords
+					.findByKey(IdempotencyService.sha256(key), op, actor).orElseThrow();
+			assertThat(rec.getStatus()).isEqualTo(IdempotencyRecord.Status.IN_PROGRESS);
+		}
+		finally {
+			// Clean up in-flight marker (simulate recordSuccess path so we don't leak state).
+			shortGrace.recordSuccess(op, actor, key, 201, "{}");
+		}
+	}
+
+	@Test
+	@DisplayName("UNKNOWN records are excluded from deleteExpired and retain extended expiry")
+	void unknownRecordsAreNotDeletedByRetentionSweep() {
+		// Insert an IN_PROGRESS row aged past the grace window; trigger the transition to UNKNOWN
+		// via the normal decision path, then run deleteExpired at cutoff=now and verify the row
+		// survives.
+		String key = "key-unknown-retention-" + UUID.randomUUID();
+		EdamPrincipal caller = owner();
+		IdempotencyRecord stale = new IdempotencyRecord(
+				IdempotencyService.sha256(key), "POST /api/v1/expense-requests", caller.userId(),
+				IdempotencyService.fingerprint("retention-body"),
+				Instant.now().plus(IdempotencyService.RETENTION));
+		try {
+			java.lang.reflect.Field f = IdempotencyRecord.class.getDeclaredField("createdAt");
+			f.setAccessible(true);
+			f.set(stale, Instant.now().minus(Duration.ofMinutes(10)));
+		}
+		catch (ReflectiveOperationException ex) {
+			throw new RuntimeException(ex);
+		}
+		this.idempotencyRecords.saveAndFlush(stale);
+		try {
+			this.idempotencyService.check("POST /api/v1/expense-requests", caller.userId(), key,
+					IdempotencyService.fingerprint("retention-body"));
+		}
+		catch (BusinessException expected) {
+			assertThat(expected.getErrorCode()).isEqualTo(ErrorCode.IDEMPOTENCY_UNKNOWN_OUTCOME);
+		}
+		// The record should now be UNKNOWN with expires_at pushed out ~90 days.
+		IdempotencyRecord unknown = this.idempotencyRecords
+				.findByKey(IdempotencyService.sha256(key), "POST /api/v1/expense-requests", caller.userId())
+				.orElseThrow();
+		assertThat(unknown.getStatus()).isEqualTo(IdempotencyRecord.Status.UNKNOWN);
+		assertThat(unknown.getExpiresAt()).isAfter(Instant.now().plus(Duration.ofDays(89)));
+		// Run the retention sweep at cutoff=now: the UNKNOWN row must survive.
+		this.idempotencyRecords.deleteExpired(Instant.now());
+		assertThat(this.idempotencyRecords.findById(unknown.getId())).isPresent();
 	}
 
 }

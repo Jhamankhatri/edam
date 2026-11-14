@@ -87,15 +87,17 @@ public final class RequestFingerprint {
 	}
 
 	/**
-	 * Lazily-built canonical mapper that sorts object keys recursively.
+	 * Lazily-built canonical mapper that sorts object keys alphabetically.
 	 *
 	 * <p>Sharing the application mapper would be wrong: the global mapper is used for response
 	 * rendering and its features (NON_NULL inclusion, naming strategies, custom modules) could
 	 * silently change the canonical form. The fingerprint mapper must produce output that is
 	 * byte-identical regardless of how the incoming JSON was laid out.
 	 *
-	 * <p>{@code ORDER_MAP_ENTRIES_BY_KEYS} covers the top level; the recursive sort is implemented
-	 * by {@link #sortKeys} which walks the tree and rebuilds every ObjectNode with sorted keys.
+	 * <p>{@code SORT_PROPERTIES_ALPHABETICALLY} combined with {@code ORDER_MAP_ENTRIES_BY_KEYS}
+	 * causes Jackson to sort keys during serialisation. We additionally call {@link #sortKeys}
+	 * before serialising so that nested objects inside arrays (which Jackson's top-level sort does
+	 * not descend into) are also ordered deterministically.
 	 */
 	private static final class CanonicalHolder {
 		static final JsonMapper MAPPER = JsonMapper.builder()
@@ -138,21 +140,36 @@ public final class RequestFingerprint {
 			return;
 		}
 		ObjectNode obj = (ObjectNode) node;
-		SortedMap<String, JsonNode> byName = new TreeMap<>();
-		// Use JsonNode#properties() which returns a concrete List<Map.Entry<String, JsonNode>> —
-		// avoids a javac target-type inference issue with Iterator<Map.Entry<...>> from fields().
-		for (Object e : obj.properties()) {
-			@SuppressWarnings("unchecked")
-			java.util.Map.Entry<String, JsonNode> entry = (java.util.Map.Entry<String, JsonNode>) e;
-			byName.put(entry.getKey(), entry.getValue());
+		// Collect field names into a sorted list first; then build a new ObjectNode in sorted order.
+		// This avoids all generic-Iterator target-type inference issues across Jackson variants.
+		java.util.List<String> names = new java.util.ArrayList<>();
+		java.util.Iterator<?> nameIt = (java.util.Iterator<?>) invokeNoArg(node, "fieldNames");
+		while (nameIt != null && nameIt.hasNext()) {
+			Object n = nameIt.next();
+			if (n instanceof String s) {
+				names.add(s);
+			}
 		}
+		java.util.Collections.sort(names);
 		ObjectNode sorted = CanonicalHolder.MAPPER.createObjectNode();
-		for (java.util.Map.Entry<String, JsonNode> e : byName.entrySet()) {
-			sortKeys(e.getValue());
-			sorted.set(e.getKey(), e.getValue());
+		for (String name : names) {
+			JsonNode child = obj.get(name);
+			sortKeys(child);
+			sorted.set(name, child);
 		}
 		obj.removeAll();
 		obj.setAll(sorted);
+	}
+
+	/** Reflection helper used solely to avoid compile-time generic-return-type ambiguities. */
+	private static java.util.Iterator<?> invokeNoArg(Object target, String method) {
+		try {
+			Object result = target.getClass().getMethod(method).invoke(target);
+			return (java.util.Iterator<?>) result;
+		}
+		catch (ReflectiveOperationException ex) {
+			return java.util.Collections.emptyIterator();
+		}
 	}
 
 }
