@@ -140,23 +140,26 @@ public final class RequestFingerprint {
 			return;
 		}
 		ObjectNode obj = (ObjectNode) node;
-		// Collect field names by iterating the raw Iterator returned by tools.jackson's
-		// ObjectNode.fields(). We deliberately avoid generic witnesses because this Jackson
-		// variant declares Iterator (raw) as the return type, which confuses javac's
-		// target-type inference under certain configurations.
+		// Collect field names using reflection so we do not depend on the generic return type
+		// of ObjectNode.fields()/fieldNames(). tools.jackson declares these methods with raw
+		// Iterator signatures which confuse javac's target-type inference in this project's
+		// configuration; reflection keeps the code portable across Jackson variants without
+		// touching byte-code-level generic witnesses.
 		java.util.List<String> names = new java.util.ArrayList<>();
-		@SuppressWarnings("rawtypes")
-		java.util.Iterator it = obj.fields();
-		while (it.hasNext()) {
-			Object e = it.next();
-			if (e instanceof java.util.Map.Entry<?, ?> entry) {
-				Object k = entry.getKey();
-				if (k instanceof String s) {
+		Object iter = invokeNoArg(obj, "fieldNames");
+		if (iter instanceof java.util.Iterator<?> it) {
+			while (it.hasNext()) {
+				Object n = it.next();
+				if (n instanceof String s) {
 					names.add(s);
 				}
 			}
 		}
 		java.util.Collections.sort(names);
+		// Build a new ObjectNode with children in sorted key order. We detach each child from
+		// the original via remove(name) so that a child is never owned by two parents, then
+		// reattach it to the sorted node; this avoids subtle Jackson ObjectNode bugs seen when
+		// setAll(shallowCopy) is used mid-traversal.
 		ObjectNode sorted = CanonicalHolder.MAPPER.createObjectNode();
 		for (String name : names) {
 			JsonNode child = obj.remove(name);
@@ -167,6 +170,16 @@ public final class RequestFingerprint {
 			sorted.set(name, child);
 		}
 		obj.setAll(sorted);
+	}
+
+	/** Reflection helper used solely to avoid compile-time generic-return-type ambiguities. */
+	private static Object invokeNoArg(Object target, String method) {
+		try {
+			return target.getClass().getMethod(method).invoke(target);
+		}
+		catch (ReflectiveOperationException ex) {
+			return null;
+		}
 	}
 
 }
