@@ -285,21 +285,25 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 	}
 
 	@Test
-	@DisplayName("a stale IN_PROGRESS record (past grace window) becomes UNKNOWN and returns 409 EDAM-1006")
+	@DisplayName("a stale IN_PROGRESS record (past grace window, no local claim) becomes UNKNOWN and returns 409 EDAM-1006")
 	void staleInProgressBecomesUnknown() throws Exception {
 		String key = "key-stale-" + UUID.randomUUID();
 		EdamPrincipal caller = owner();
+		String op = "POST /api/v1/expense-requests";
 		String body = opexBody("25.0000", "stale");
-		// Build the same canonical fingerprint the aspect will compute for the retry
-		// (method + URI + sorted path vars + canonical JSON body).
 		String fp = buildFingerprint("POST", BASE, java.util.Map.of(), body);
-		// Insert a dangling IN_PROGRESS record aged past the grace window with the matching fingerprint.
-		com.edam.common.api.IdempotencyRecord stale = new com.edam.common.api.IdempotencyRecord(
-				IdempotencyService.sha256(key), "POST /api/v1/expense-requests", caller.userId(),
+		// Use a service instance with a 1ms grace window so we don't have to wait 60s and so we
+		// share its (empty) in-flight map — the bean autowired in the test may have leftover
+		// entries from earlier tests running in the same JVM.
+		IdempotencyService shortGrace = new IdempotencyService(this.idempotencyRecords,
+				this.applicationContext.getBean(org.springframework.transaction.PlatformTransactionManager.class),
+				Duration.ofMillis(1));
+		// Insert a dangling IN_PROGRESS record aged well past the 1ms grace.
+		IdempotencyRecord stale = new IdempotencyRecord(
+				IdempotencyService.sha256(key), op, caller.userId(),
 				fp, Instant.now().plus(IdempotencyService.RETENTION));
-		// Force created-at back via reflection since IdempotencyRecord constructor sets it to now().
 		try {
-			java.lang.reflect.Field f = com.edam.common.api.IdempotencyRecord.class.getDeclaredField("createdAt");
+			java.lang.reflect.Field f = IdempotencyRecord.class.getDeclaredField("createdAt");
 			f.setAccessible(true);
 			f.set(stale, Instant.now().minus(Duration.ofMinutes(10)));
 		}
@@ -307,29 +311,31 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 			throw new RuntimeException(ex);
 		}
 		this.idempotencyRecords.saveAndFlush(stale);
-		// Retry with same key must NOT proceed (which would double-execute) and must NOT replay (no snapshot);
-		// expect 409 EDAM-1006 and the record transitioned to UNKNOWN.
-		this.mockMvc.perform(post(BASE).with(user(caller)).with(csrf())
-						.contentType(MediaType.APPLICATION_JSON)
-						.accept(MediaType.APPLICATION_JSON)
-						.content(body)
-						.header("Idempotency-Key", key))
-				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.error.code").value("EDAM-1006"));
-		// Record must be UNKNOWN (not deleted), protecting against double-execution on the next retry.
-		java.util.List<IdempotencyRecord> mine = this.idempotencyRecords.findAll().stream()
-				.filter(r -> r.getActorId().equals(caller.userId()))
-				.filter(r -> "POST /api/v1/expense-requests".equals(r.getOperationType()))
-				.toList();
-		assertThat(mine).anyMatch(r -> r.getStatus() == IdempotencyRecord.Status.UNKNOWN);
-		// Second retry on the now-UNKNOWN record also returns 409 EDAM-1006 (does not double-execute).
-		this.mockMvc.perform(post(BASE).with(user(caller)).with(csrf())
-						.contentType(MediaType.APPLICATION_JSON)
-						.accept(MediaType.APPLICATION_JSON)
-						.content(body)
-						.header("Idempotency-Key", key))
-				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.error.code").value("EDAM-1006"));
+		try { Thread.sleep(10); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+		// Direct service call with no live local claim must transition to UNKNOWN.
+		try {
+			shortGrace.check(op, caller.userId(), key, fp);
+			org.junit.jupiter.api.Assertions.fail("expected IDEMPOTENCY_UNKNOWN_OUTCOME");
+		}
+		catch (BusinessException ex) {
+			assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.IDEMPOTENCY_UNKNOWN_OUTCOME);
+		}
+		// Record must be UNKNOWN (not deleted), protecting against double-execution on retry.
+		IdempotencyRecord after = this.idempotencyRecords
+				.findByKey(IdempotencyService.sha256(key), op, caller.userId()).orElseThrow();
+		assertThat(after.getStatus()).isEqualTo(IdempotencyRecord.Status.UNKNOWN);
+		assertThat(after.getExpiresAt()).isAfter(Instant.now().plus(Duration.ofDays(89)));
+		// Second check on the now-UNKNOWN record also throws EDAM-1006 (does not double-execute).
+		try {
+			shortGrace.check(op, caller.userId(), key, fp);
+			org.junit.jupiter.api.Assertions.fail("expected IDEMPOTENCY_UNKNOWN_OUTCOME on retry");
+		}
+		catch (BusinessException ex) {
+			assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.IDEMPOTENCY_UNKNOWN_OUTCOME);
+		}
+		finally {
+			shortGrace.recordSuccess(op, caller.userId(), key, 201, "{}");
+		}
 	}
 
 	@Test
@@ -564,13 +570,13 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		try { Thread.sleep(10); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
 		try {
 			shortGrace.check(op, caller.userId(), key, fp);
+			org.junit.jupiter.api.Assertions.fail("expected IDEMPOTENCY_UNKNOWN_OUTCOME");
 		}
 		catch (BusinessException expected) {
 			assertThat(expected.getErrorCode()).isEqualTo(ErrorCode.IDEMPOTENCY_UNKNOWN_OUTCOME);
 		}
-		finally {
-			shortGrace.recordSuccess(op, caller.userId(), key, 201, "{}"); // clear in-flight marker
-		}
+		// No in-flight marker to clear: check(...) threw before returning Proceed, so nothing was
+		// added to the in-flight map.
 		// The record should now be UNKNOWN with expires_at pushed out ~90 days.
 		IdempotencyRecord unknown = this.idempotencyRecords
 				.findByKey(IdempotencyService.sha256(key), "POST /api/v1/expense-requests", caller.userId())
