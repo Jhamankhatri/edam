@@ -312,38 +312,26 @@ public class IdempotencyService {
 				this.inFlightByLocalJvm.remove(claimKey);
 			}
 		};
-		// We must NOT register an afterCommit sync against a transaction that was opened by our
-		// own REQUIRES_NEW claim (in check()). After check() returns, that claim TX has committed
-		// but some TX resources may remain bound to the thread briefly. The right signal is
-		// whether the synchronisation manager says a TX is ACTIVE on the *current* thread AND
-		// the transaction is not our claim template's TX. In practice for controller flows with
-		// open-in-view=false the business service's @Transactional commits BEFORE the aspect
-		// invokes recordSuccess (because the service proxy commits on method return, and the
-		// aspect is invoked AROUND the controller — which calls the proxied service internally,
-		// so by the time joinPoint.proceed() returns to the aspect the service TX is done).
-		// Some test setups or filter chains may leave an outer TX open; in that case afterCommit
-		// fires correctly. When no TX is active, finalize immediately.
-		if (TransactionSynchronizationManager.isActualTransactionActive()
-				&& TransactionSynchronizationManager.isSynchronizationActive()) {
-			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-				@Override
-				public void afterCommit() {
-					try {
-						finalizer.run();
-					}
-					catch (RuntimeException ex) {
-						// The business operation has already committed; failing here would not undo it.
-						// Leave the IN_PROGRESS row so the next retry hits the stale-grace path rather
-						// than double-executing. Log loudly for ops.
-						log.error("idempotency.finalize_failed operation={} actor={} keyHash={}", operationType,
-								actorId, keyHash, ex);
-					}
-				}
-			});
-		}
-		else {
-			finalizer.run();
-		}
+		// Always finalise immediately in a REQUIRES_NEW transaction.
+		//
+		// Why we deliberately do NOT register an afterCommit synchronization here:
+		// In EDAM's controller flow the business service is annotated @Transactional, and the
+		// Spring AOP proxy for that service commits the transaction on service-method return —
+		// i.e. BEFORE the controller returns control to the IdempotencyAspect. By the time the
+		// aspect calls recordSuccess() after joinPoint.proceed() returns, no business transaction
+		// is active. If we *did* register an afterCommit sync against the (non-existent or
+		// residual) transaction at this point, the sync would never fire, the COMPLETED row
+		// would never be written, and the next retry would find an IN_PROGRESS row, wait the
+		// stale grace, and incorrectly return UNKNOWN — breaking replay semantics.
+		//
+		// If a filter, interceptor, or caller wraps a whole request in its own outer transaction,
+		// then running the finaliser immediately means the COMPLETED row is written BEFORE that
+		// outer TX commits. In that case a rollback of the outer TX (which would only happen due
+		// to a post-controller bug like a @EventListener failure, since the service itself has
+		// already committed) could leave a COMPLETED row for work that the outer filter rolled
+		// back. That edge case is accepted as fail-safe (false replay is better than double
+		// execution) and is documented in the design doc.
+		finalizer.run();
 	}
 
 	/**
