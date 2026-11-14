@@ -29,7 +29,7 @@ public interface IdempotencyRecordRepository extends JpaRepository<IdempotencyRe
 			@Param("operationType") String operationType,
 			@Param("actorId") UUID actorId);
 
-	@Modifying
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
 	@Query("delete from IdempotencyRecord r where r.expiresAt < :cutoff and r.status <> 'UNKNOWN'")
 	int deleteExpired(@Param("cutoff") Instant cutoff);
 
@@ -39,7 +39,7 @@ public interface IdempotencyRecordRepository extends JpaRepository<IdempotencyRe
 	 * Production code must never need this because the constructor defaults {@code created_at} to
 	 * {@code now()}; it exists solely so crash-recovery tests can plant a back-dated record.
 	 */
-	@Modifying
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
 	@Query(value = """
 			insert into idempotency_records
 			    (id, idempotency_key, operation_type, actor_id, request_hash,
