@@ -22,8 +22,6 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
@@ -293,11 +291,11 @@ public class IdempotencyService {
 		if (key == null || key.isBlank()) {
 			return;
 		}
-		String keyHash = sha256(key.trim());
+		String keyHash = sha256(key);
 		String claimKey = claimKey(keyHash, operationType, actorId);
 		Runnable finalizer = () -> {
 			try {
-				this.newTxTemplate.execute(status -> {
+				this.newTxTemplate.executeWithoutResult(status -> {
 					Optional<IdempotencyRecord> opt = this.records.findByKey(keyHash, operationType, actorId);
 					if (opt.isEmpty()) {
 						// Defensive: if the lookup misses (e.g. EM L1 cache eviction between
@@ -310,7 +308,6 @@ public class IdempotencyService {
 					IdempotencyRecord record = opt.get();
 					record.complete(httpStatus, responseJson);
 					this.records.saveAndFlush(record);
-					return null;
 				});
 			}
 			finally {
@@ -356,7 +353,7 @@ public class IdempotencyService {
 		if (key == null || key.isBlank()) {
 			return;
 		}
-		String keyHash = sha256(key.trim());
+		String keyHash = sha256(key);
 		this.records.findByKey(keyHash, operationType, actorId).ifPresent(record -> {
 			record.fail();
 			this.records.save(record);
