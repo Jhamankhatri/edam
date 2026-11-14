@@ -35,6 +35,14 @@ public enum ErrorCode {
 	PERMISSION_DENIED("EDAM-2005", "You do not have permission to perform this operation."),
 	/** An idempotency key was reused with a different request payload. */
 	IDEMPOTENCY_CONFLICT("EDAM-1004", "This request was already submitted with different content."),
+	/** An identical request using the same idempotency key is currently being processed. */
+	IDEMPOTENCY_IN_PROGRESS("EDAM-1005", "An identical request is already being processed. Retry after a short delay."),
+	/**
+	 * A prior request with the same idempotency key did not complete normally (process crash
+	 * between business commit and record finalisation). The client must query the resource to
+	 * determine outcome; the server will not execute the operation a second time.
+	 */
+	IDEMPOTENCY_UNKNOWN_OUTCOME("EDAM-1006", "A prior request with this idempotency key did not complete normally."),
 	/** A required precondition (e.g. If-Match version) was not supplied or did not match. */
 	PRECONDITION_FAILED("EDAM-3003", "The record changed since it was loaded. Reload and try again."),
 	/** A configuration or state transition is not permitted in the current state. */

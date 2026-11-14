@@ -38,11 +38,16 @@ import org.springframework.transaction.support.TransactionTemplate;
  *   <li>New key: the key is claimed <em>before</em> the operation runs (state {@code IN_PROGRESS});
  *       the operation then executes and the record is finalised.</li>
  *   <li>Same key, same actor, same fingerprint, {@code COMPLETED}: the recorded response is
- *       returned and the business operation is NOT executed again.</li>
+ *       returned and the business operation is NOT executed again (replay).</li>
  *   <li>Same key, same actor, different fingerprint: rejected with
- *       {@link ErrorCode#IDEMPOTENCY_CONFLICT} (HTTP 400).</li>
- *   <li>Same key, same actor, {@code IN_PROGRESS}: rejected with {@link ErrorCode#PRECONDITION_FAILED}
- *       (HTTP 409) — the client should retry after a short delay.</li>
+ *       {@link ErrorCode#IDEMPOTENCY_CONFLICT} (HTTP 409 Conflict) — client programming bug; do not
+ *       retry automatically.</li>
+ *   <li>Same key, same actor, {@code IN_PROGRESS} (within grace window): rejected with
+ *       {@link ErrorCode#IDEMPOTENCY_IN_PROGRESS} (HTTP 409 Conflict) — retry with backoff.</li>
+ *   <li>Same key, same actor, {@code IN_PROGRESS} (past grace window, i.e. stale): transitioned to
+ *       {@code UNKNOWN} and rejected with {@link ErrorCode#IDEMPOTENCY_UNKNOWN_OUTCOME}
+ *       (HTTP 409 Conflict) — client must query the resource directly; the server will not
+ *       double-execute.</li>
  *   <li>Same key, same actor, {@code FAILED} (a previous attempt threw): the key is cleared and the
  *       operation may proceed once with the new fingerprint; this lets a client correct input and
  *       reuse the same key without opening a duplicate-execution window.</li>
@@ -67,17 +72,32 @@ public class IdempotencyService {
 	private static final Logger log = LoggerFactory.getLogger(IdempotencyService.class);
 
 	/**
-	 * Stale in-progress records older than this are treated as abandoned (e.g. the JVM crashed
-	 * between claim and finalisation) and cleared on the next {@code check()} for that key so a
-	 * retry does not dead-end on a permanent 409.
+	 * Authoritative stale-in-progress grace period.
+	 *
+	 * <p>An IN_PROGRESS record older than this window is presumed to originate from a crashed
+	 * request: the business TX may have committed even though the COMPLETED row was never
+	 * written (the afterCommit callback never fired). The record is transitioned to UNKNOWN
+	 * rather than deleted — deleting it would allow a retry to double-execute.
+	 *
+	 * <p>Sixty seconds comfortably exceeds any normal controller execution time; configurable
+	 * via {@code edam.idempotency.stale-grace} if an installation needs a wider window (e.g.
+	 * long-running batch approvals).
 	 */
-	private static final Duration STALE_IN_PROGRESS_GRACE = Duration.ofMinutes(5);
+	public static final Duration STALE_IN_PROGRESS_GRACE_DEFAULT = Duration.ofSeconds(60);
+
+	private final Duration staleGrace;
 
 	private final IdempotencyRecordRepository records;
 	private final TransactionTemplate newTxTemplate;
 
 	public IdempotencyService(IdempotencyRecordRepository records, PlatformTransactionManager txManager) {
+		this(records, txManager, STALE_IN_PROGRESS_GRACE_DEFAULT);
+	}
+
+	public IdempotencyService(IdempotencyRecordRepository records, PlatformTransactionManager txManager,
+			Duration staleGrace) {
 		this.records = records;
+		this.staleGrace = staleGrace;
 		this.newTxTemplate = new TransactionTemplate(txManager);
 		this.newTxTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
 	}
@@ -144,8 +164,8 @@ public class IdempotencyService {
 					// the winner's record.
 					existing = this.records.findByKey(keyHash, operationType, actorId);
 					if (existing.isEmpty()) {
-						throw new BusinessException(ErrorCode.PRECONDITION_FAILED,
-								"An identical request is already being processed. Retry once it completes.");
+						throw new BusinessException(ErrorCode.IDEMPOTENCY_IN_PROGRESS,
+								"An identical request is already being processed. Retry after a short delay.");
 					}
 					return decideForExisting(existing.get(), keyHash, operationType, actorId, fingerprint);
 				}
@@ -155,30 +175,37 @@ public class IdempotencyService {
 		});
 	}
 
-	/** Resolve the decision for an existing IN_PROGRESS / FAILED / COMPLETED record. */
+	/** Resolve the decision for an existing IN_PROGRESS / UNKNOWN / FAILED / COMPLETED record. */
 	private Decision decideForExisting(IdempotencyRecord record, String keyHash, String operationType,
 			UUID actorId, String fingerprint) {
 		if (!record.matchesRequest(fingerprint)) {
+			// Same key, different payload — HTTP 409 Conflict (not 400): the key is in use by a
+			// conflicting request state.
 			throw new BusinessException(ErrorCode.IDEMPOTENCY_CONFLICT);
 		}
 		return switch (record.getStatus()) {
 			case IN_PROGRESS -> {
-				Instant abandonedAfter = record.getCreatedAt().plus(STALE_IN_PROGRESS_GRACE);
+				Instant abandonedAfter = record.getCreatedAt().plus(this.staleGrace);
 				if (Instant.now().isAfter(abandonedAfter)) {
-					// Server/process crash left a dangling IN_PROGRESS row; clear and retry.
-					log.warn("idempotency.stale_in_progress operation={} actor={} keyHash={} clearing",
-							operationType, actorId, keyHash);
-					this.records.delete(record);
-					this.records.flush();
-					this.records.saveAndFlush(new IdempotencyRecord(keyHash, operationType, actorId, fingerprint,
-							Instant.now().plus(RETENTION)));
-					yield Proceed.INSTANCE;
+					// Crash window: business TX may have committed without the afterCommit callback
+					// firing. Mark UNKNOWN (fail-closed) rather than deleting and double-executing.
+					// The retry gets 409 and must reconcile out-of-band (GET the resource).
+					log.error("idempotency.unknown_outcome operation={} actor={} keyHash={} created={}",
+							operationType, actorId, keyHash, record.getCreatedAt());
+					record.markUnknown();
+					this.records.saveAndFlush(record);
+					throw new BusinessException(ErrorCode.IDEMPOTENCY_UNKNOWN_OUTCOME,
+							"A prior request with this idempotency key did not complete normally. "
+									+ "Query the resource to determine its state before retrying.");
 				}
-				throw new BusinessException(ErrorCode.PRECONDITION_FAILED,
-						"An identical request is already being processed. Retry once it completes.");
+				throw new BusinessException(ErrorCode.IDEMPOTENCY_IN_PROGRESS,
+						"An identical request is already being processed. Retry after a short delay.");
 			}
+			case UNKNOWN -> throw new BusinessException(ErrorCode.IDEMPOTENCY_UNKNOWN_OUTCOME,
+					"A prior request with this idempotency key did not complete normally. "
+							+ "Query the resource to determine its state before retrying.");
 			case FAILED -> {
-				// Previous attempt failed; allow a retry under the same key+fingerprint by clearing
+				// Previous attempt threw; allow a retry under the same key+fingerprint by clearing
 				// the record. The unique index will be re-claimed by the new save below.
 				this.records.delete(record);
 				this.records.flush();
@@ -280,7 +307,8 @@ public class IdempotencyService {
 		}
 	}
 
-	private static String sha256(String value) {
+	/** Exposed for tests and internal callers that need to hash an idempotency key. */
+	public static String sha256(String value) {
 		try {
 			MessageDigest digest = MessageDigest.getInstance("SHA-256");
 			return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));

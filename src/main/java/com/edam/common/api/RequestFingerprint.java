@@ -3,12 +3,14 @@ package com.edam.common.api;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.SortedMap;
 import java.util.TreeMap;
 
 import jakarta.servlet.http.HttpServletRequest;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Builds a deterministic, order-insensitive fingerprint of an idempotent request.
@@ -84,20 +86,67 @@ public final class RequestFingerprint {
 		return "";
 	}
 
-	/** Parse and re-serialise JSON so whitespace/key-order differences are normalised away. */
-	static String canonicalJson(JsonMapper jsonMapper, String body) {
+	/**
+	 * Lazily-built canonical mapper that sorts object keys recursively.
+	 *
+	 * <p>Sharing the application mapper would be wrong: the global mapper is used for response
+	 * rendering and its features (NON_NULL inclusion, naming strategies, custom modules) could
+	 * silently change the canonical form. The fingerprint mapper must produce output that is
+	 * byte-identical regardless of how the incoming JSON was laid out.
+	 *
+	 * <p>{@code ORDER_MAP_ENTRIES_BY_KEYS} covers the top level; the recursive sort is implemented
+	 * by {@link #sortKeys} which walks the tree and rebuilds every ObjectNode with sorted keys.
+	 */
+	private static final class CanonicalHolder {
+		static final JsonMapper MAPPER = JsonMapper.builder()
+				.configure(tools.jackson.databind.MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true)
+				.configure(tools.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
+				.build();
+	}
+
+	/** Parse and re-serialise JSON so whitespace/key-order/nesting-order differences are normalised away. Exposed for tests. */
+	public static String canonicalJson(JsonMapper jsonMapper, String body) {
 		if (body == null || body.isBlank()) {
 			return "";
 		}
 		try {
-			JsonNode tree = jsonMapper.readTree(body);
-			return jsonMapper.writeValueAsString(tree);
+			JsonNode tree = CanonicalHolder.MAPPER.readTree(body);
+			sortKeys(tree);
+			return CanonicalHolder.MAPPER.writeValueAsString(tree);
 		}
 		catch (RuntimeException ex) {
 			// Not JSON (e.g. form-urlencoded or empty); fall back to the raw trimmed body.
 			// tools.jackson.core.exc.StreamReadException is a RuntimeException in this Jackson variant.
 			return body.trim();
 		}
+	}
+
+	/**
+	 * Recursively sort the keys of every ObjectNode so that property order in the incoming JSON
+	 * cannot change the canonical serialisation. Array ordering is preserved (it carries meaning).
+	 * Primitives and nulls are left untouched.
+	 */
+	private static void sortKeys(JsonNode node) {
+		if (node == null) {
+			return;
+		}
+		if (node.isArray()) {
+			node.forEach(RequestFingerprint::sortKeys);
+			return;
+		}
+		if (!node.isObject()) {
+			return;
+		}
+		var obj = (ObjectNode) node;
+		SortedMap<String, JsonNode> byName = new TreeMap<>();
+		obj.fields().forEachRemaining(e -> byName.put(e.getKey(), e.getValue()));
+		ObjectNode sorted = CanonicalHolder.MAPPER.createObjectNode();
+		byName.forEach((name, child) -> {
+			sortKeys(child);
+			sorted.set(name, child);
+		});
+		obj.removeAll();
+		obj.setAll(sorted);
 	}
 
 }

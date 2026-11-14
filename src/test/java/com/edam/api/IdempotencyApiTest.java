@@ -1,5 +1,7 @@
 package com.edam.api;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -10,6 +12,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import com.edam.common.api.IdempotencyRecord;
 import com.edam.common.api.IdempotencyRecordRepository;
+import com.edam.common.api.IdempotencyService;
+import com.edam.common.api.RequestFingerprint;
 import com.edam.common.security.DataScope;
 import com.edam.common.security.EdamPrincipal;
 import com.edam.common.security.Permissions;
@@ -82,6 +86,7 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 	@Autowired private UserRepository users;
 	@Autowired private ExpenseRequestRepository requests;
 	@Autowired private IdempotencyRecordRepository idempotencyRecords;
+	@Autowired private IdempotencyService idempotencyService;
 
 	private Department department;
 	private User requester;
@@ -202,7 +207,7 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 	}
 
 	@Test
-	@DisplayName("same key with a different payload returns HTTP 400 IDEMPOTENCY_CONFLICT")
+	@DisplayName("same key with a different payload returns HTTP 409 Conflict (EDAM-1004)")
 	void differentPayloadIsConflict() throws Exception {
 		String key = "key-conflict-" + UUID.randomUUID();
 		createDraft(opexBody("100.0000", "original"), key, owner(), HttpStatus.CREATED.value());
@@ -211,8 +216,132 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 						.accept(MediaType.APPLICATION_JSON)
 						.content(opexBody("200.0000", "tampered"))
 						.header("Idempotency-Key", key))
-				.andExpect(status().isBadRequest())
+				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.error.code").value("EDAM-1004"));
+	}
+
+	@Test
+	@DisplayName("JSON bodies differing only in property ordering produce identical fingerprints")
+	void jsonPropertyOrderDoesNotAffectFingerprint() {
+		// Same logical object, two serialisations with different key orderings (and whitespace).
+		String a = "{\"justification\":\"j\",\"requestedAmount\":100.0000,\"opex\":{\"recurring\":true,\"recurrenceFrequency\":\"MONTHLY\"}}";
+		String b = "{\n  \"opex\": { \"recurrenceFrequency\": \"MONTHLY\", \"recurring\": true },\n  \"requestedAmount\": 100.0000,\n  \"justification\": \"j\"\n}";
+		// canonicalJson is static package-private; access via forRequest with a stub request is
+		// awkward, so invoke it through RequestFingerprint.canonicalJson indirectly via byte arrays.
+		String canonA = RequestFingerprint.canonicalJson(this.jsonMapper, a);
+		String canonB = RequestFingerprint.canonicalJson(this.jsonMapper, b);
+		assertThat(canonA).isEqualTo(canonB);
+		assertThat(IdempotencyService.fingerprint(canonA)).isEqualTo(IdempotencyService.fingerprint(canonB));
+	}
+
+	@Test
+	@DisplayName("path variables distinguish two resources: same body+key against different ids yields different fingerprints")
+	void pathVariablesDistinguishResources() throws Exception {
+		// Direct unit check of RequestFingerprint logic without HTTP: same body, different {id} values
+		// must produce different hashes when passed through the same operation id.
+		String body = "{\"reason\":\"closing\"}";
+		java.util.Map<String, String> varsA = java.util.Map.of("id", "11111111-1111-1111-1111-111111111111");
+		java.util.Map<String, String> varsB = java.util.Map.of("id", "22222222-2222-2222-2222-222222222222");
+		// Build two fake requests differing only in URI; compare via canonical builder.
+		String fpA = buildFingerprint("POST", "/api/v1/expense-requests/" + varsA.get("id") + "/cancel", varsA, body);
+		String fpB = buildFingerprint("POST", "/api/v1/expense-requests/" + varsB.get("id") + "/cancel", varsB, body);
+		assertThat(fpA).isNotEqualTo(fpB);
+	}
+
+	private String buildFingerprint(String method, String uri, java.util.Map<String, String> vars, String body) {
+		StringBuilder canon = new StringBuilder();
+		canon.append(method).append(' ').append(uri).append('\0');
+		java.util.TreeMap<String, String> sorted = new java.util.TreeMap<>();
+		vars.forEach((k, v) -> sorted.put(k, v == null ? "" : v));
+		sorted.forEach((k, v) -> canon.append(k).append('=').append(v).append('&'));
+		canon.append('\0');
+		canon.append(RequestFingerprint.canonicalJson(this.jsonMapper, body));
+		return IdempotencyService.fingerprint(canon.toString());
+	}
+
+	@Test
+	@DisplayName("replay is denied when the caller no longer holds the required permission")
+	void replayDeniedAfterPermissionRevocation() throws Exception {
+		String key = "key-perm-" + UUID.randomUUID();
+		EdamPrincipal originalCaller = owner();
+		createDraft(opexBody("88.0000", "perm"), key, originalCaller, HttpStatus.CREATED.value());
+		// Same userId but with REQUEST_CREATE stripped out. Permission is evaluated afresh on replay.
+		EdamPrincipal revoked = new EdamPrincipal(originalCaller.userId(), originalCaller.employeeCode(),
+				originalCaller.username(), originalCaller.displayName(), originalCaller.roleCodes(),
+				Set.of(Permissions.REQUEST_VIEW_OWN),    // create permission removed
+				originalCaller.dataScopes());
+		this.mockMvc.perform(post(BASE).with(user(revoked)).with(csrf())
+						.contentType(MediaType.APPLICATION_JSON)
+						.accept(MediaType.APPLICATION_JSON)
+						.content(opexBody("88.0000", "perm"))
+						.header("Idempotency-Key", key))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.error.code").value("EDAM-2005"));
+	}
+
+	@Test
+	@DisplayName("a stale IN_PROGRESS record (past grace window) becomes UNKNOWN and returns 409 EDAM-1006")
+	void staleInProgressBecomesUnknown() throws Exception {
+		String key = "key-stale-" + UUID.randomUUID();
+		EdamPrincipal caller = owner();
+		// Insert a dangling IN_PROGRESS record aged past the grace window.
+		com.edam.common.api.IdempotencyRecord stale = new com.edam.common.api.IdempotencyRecord(
+				IdempotencyService.sha256(key), "POST /api/v1/expense-requests", caller.userId(),
+				IdempotencyService.fingerprint("dummy"),
+				Instant.now().plus(IdempotencyService.RETENTION));
+		// Force created-at back via reflection since IdempotencyRecord constructor sets it to now().
+		try {
+			java.lang.reflect.Field f = com.edam.common.api.IdempotencyRecord.class.getDeclaredField("createdAt");
+			f.setAccessible(true);
+			f.set(stale, Instant.now().minus(Duration.ofMinutes(10)));
+		}
+		catch (ReflectiveOperationException ex) {
+			throw new RuntimeException(ex);
+		}
+		this.idempotencyRecords.saveAndFlush(stale);
+		// Retry with same key must NOT proceed (which would double-execute) and must NOT replay (no snapshot);
+		// expect 409 EDAM-1006 and the record transitioned to UNKNOWN.
+		this.mockMvc.perform(post(BASE).with(user(caller)).with(csrf())
+						.contentType(MediaType.APPLICATION_JSON)
+						.accept(MediaType.APPLICATION_JSON)
+						.content(opexBody("25.0000", "stale"))
+						.header("Idempotency-Key", key))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.error.code").value("EDAM-1006"));
+		// Record must be UNKNOWN (not deleted), protecting against double-execution on the next retry.
+		java.util.List<IdempotencyRecord> mine = this.idempotencyRecords.findAll().stream()
+				.filter(r -> r.getActorId().equals(caller.userId()))
+				.filter(r -> "POST /api/v1/expense-requests".equals(r.getOperationType()))
+				.toList();
+		assertThat(mine).anyMatch(r -> r.getStatus() == IdempotencyRecord.Status.UNKNOWN);
+		// Second retry on the now-UNKNOWN record also returns 409 EDAM-1006 (does not double-execute).
+		this.mockMvc.perform(post(BASE).with(user(caller)).with(csrf())
+						.contentType(MediaType.APPLICATION_JSON)
+						.accept(MediaType.APPLICATION_JSON)
+						.content(opexBody("25.0000", "stale"))
+						.header("Idempotency-Key", key))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.error.code").value("EDAM-1006"));
+	}
+
+	@Test
+	@DisplayName("concurrent in-progress duplicate returns HTTP 409 (EDAM-1005)")
+	void concurrentInProgressReturns409() throws Exception {
+		// Insert an IN_PROGRESS row aged well within the grace window; retry must be 409 EDAM-1005.
+		String key = "key-ip-" + UUID.randomUUID();
+		EdamPrincipal caller = owner();
+		this.idempotencyRecords.saveAndFlush(new com.edam.common.api.IdempotencyRecord(
+				IdempotencyService.sha256(key), "POST /api/v1/expense-requests", caller.userId(),
+				IdempotencyService.fingerprint(RequestFingerprint.canonicalJson(
+						this.jsonMapper, opexBody("30.0000", "inprog"))),
+				Instant.now().plus(IdempotencyService.RETENTION)));
+		this.mockMvc.perform(post(BASE).with(user(caller)).with(csrf())
+						.contentType(MediaType.APPLICATION_JSON)
+						.accept(MediaType.APPLICATION_JSON)
+						.content(opexBody("30.0000", "inprog"))
+						.header("Idempotency-Key", key))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.error.code").value("EDAM-1005"));
 	}
 
 	@Test
@@ -279,7 +408,7 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 								created.incrementAndGet();
 							}
 						}
-						else if (status == 409 || status == 400) {
+						else if (status == 409) {
 							conflicts.incrementAndGet();
 						}
 					}

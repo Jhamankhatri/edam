@@ -10,12 +10,14 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import com.edam.common.exception.BusinessException;
+import com.edam.common.security.EdamPermission;
 import com.edam.common.security.EdamPrincipal;
 import com.edam.common.security.InstitutionContext;
 
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.reflect.MethodSignature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -73,6 +75,11 @@ public class IdempotencyAspect {
 		String operation = idempotentOperation.value();
 		IdempotencyService.Decision decision = this.idempotency.check(operation, actorId, key.trim(), fingerprint);
 		if (decision instanceof IdempotencyService.Replay replay) {
+			// Replay bypasses the controller, so we must re-enforce the method-level permission
+			// here. The actorId scoping of the key lookup already proves the caller is the same
+			// user who originally made the request, but that user's permissions may have been
+			// revoked in the interim — fail closed.
+			enforceReplayAuthorization(joinPoint, principal);
 			return writeReplay(replay);
 		}
 		// Proceed: invoke the controller and finalise the record based on outcome.
@@ -170,6 +177,30 @@ public class IdempotencyAspect {
 			return sra.getResponse();
 		}
 		return null;
+	}
+
+	/**
+	 * Re-verify the caller still holds the {@code @EdamPermission} declared on the controller
+	 * method before serving a replay. We deliberately re-read the annotation here rather than
+	 * re-invoking the entire {@code RequirePermissionAspect} chain so the replay path cannot
+	 * accidentally reach the controller body, but the permission semantics match exactly: the
+	 * same permission code the original caller needed is required again on replay.
+	 *
+	 * <p>If the method has no {@code @EdamPermission} (unexpected for an idempotent endpoint
+	 * given the arch-test guard), we refuse the replay rather than leaking data — deny-by-default.
+	 */
+	private static void enforceReplayAuthorization(ProceedingJoinPoint joinPoint, EdamPrincipal principal) {
+		if (!(joinPoint.getSignature() instanceof MethodSignature sig)) {
+			throw new BusinessException(ErrorCode.PERMISSION_DENIED, ErrorCode.PERMISSION_DENIED.safeMessage());
+		}
+		EdamPermission permission = sig.getMethod().getAnnotation(EdamPermission.class);
+		if (permission == null) {
+			// Try class-level annotation as well (rare but supported by the annotation target).
+			permission = joinPoint.getTarget().getClass().getAnnotation(EdamPermission.class);
+		}
+		if (permission == null || !principal.hasPermission(permission.value())) {
+			throw new BusinessException(ErrorCode.PERMISSION_DENIED, ErrorCode.PERMISSION_DENIED.safeMessage());
+		}
 	}
 
 }

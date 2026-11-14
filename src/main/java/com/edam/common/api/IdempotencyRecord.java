@@ -43,6 +43,14 @@ public class IdempotencyRecord {
 
 		/** A request is executing under this key; a concurrent duplicate must not start. */
 		IN_PROGRESS,
+		/**
+		 * The operation committed but the final response-snapshot write may not have completed
+		 * (process crashed between the business TX commit and the afterCommit finaliser).
+		 * A retry under this status receives {@code 409 Conflict} rather than a blind replay or a
+		 * second execution: the server cannot prove the work did or did not happen, so it fails
+		 * closed and directs the client to query the resource directly.
+		 */
+		UNKNOWN,
 		/** The operation completed; the recorded status is what a replay receives. */
 		COMPLETED,
 		/** The operation failed; a retry under the same key is allowed once the failure is recorded. */
@@ -112,6 +120,15 @@ public class IdempotencyRecord {
 	/** Marks the operation failed so that the caller may correct the input and retry. */
 	public void fail() {
 		this.status = Status.FAILED;
+	}
+
+	/**
+	 * Marks the record UNKNOWN: the in-progress claim is older than the grace window and the
+	 * outcome cannot be determined from the record alone. The caller must reconcile out-of-band;
+	 * the record will not be automatically deleted or replaced.
+	 */
+	public void markUnknown() {
+		this.status = Status.UNKNOWN;
 	}
 
 	public boolean isCompleted() {
