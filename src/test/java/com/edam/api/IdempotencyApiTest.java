@@ -243,9 +243,32 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		System.out.println("DEBUG existing.requestHash=" + existing.getRequestHash());
 		org.junit.jupiter.api.Assertions.assertNotEquals("orig+tampered canonical bodies must differ",
 				origFp, tamperedFp);
+		String expectedStoredFp = com.edam.common.api.IdempotencyService.fingerprint(
+				"POST /api/v1/expense-requests\0\0" + origFp);
+		org.junit.jupiter.api.Assertions.assertEquals("stored hash must match orig fingerprint",
+				existing.getRequestHash(), expectedStoredFp);
 		org.junit.jupiter.api.Assertions.assertNotEquals("stored hash must differ from tampered",
 				existing.getRequestHash(), com.edam.common.api.IdempotencyService.fingerprint(
 						"POST /api/v1/expense-requests\0\0" + tamperedFp));
+		// Direct repository lookup using the same parameters the service will use:
+		String keyHash = com.edam.common.api.IdempotencyService.sha256(key);
+		java.util.Optional<IdempotencyRecord> directLookup = this.idempotencyRecords
+				.findByKey(keyHash, "POST /api/v1/expense-requests", caller.userId());
+		org.junit.jupiter.api.Assertions.assertTrue(directLookup.isPresent(),
+				"direct findByKey must find the COMPLETED record immediately before retry");
+		// Also ask the service's decision logic directly (bypass HTTP).
+		this.idempotency.clearInFlightForTests();
+		try {
+			this.idempotency.check("POST /api/v1/expense-requests", caller.userId(), key,
+					com.edam.common.api.IdempotencyService.fingerprint(
+							"POST /api/v1/expense-requests\0\0" + tamperedFp));
+			org.junit.jupiter.api.Assertions.fail("direct service.check() with tampered fp must throw CONFLICT");
+		}
+		catch (com.edam.common.exception.BusinessException bex) {
+			org.junit.jupiter.api.Assertions.assertEquals(com.edam.common.api.ErrorCode.IDEMPOTENCY_CONFLICT,
+					bex.getErrorCode(),
+					() -> "direct check() should return CONFLICT but got " + bex.getErrorCode());
+		}
 		this.mockMvc.perform(post(BASE).with(user(caller)).with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
 						.accept(MediaType.APPLICATION_JSON)
