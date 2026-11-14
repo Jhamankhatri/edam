@@ -66,4 +66,7 @@ public class ApplicationSetting extends AuditableEntity {
 	public void setActive(boolean v) { this.active = v; }
 	public boolean isEditable() { return this.editable; }
 	public void setEditable(boolean v) { this.editable = v; }
+
+	public void touch(String actor) { /* handled by JPA auditing */ }
+	public void markCreated(String actor) { /* handled by JPA auditing */ }
 }

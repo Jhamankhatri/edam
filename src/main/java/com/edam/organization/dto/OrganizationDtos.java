@@ -147,7 +147,8 @@ public final class OrganizationDtos {
 			@jakarta.validation.constraints.NotBlank @Size(max = 64) @Pattern(regexp = "^[A-Za-z0-9._-]+$") String code,
 			@jakarta.validation.constraints.NotBlank @Size(max = 150) String name,
 			@Size(max = 500) String description,
-			UUID parentUnitId) {
+			UUID parentUnitId,
+			UUID headUserId) {
 	}
 
 	// ------------------------------------------------------------------
@@ -163,7 +164,8 @@ public final class OrganizationDtos {
 			@jakarta.validation.constraints.NotBlank @Size(max = 64) @Pattern(regexp = "^[A-Za-z0-9._-]+$") String code,
 			@jakarta.validation.constraints.NotBlank @Size(max = 150) String name,
 			@Size(max = 500) String description,
-			UUID parentUnitId) {
+			UUID parentUnitId,
+			@Size(max = 500) String address) {
 	}
 
 }

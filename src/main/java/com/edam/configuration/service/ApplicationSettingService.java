@@ -172,7 +172,7 @@ public class ApplicationSettingService {
 		catch (Exception ex) { return SettingType.STRING; }
 	}
 
-	private Object coerce(Object raw, SettingType typeStr, String field) {
+	private Object coerce(Object raw, SettingType type, String field) {
 		if (raw == null) return null;
 		try {
 			switch (type) {
