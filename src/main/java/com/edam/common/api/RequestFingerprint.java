@@ -165,16 +165,15 @@ public final class RequestFingerprint {
 		}
 		ObjectNode obj = (ObjectNode) node;
 		List<String> names = new ArrayList<>();
-		// Collect field names. tools.jackson declares fieldNames() with a raw Iterator return
-		// type; javac's target-type inference chokes when assigning to Iterator<String> here.
-		// We use a raw Iterator variable with a suppression. The method is declared on
-		// ContainerNode (parent of ObjectNode) and always present in tools.jackson.
-		@SuppressWarnings("rawtypes")
-		java.util.Iterator rawIt = obj.fieldNames();
-		while (rawIt.hasNext()) {
-			Object n = rawIt.next();
-			if (n instanceof String s) {
-				names.add(s);
+		// Collect field names via reflection to avoid javac's target-type inference bug with
+		// tools.jackson's raw-Iterator return type. See the helper below for the hierarchy walk.
+		Object iter = invokeFieldNames(obj);
+		if (iter instanceof Iterator<?> it) {
+			while (it.hasNext()) {
+				Object n = it.next();
+				if (n instanceof String s) {
+					names.add(s);
+				}
 			}
 		}
 		Collections.sort(names);
@@ -189,6 +188,45 @@ public final class RequestFingerprint {
 		}
 		obj.removeAll();
 		obj.setAll(sorted);
+	}
+
+	/**
+	 * Reflectively invoke {@code fieldNames()} on a JsonNode, walking the class hierarchy to
+	 * find the declaring class (tools.jackson declares this method on {@code ContainerNode}, a
+	 * supertype of {@code ObjectNode}, so {@code getMethod} on the leaf class alone may not
+	 * resolve it in all environments). The returned object is a raw {@link Iterator} whose
+	 * elements are {@link String}s; callers must cast defensively.
+	 *
+	 * <p>This helper exists solely to work around a javac target-type inference bug: assigning
+	 * {@code obj.fieldNames()} directly to a generic-typed variable fails in this build because
+	 * tools.jackson declares the return type as raw {@code Iterator}, and javac refuses to
+	 * narrow the raw type through the target-type witness. Reflective invocation bypasses the
+	 * compile-time generic signature entirely.
+	 */
+	private static Object invokeFieldNames(Object target) {
+		Class<?> c = target.getClass();
+		while (c != null) {
+			try {
+				java.lang.reflect.Method m = c.getDeclaredMethod("fieldNames");
+				m.setAccessible(true);
+				return m.invoke(target);
+			}
+			catch (NoSuchMethodException nsme) {
+				// fall through to superclass
+			}
+			catch (Exception ex) {
+				// Security / IllegalAccess / InvocationTarget: try superclass before giving up.
+			}
+			c = c.getSuperclass();
+		}
+		// Public API lookup as a last resort (method declared on an interface).
+		try {
+			java.lang.reflect.Method m = target.getClass().getMethod("fieldNames");
+			return m.invoke(target);
+		}
+		catch (Exception ex) {
+			return null;
+		}
 	}
 
 }
