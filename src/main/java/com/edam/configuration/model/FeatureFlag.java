@@ -12,7 +12,9 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 
 import org.hibernate.annotations.Generated;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.generator.EventType;
+import org.hibernate.type.SqlTypes;
 
 /**
  * A simple feature flag (Phase 4B Module D).
@@ -44,6 +46,7 @@ public class FeatureFlag {
 	@Column(name = "is_enabled", nullable = false)
 	private boolean enabled = false;
 
+	@JdbcTypeCode(SqlTypes.JSON)
 	@Column(name = "configuration", columnDefinition = "jsonb")
 	private String configurationJson;
 

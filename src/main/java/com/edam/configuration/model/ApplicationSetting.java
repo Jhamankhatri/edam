@@ -12,7 +12,9 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 
 import org.hibernate.annotations.Generated;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.generator.EventType;
+import org.hibernate.type.SqlTypes;
 
 /**
  * A single typed application setting (Phase 4B Module C).
@@ -49,9 +51,11 @@ public class ApplicationSetting {
 	@Column(name = "setting_type", nullable = false, length = 20)
 	private String type = "STRING";
 
+	@JdbcTypeCode(SqlTypes.JSON)
 	@Column(name = "setting_value", columnDefinition = "jsonb")
 	private String valueJson;
 
+	@JdbcTypeCode(SqlTypes.JSON)
 	@Column(name = "default_value", columnDefinition = "jsonb")
 	private String defaultValueJson;
 
