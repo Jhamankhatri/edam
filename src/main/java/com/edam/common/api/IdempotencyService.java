@@ -262,8 +262,13 @@ public class IdempotencyService {
 	}
 
 	/** Composite in-flight map key for a (keyHash, operationType, actorId) claim. */
-	private static String claimKey(String keyHash, String operationType, UUID actorId) {
+	static String claimKey(String keyHash, String operationType, UUID actorId) {
 		return keyHash + '|' + operationType + '|' + actorId;
+	}
+
+	/** Test-only: clear all in-flight markers so the next check() sees a fresh map. */
+	void clearInFlightForTests() {
+		this.inFlightByLocalJvm.clear();
 	}
 
 	/**

@@ -297,7 +297,7 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		// entries from earlier tests running in the same JVM.
 		IdempotencyService shortGrace = new IdempotencyService(this.idempotencyRecords,
 				this.applicationContext.getBean(org.springframework.transaction.PlatformTransactionManager.class),
-				Duration.ofMillis(1));
+				Duration.ofSeconds(1));
 		// Insert a dangling IN_PROGRESS record aged well past the 1ms grace via native SQL
 		// (created_at is @Column(updatable=false), so plain JPA save would ignore a reflected field).
 		UUID staleId = UUID.randomUUID();
@@ -306,8 +306,9 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 				.executeWithoutResult(s -> this.idempotencyRecords.insertStaleInProgress(staleId,
 						IdempotencyService.sha256(key), op, caller.userId(), fp,
 						Instant.now().plus(IdempotencyService.RETENTION),
-						Instant.now().minus(Duration.ofMinutes(10))));
+						Instant.now().minus(Duration.ofHours(1))));
 		// Direct service call with no live local claim must transition to UNKNOWN.
+		shortGrace.clearInFlightForTests();
 		try {
 			shortGrace.check(op, caller.userId(), key, fp);
 			org.junit.jupiter.api.Assertions.fail("expected IDEMPOTENCY_UNKNOWN_OUTCOME, got Proceed");
@@ -320,8 +321,7 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		// Record must be UNKNOWN (not deleted), protecting against double-execution on retry.
 		IdempotencyRecord after = this.idempotencyRecords
 				.findByKey(IdempotencyService.sha256(key), op, caller.userId()).orElseThrow();
-		org.junit.jupiter.api.Assertions.assertEquals(IdempotencyRecord.Status.UNKNOWN, after.getStatus(),
-				"after first check, status=" + after.getStatus() + " createdAt=" + after.getCreatedAt());
+		assertThat(after.getStatus()).isEqualTo(IdempotencyRecord.Status.UNKNOWN);
 		assertThat(after.getExpiresAt()).isAfter(Instant.now().plus(Duration.ofDays(89)));
 		// Second check on the now-UNKNOWN record also throws EDAM-1006 (does not double-execute).
 		try {
@@ -502,13 +502,13 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 	@Test
 	@DisplayName("long-running request still executing on this JVM is not marked UNKNOWN past grace window")
 	void longRunningLocalRequestIsNotMarkedUnknown() {
-		// Construct a service with a 1ms grace window and use it directly: insert a claim via
+		// Construct a service with a 10ms grace window and use it directly: insert a claim via
 		// check(...) (which registers the in-flight marker in this JVM), sleep past the grace,
 		// then call check(...) again. The second call must see IN_PROGRESS (EDAM-1005), not
 		// UNKNOWN (EDAM-1006), because the local in-flight marker is still live.
 		IdempotencyService shortGrace = new IdempotencyService(this.idempotencyRecords,
 				this.applicationContext.getBean(org.springframework.transaction.PlatformTransactionManager.class),
-				Duration.ofMillis(1));
+				Duration.ofMillis(10));
 		String key = "key-longrun-" + UUID.randomUUID();
 		UUID actor = this.requester.getId();
 		String op = "POST /api/v1/expense-requests";
@@ -516,7 +516,7 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		IdempotencyService.Decision d1 = shortGrace.check(op, actor, key, fp);
 		assertThat(d1).isInstanceOf(IdempotencyService.Proceed.class);
 		// Sleep well past the 1ms grace window.
-		try { Thread.sleep(20); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+		try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
 		try {
 			shortGrace.check(op, actor, key, fp);
 			org.junit.jupiter.api.Assertions.fail("expected IDEMPOTENCY_IN_PROGRESS");
@@ -549,17 +549,15 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		// Use a service with a 1ms grace window so the check path reliably transitions to UNKNOWN.
 		IdempotencyService shortGrace = new IdempotencyService(this.idempotencyRecords,
 				this.applicationContext.getBean(org.springframework.transaction.PlatformTransactionManager.class),
-				Duration.ofMillis(1));
+				Duration.ofSeconds(1));
 		UUID staleId = UUID.randomUUID();
 		new org.springframework.transaction.support.TransactionTemplate(
 				this.applicationContext.getBean(org.springframework.transaction.PlatformTransactionManager.class))
 				.executeWithoutResult(s -> this.idempotencyRecords.insertStaleInProgress(staleId,
 						IdempotencyService.sha256(key), op, caller.userId(), fp,
 						Instant.now().plus(IdempotencyService.RETENTION),
-						Instant.now().minus(Duration.ofMinutes(10))));
-		IdempotencyRecord preCheck = this.idempotencyRecords.findById(staleId).orElseThrow();
-		System.err.println("preCheck: status=" + preCheck.getStatus() + " createdAt=" + preCheck.getCreatedAt()
-				+ " age_ms=" + java.time.Duration.between(preCheck.getCreatedAt(), Instant.now()).toMillis());
+						Instant.now().minus(Duration.ofHours(1))));
+		shortGrace.clearInFlightForTests();
 		try {
 			shortGrace.check(op, caller.userId(), key, fp);
 			org.junit.jupiter.api.Assertions.fail("expected IDEMPOTENCY_UNKNOWN_OUTCOME, got Proceed");
@@ -573,7 +571,6 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		// added to the in-flight map.
 		// The record should now be UNKNOWN with expires_at pushed out ~90 days.
 		IdempotencyRecord unknown = this.idempotencyRecords.findById(staleId).orElseThrow();
-		System.err.println("postCheck: status=" + unknown.getStatus() + " expires=" + unknown.getExpiresAt());
 		assertThat(unknown.getStatus()).isEqualTo(IdempotencyRecord.Status.UNKNOWN);
 		assertThat(unknown.getExpiresAt()).isAfter(Instant.now().plus(Duration.ofDays(89)));
 		// Run the retention sweep at cutoff=now: the UNKNOWN row must survive.
