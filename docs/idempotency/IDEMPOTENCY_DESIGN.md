@@ -115,17 +115,18 @@ identical requests impossible to both pass `Proceed`.
                              │ IN_PROGRESS  │ -----------------> │ COMPLETED │ --> Replay
                              └──────────────┘                    └───────────┘
                                        │                           ^
- on exception (REQUIRES_NEW markFailed) │                           │ (afterCommit finalizer
-                                       ▼                           │  may not run after crash)
-                                    ┌────────┐                      │
-                                    │ FAILED │ -- clear+retry ------┘
+ on exception (REQUIRES_NEW markFailed) │                           │ (REQUIRES_NEW finalizer
+                                       ▼                           │  runs after joinPoint.proceed()
+                                    ┌────────┐                      │   returns; see §7 for why
+                                    │ FAILED │ -- clear+retry ------┘   afterCommit is not used)
                                     └────────┘
                                        │
-                        stale (>grace) │
+                        stale (>grace)  │  + no local JVM in-flight claim
                                        ▼
-                                   ┌─────────┐  (fail closed; never auto-cleared)
-                                   │ UNKNOWN │ -- 409 EDAM-1006 "query the resource"
-                                   └─────────┘
+                                   ┌─────────┐  (fail closed; never auto-cleared;
+                                   │ UNKNOWN │   late recordSuccess() does NOT overwrite
+                                   └─────────┘   back to COMPLETED — see §5)
+                                             -- 409 EDAM-1006 "query the resource"
 ```
 
 ### State semantics
@@ -247,6 +248,17 @@ in-flight marker and will transition the record to UNKNOWN after 60 seconds. Thi
 fail-closed (no double execution) — the client sees EDAM-1006 instead of EDAM-1005 and
 reconciles via GET. A cross-node lease (DB heartbeat row or shared cache) would be needed
 to cover this case; that is out of scope for Phase 4A Step 2 and tracked as future work.
+
+**Late-completion guard.** Once a record has been transitioned to UNKNOWN (whether via
+the stale-grace path on another node or on this node after a long GC / stop-the-world
+pause), any subsequent call to `recordSuccess()` for that key MUST leave the record in
+UNKNOWN. Overwriting UNKNOWN with COMPLETED would be fail-OPEN: the client has already
+received EDAM-1006 and been told to reconcile out-of-band, so silently replacing the row
+with a replay snapshot would give a false impression that the server had authoritatively
+determined the outcome. The state guard in `recordSuccess()` therefore refuses to
+transition from UNKNOWN (or FAILED) to COMPLETED; it logs an `idempotency.finalize_late_completion`
+error so operators can see requests that overran the grace window, and leaves the UNKNOWN
+record in place for the configured 90-day retention window.
 The current EDAM deployment topology is a single WAR instance, where the local map is
 fully sufficient.
 on the INSERT and be converted to the same 409 EDAM-1005 response.
@@ -304,7 +316,7 @@ Object around(ProceedingJoinPoint pjp) {
             idempotency.markFailed(...);              // REQUIRES_NEW, before rethrow
             throw t;
         }
-        idempotency.recordSuccess(op, actor, key,     // afterCommit synchronization
+        idempotency.recordSuccess(op, actor, key,     // REQUIRES_NEW finalizer, immediately
                                   status, snapshot);
         yield result;
     }
@@ -340,13 +352,23 @@ three rules:
    on the service method) avoids the self-invocation trap where calling an `@Transactional`
    method from another method on the same bean silently joins the outer transaction rather
    than opening a new one.
-2. **Success finalisation runs in an `afterCommit` synchronization.**
-   `recordSuccess` registers a `TransactionSynchronization.afterCommit` callback that
-   writes COMPLETED + responseSnapshot in a new short transaction. If the business TX
-   rolls back, `afterCommit` never fires; if the JVM crashes before the callback runs,
-   the row is left IN_PROGRESS (handled by the crash-recovery path in §5). If the
-   finalizer itself throws, the error is logged and the row stays IN_PROGRESS (so the
-   next retry hits UNKNOWN rather than double-executing).
+2. **Success finalisation runs immediately in `REQUIRES_NEW` after `joinPoint.proceed()`
+   returns.** EDAM's business services are `@Transactional` at the service-method level,
+   so the service transaction commits on service return — i.e. BEFORE the controller
+   returns control to the `IdempotencyAspect`. By the time `recordSuccess()` is invoked,
+   no business transaction is active to attach an `afterCommit` synchronization to
+   (attempting to do so would silently register against a residual/no-op transaction, and
+   the callback would never fire, leaving the row IN_PROGRESS indefinitely). Running the
+   finalizer immediately in a fresh `REQUIRES_NEW` transaction means the COMPLETED row is
+   written immediately after the service TX commits. The finalizer includes a state guard:
+   only an `IN_PROGRESS` record is transitioned to `COMPLETED`; if the record is already
+   `UNKNOWN` (because a retry observed the stale-grace window while this request was still
+   running — see multi-node caveat in §6.3), the finalizer leaves UNKNOWN in place so the
+   client's out-of-band reconciliation is not undermined by a late false replay. `FAILED`
+   is also left untouched. If the finalizer itself throws, the error is logged and the
+   row stays in its current state (IN_PROGRESS/UNKNOWN) so the next retry hits UNKNOWN
+   rather than double-executing; the JVM-local in-flight marker is always cleared in a
+   `finally` block so crash detection is not masked.
 3. **Failure (`markFailed`) uses `@Transactional(REQUIRES_NEW)`** and is invoked from the
    aspect's `catch` block before re-throwing. The outer business transaction is guaranteed
    to roll back, and the FAILED row (in its own transaction) correctly allows a retry.
@@ -397,24 +419,40 @@ and `SELECT … FOR UPDATE` cannot lock a row that does not exist yet.
 
 **Non-guarantees / known limitations:**
 - **Not exactly-once across crashes.** A JVM crash between the business TX commit and the
-  afterCommit finaliser leaves the record IN_PROGRESS; after the grace window, retries get
-  409 EDAM-1006 and must reconcile out-of-band (§5). The server never double-executes,
+  REQUIRES_NEW finaliser leaves the record IN_PROGRESS; after the grace window, retries
+  get 409 EDAM-1006 and must reconcile out-of-band (§5). The server never double-executes,
   but it cannot in this state prove the original outcome either.
-- **Multi-pod long-running detection.** In a multi-instance deployment the in-flight
-  tracker is JVM-local; a retry hitting a different pod can mark a still-running request
-  UNKNOWN after 60 seconds. Fail-closed (no duplicate execution); client reconciliation
-  is required. A distributed lease is future work.
+- **JVM-local in-flight tracking.** The map that protects long-running requests from
+  false UNKNOWN classification (§6.3) is per-JVM memory, not shared across pods.
+- **Multi-pod false UNKNOWN possibility.** In a multi-instance deployment, a retry routed
+  to a different pod than the original request does not see the local in-flight marker
+  and may transition the record to UNKNOWN after the 60-second grace even though the
+  original request is still executing. Fail-closed (no duplicate execution); client
+  reconciliation via GET is required. A distributed lease (DB heartbeat / Redis) would
+  close this gap and is future work. The `recordSuccess()` late-completion guard (§6.3)
+  ensures such UNKNOWN rows are not silently overwritten with COMPLETED by the eventual
+  completion.
 - **Not applied to every unsafe HTTP method.** Only the eight endpoints listed in §2 are
   annotated; adding idempotency to a new endpoint is a one-line `@IdempotentOperation`
   plus an operation string.
+- **Replay authorization is method-level only.** The replay path re-evaluates
+  `@EdamPermission` on the controller method before returning the stored response, so a
+  principal whose permission has been revoked cannot retrieve a past response. It does
+  NOT re-evaluate dynamic business state (e.g. "is the request still editable?", "does
+  the department still exist?", "is the actor still in the data scope") because the
+  response snapshot reflects the state as of the original call. Clients that need
+  current state must issue a GET.
 - **Replay returns the stored response bytes verbatim.** If a resource is later mutated,
-  a replay shows the response as of the original call. Clients that want current state
-  must issue a GET.
+  a replay shows the response as of the original call.
 - **No protection against a malicious client that sends a key without sending the body
   twice.** The server computes fingerprints from what it receives; a client that lies
   about the body still executes once.
-- **7-day retention is provisional** pending bank ops sign-off (§1). UNKNOWN rows are
-  retained for 90 days and excluded from auto-deletion regardless of this setting.
+- **Seven-day retention for COMPLETED/FAILED records is provisional** pending Bank
+  Operations sign-off (§1). The constant is a single-line change once policy is set.
+- **UNKNOWN records are excluded from the normal retention sweep** regardless of the
+  seven-day setting, and are retained for 90 days from the time of UNKNOWN transition.
+  They must be reconciled and cleaned up out-of-band; automatic deletion would reopen the
+  double-execution window.
 
 ---
 

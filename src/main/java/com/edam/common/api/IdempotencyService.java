@@ -306,8 +306,53 @@ public class IdempotencyService {
 						return;
 					}
 					IdempotencyRecord record = opt.get();
-					record.complete(httpStatus, responseJson);
-					this.records.saveAndFlush(record);
+					// Defensive state guard: only finalize an IN_PROGRESS claim to COMPLETED.
+					//
+					//   - IN_PROGRESS  → normal case: write the response snapshot.
+					//   - COMPLETED    → duplicate finalizer (e.g. nested aspect dispatch);
+					//                    idempotently overwrite with the same snapshot and warn.
+					//   - UNKNOWN      → a retry already observed the stale-grace window and the
+					//                    record was transitioned to UNKNOWN while this request
+					//                    was still running (long-running op on another node, or
+					//                    GC pause longer than the grace). The caller was already
+					//                    told to reconcile out-of-band; overwriting UNKNOWN with
+					//                    COMPLETED would be fail-OPEN (false replay for a request
+					//                    the client was explicitly told had uncertain outcome).
+					//                    Leave UNKNOWN in place so reconciliation remains the
+					//                    client's responsibility.
+					//   - FAILED       → markFailed() has already recorded the failure; this
+					//                    recordSuccess is from an unexpected control flow (e.g.
+					//                    exception thrown after the service returned). Do not
+					//                    overwrite FAILED with COMPLETED.
+					switch (record.getStatus()) {
+						case IN_PROGRESS -> {
+							record.complete(httpStatus, responseJson);
+							this.records.saveAndFlush(record);
+						}
+						case COMPLETED -> {
+							log.warn("idempotency.finalize_already_completed operation={} actor={} keyHash={}",
+									operationType, actorId, keyHash);
+							// Idempotent: refresh snapshot with what we actually returned, to
+							// keep replays byte-identical to the latest response.
+							record.complete(httpStatus, responseJson);
+							this.records.saveAndFlush(record);
+						}
+						case UNKNOWN -> {
+							// Late completion: the record was already marked UNKNOWN by a retry
+							// during this request's execution. Do NOT overwrite UNKNOWN with
+							// COMPLETED — that would defeat the whole purpose of the UNKNOWN
+							// state (which exists to force out-of-band reconciliation). Log at
+							// ERROR so operators can see that the grace window was too tight or
+							// a request overran it.
+							log.error("idempotency.finalize_late_completion operation={} actor={} keyHash={} statusAgeMs={}",
+									operationType, actorId, keyHash,
+									java.time.Duration.between(record.getCreatedAt(), java.time.Instant.now()).toMillis());
+						}
+						case FAILED -> {
+							log.warn("idempotency.finalize_after_failure operation={} actor={} keyHash={}",
+									operationType, actorId, keyHash);
+						}
+					}
 				});
 			}
 			finally {

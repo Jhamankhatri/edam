@@ -616,8 +616,59 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		// Run the retention sweep at cutoff=now: the UNKNOWN row must survive.
 		new org.springframework.transaction.support.TransactionTemplate(
 				this.applicationContext.getBean(org.springframework.transaction.PlatformTransactionManager.class))
-				.executeWithoutResult(s -> this.idempotencyRecords.deleteExpired(Instant.now()));
+			.executeWithoutResult(s -> this.idempotencyRecords.deleteExpired(Instant.now()));
 		assertThat(this.idempotencyRecords.findById(unknown.getId())).isPresent();
+	}
+
+	@Test
+	@DisplayName("recordSuccess after a retry has transitioned the record to UNKNOWN must NOT overwrite UNKNOWN with COMPLETED")
+	void lateCompletionDoesNotOverwriteUnknown() {
+		// Simulate the late-completion race end-to-end using the service's real stale-grace
+		// transition path: plant an IN_PROGRESS row older than the grace, let a check() call
+		// transition it to UNKNOWN (simulating a retry that observed the stale claim), then
+		// invoke recordSuccess() as if the original (slow) request had just finished. The
+		// finalizer must leave the record in UNKNOWN so the client is still directed to
+		// reconcile out-of-band — overwriting it would be fail-OPEN.
+		String key = "key-late-complete-" + UUID.randomUUID();
+		EdamPrincipal caller = owner();
+		String op = "POST /api/v1/expense-requests";
+		String fp = buildFingerprint("POST", BASE, java.util.Map.of(), opexBody("33.0000", "late"));
+		IdempotencyService shortGrace = new IdempotencyService(this.idempotencyRecords,
+				this.applicationContext.getBean(org.springframework.transaction.PlatformTransactionManager.class),
+				Duration.ofSeconds(1));
+		// Use the native insertStaleInProgress to bypass createdAt's updatable=false guard.
+		UUID staleId = UUID.randomUUID();
+		new org.springframework.transaction.support.TransactionTemplate(
+				this.applicationContext.getBean(org.springframework.transaction.PlatformTransactionManager.class))
+			.executeWithoutResult(s -> {
+				this.idempotencyRecords.insertStaleInProgress(staleId,
+						IdempotencyService.sha256(key), op, caller.userId(), fp,
+						Instant.now().plus(IdempotencyService.RETENTION),
+						Instant.now().minus(Duration.ofHours(1)));
+				this.em.flush();
+			});
+		this.em.clear();
+		shortGrace.clearInFlightForTests();
+		try {
+			shortGrace.check(op, caller.userId(), key, fp);
+			org.junit.jupiter.api.Assertions.fail("expected IDEMPOTENCY_UNKNOWN_OUTCOME");
+		}
+		catch (BusinessException ex) {
+			assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.IDEMPOTENCY_UNKNOWN_OUTCOME);
+		}
+		IdempotencyRecord unknown = this.idempotencyRecords.findById(staleId).orElseThrow();
+		assertThat(unknown.getStatus()).isEqualTo(IdempotencyRecord.Status.UNKNOWN);
+		// Step 3: the original (slow) request "returns" and calls recordSuccess(). This must
+		// NOT flip the record back to COMPLETED. Note: we do NOT register an in-flight marker
+		// here, because in the real late-completion case the original request thread still
+		// holds its local in-flight marker; recordSuccess reads from DB state, not the map.
+		shortGrace.recordSuccess(op, caller.userId(), key, 201, "{\"ok\":true}");
+		this.em.clear();
+		IdempotencyRecord after = this.idempotencyRecords.findById(staleId).orElseThrow();
+		assertThat(after.getStatus()).as("late recordSuccess must leave UNKNOWN in place")
+			.isEqualTo(IdempotencyRecord.Status.UNKNOWN);
+		assertThat(after.getResponseSnapshot()).as("UNKNOWN rows must not carry a response snapshot")
+			.isNull();
 	}
 
 }
