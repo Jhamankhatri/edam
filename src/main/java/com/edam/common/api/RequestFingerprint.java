@@ -139,7 +139,11 @@ public final class RequestFingerprint {
 		}
 		var obj = (ObjectNode) node;
 		SortedMap<String, JsonNode> byName = new TreeMap<>();
-		obj.fields().forEachRemaining(e -> byName.put(e.getKey(), e.getValue()));
+		java.util.Iterator<java.util.Map.Entry<String, JsonNode>> it = obj.fields();
+		while (it.hasNext()) {
+			java.util.Map.Entry<String, JsonNode> e = it.next();
+			byName.put(e.getKey(), e.getValue());
+		}
 		ObjectNode sorted = CanonicalHolder.MAPPER.createObjectNode();
 		byName.forEach((name, child) -> {
 			sortKeys(child);
