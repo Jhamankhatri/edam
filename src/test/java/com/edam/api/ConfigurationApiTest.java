@@ -77,7 +77,7 @@ class ConfigurationApiTest extends AbstractPostgreSqlIntegrationTest {
 		BusinessException ex = assertThrows(BusinessException.class,
 				() -> this.themes.create(new SaveThemeRequest("BadColor", null, ThemeType.LIGHT,
 						"not-a-color", null, null, "#fff", null, null, null, null, null, null,
-						null, null, null, null, null, null, null, List.of())));
+						null, null, null, null, null, List.of())));
 		assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
 	}
 
@@ -86,7 +86,7 @@ class ConfigurationApiTest extends AbstractPostgreSqlIntegrationTest {
 		BusinessException ex = assertThrows(BusinessException.class,
 				() -> this.themes.create(new SaveThemeRequest("Xss", null, ThemeType.LIGHT,
 						"#fff", null, null, "#fff", null, null, null, null, null, null,
-						null, null, null, null, null, null, null,
+						null, null, null, null, null,
 						List.of(new ThemeTokenRequest("evil", "<script>alert(1)</script>", ThemeTokenType.OTHER)))));
 		assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
 	}
