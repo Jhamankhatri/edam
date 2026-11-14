@@ -9,6 +9,7 @@ import com.edam.common.api.ApiResponse;
 import com.edam.common.logging.CorrelationId;
 import com.edam.common.security.EdamPermission;
 import com.edam.common.security.Permissions;
+import com.edam.common.security.PublicEndpoint;
 import com.edam.configuration.dto.ConfigurationDtos;
 import com.edam.configuration.dto.ConfigurationDtos.BulkSettingsUpdateRequest;
 import com.edam.configuration.dto.ConfigurationDtos.FeatureFlagResponse;
@@ -72,6 +73,7 @@ public class ConfigurationController {
 	// ------------------------------------------------------------------
 
 	@GetMapping("/public/configuration")
+	@PublicEndpoint(reason = "Login screen and application shell must be able to read branding (name, colours, locale) before the user signs in. Whitelist-only; no secrets exposed.")
 	@Operation(summary = "Safe subset of branding and configuration for the login page and app shell",
 			description = "No authentication required. Never exposes secrets, roles or internal settings.")
 	public ApiResponse<PublicConfigurationResponse> publicConfiguration(HttpServletRequest request) {

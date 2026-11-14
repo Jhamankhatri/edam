@@ -149,9 +149,16 @@ class ConfigurationApiTest extends AbstractPostgreSqlIntegrationTest {
 	@Test
 	@Transactional
 	void publicConfigDoesNotLeakSensitiveData() {
-		// Ensure there is a profile first
-		try { this.profiles.current(); }
-		catch (Exception noProfile) {
+		// Ensure a profile with a support email exists
+		try {
+			var existing = this.profiles.current();
+			if (existing.supportEmail() == null) {
+				this.profiles.update(new OrganizationDtos.UpdateOrganizationProfileRequest(
+						null, null, null, null, null, null, null, "support@edam.example.com",
+						null, null, null, null, null, null, null, null, null, null, null));
+			}
+		}
+		catch (BusinessException noProfile) {
 			this.profiles.create(new OrganizationDtos.CreateOrganizationProfileRequest(
 					"EDAM Bank", null, "EDAM Bank Limited", null, null, null,
 					"https://edam.example.com", "support@edam.example.com",
