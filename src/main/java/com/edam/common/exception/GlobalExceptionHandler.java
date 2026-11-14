@@ -257,9 +257,17 @@ public class GlobalExceptionHandler {
 
 	private static HttpStatus statusFor(ErrorCode errorCode) {
 		return switch (errorCode) {
-			case VALIDATION_FAILED, INVALID_REQUEST, INVALID_PAGINATION, IDEMPOTENCY_CONFLICT, INVALID_DOCUMENT,
+			case VALIDATION_FAILED, INVALID_REQUEST, INVALID_PAGINATION, INVALID_DOCUMENT,
 					INVALID_CONFIGURATION ->
 				HttpStatus.BAD_REQUEST;
+			// Idempotency errors all map to 409 Conflict (RFC 7231 §6.5.8): the request conflicts
+			// with the current state of the idempotency record (different payload, concurrent
+			// duplicate, or unknown outcome after a crash). PRECONDITION_FAILED (EDAM-3003, used
+			// for optimistic-lock / If-Match mismatches) also maps to 409; this is preserved for
+			// backwards compatibility with existing clients rather than being changed to 412.
+			case IDEMPOTENCY_CONFLICT, IDEMPOTENCY_IN_PROGRESS, IDEMPOTENCY_UNKNOWN_OUTCOME,
+					CONCURRENT_MODIFICATION, PERSISTENCE_ERROR, DUPLICATE_RESOURCE, PRECONDITION_FAILED ->
+				HttpStatus.CONFLICT;
 			// INVALID_CREDENTIALS and INVALID_RESET_TOKEN are deliberately 401 rather than 400: the
 			// request was well formed and the caller simply is not authenticated. ACCOUNT_LOCKED is 423
 			// (Locked) so a client can show a distinct message, but only after a correct password — see
@@ -272,8 +280,6 @@ public class GlobalExceptionHandler {
 			case ACCESS_DENIED, INSTITUTION_REQUIRED, INSTITUTION_ACCESS_DENIED, PERMISSION_DENIED ->
 				HttpStatus.FORBIDDEN;
 			case NOT_FOUND -> HttpStatus.NOT_FOUND;
-			case CONCURRENT_MODIFICATION, PERSISTENCE_ERROR, DUPLICATE_RESOURCE, PRECONDITION_FAILED ->
-				HttpStatus.CONFLICT;
 			case BUSINESS_RULE_VIOLATION, INVALID_STATE_TRANSITION -> HttpStatus.UNPROCESSABLE_CONTENT;
 			case EXTERNAL_SERVICE_FAILURE -> HttpStatus.BAD_GATEWAY;
 			case INTERNAL_ERROR -> HttpStatus.INTERNAL_SERVER_ERROR;

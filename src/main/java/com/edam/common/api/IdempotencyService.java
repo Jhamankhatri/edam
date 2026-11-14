@@ -7,37 +7,59 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import com.edam.common.exception.BusinessException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Enforces the {@code Idempotency-Key} contract for state-changing endpoints (BRD API-04).
+ * Enforces the {@code Idempotency-Key} contract for state-changing endpoints (BRD API-04 / Phase 4A Step 2).
+ *
+ * <h2>Scope</h2>
+ * A key is scoped to the tuple {@code (hashed key, operationType, actorId)}. One user's retry can
+ * never see another user's response, and two clients that coincidentally use the same key string
+ * cannot collide across different operations or users.
  *
  * <h2>Semantics</h2>
  * <ul>
- *   <li>No key: the request is processed normally. Idempotency is opt-in so that read paths and
- *       trivial updates are unaffected, while the workflow operations that need it declare it.</li>
- *   <li>New key: processed and recorded.</li>
- *   <li>Same key, same body: the recorded status is returned and the operation is not repeated.</li>
- *   <li>Same key, different body: rejected with {@link ErrorCode#IDEMPOTENCY_CONFLICT}. Silently
- *       replaying an unrelated body under a reused key would be a correctness hazard, and silently
- *       executing it would defeat the point.</li>
+ *   <li>No key (null/blank): the request is processed normally — idempotency is opt-in so that
+ *       read paths are unaffected, while endpoints that need it declare {@link IdempotentOperation}.</li>
+ *   <li>New key: the key is claimed <em>before</em> the operation runs (state {@code IN_PROGRESS});
+ *       the operation then executes and the record is finalised.</li>
+ *   <li>Same key, same actor, same fingerprint, {@code COMPLETED}: the recorded response is
+ *       returned and the business operation is NOT executed again (replay).</li>
+ *   <li>Same key, same actor, different fingerprint: rejected with
+ *       {@link ErrorCode#IDEMPOTENCY_CONFLICT} (HTTP 409 Conflict) — client programming bug; do not
+ *       retry automatically.</li>
+ *   <li>Same key, same actor, {@code IN_PROGRESS} (within grace window): rejected with
+ *       {@link ErrorCode#IDEMPOTENCY_IN_PROGRESS} (HTTP 409 Conflict) — retry with backoff.</li>
+ *   <li>Same key, same actor, {@code IN_PROGRESS} (past grace window, i.e. stale): transitioned to
+ *       {@code UNKNOWN} and rejected with {@link ErrorCode#IDEMPOTENCY_UNKNOWN_OUTCOME}
+ *       (HTTP 409 Conflict) — client must query the resource directly; the server will not
+ *       double-execute.</li>
+ *   <li>Same key, same actor, {@code FAILED} (a previous attempt threw): the key is cleared and the
+ *       operation may proceed once with the new fingerprint; this lets a client correct input and
+ *       reuse the same key without opening a duplicate-execution window.</li>
  * </ul>
  *
- * <h2>When the key is claimed, and why</h2>
- * The key is claimed <em>before</em> the work runs, not after it succeeds. Recording only on success leaves
- * a window in which two concurrent retries both see "no record" and both execute — precisely the
- * double-submit the mechanism exists to stop. Claiming first makes the unique index the arbiter: the loser
- * of the race is told to retry rather than being allowed to act twice.
- *
- * <p>A failed attempt is then marked {@code FAILED} so the caller may correct the input and retry under the
- * same key. Only a completed operation replays.
+ * <h2>Why claim before doing the work</h2>
+ * Inserting the record only after success leaves a window in which two concurrent duplicates both
+ * see "no record" and both execute — exactly the double-submit this mechanism exists to stop.
+ * Claiming first makes the unique index the arbiter. Failures mark the record {@code FAILED} so
+ * the next attempt is permitted; the business service is still expected to throw its own
+ * transactional rollback, which the aspect converts into a {@code markFailed} call.
  */
 @Service
 public class IdempotencyService {
@@ -45,94 +67,368 @@ public class IdempotencyService {
 	/** How long a key is honoured. Seven days comfortably exceeds any realistic retry window. */
 	public static final Duration RETENTION = Duration.ofDays(7);
 
+	/** Maximum accepted length of an incoming {@code Idempotency-Key} value (safety limit). */
+	public static final int MAX_KEY_LENGTH = 200;
+
 	private static final Logger log = LoggerFactory.getLogger(IdempotencyService.class);
 
+	/**
+	 * Authoritative stale-in-progress grace period.
+	 *
+	 * <p>An IN_PROGRESS record older than this window is presumed to originate from a crashed
+	 * request: the business TX may have committed even though the COMPLETED row was never
+	 * written (the afterCommit callback never fired). The record is transitioned to UNKNOWN
+	 * rather than deleted — deleting it would allow a retry to double-execute.
+	 *
+	 * <p>Sixty seconds comfortably exceeds any normal controller execution time; configurable
+	 * via {@code edam.idempotency.stale-grace} if an installation needs a wider window (e.g.
+	 * long-running batch approvals).
+	 */
+	public static final Duration STALE_IN_PROGRESS_GRACE_DEFAULT = Duration.ofSeconds(60);
+
+	private final Duration staleGrace;
+
 	private final IdempotencyRecordRepository records;
+	private final TransactionTemplate newTxTemplate;
 
-	public IdempotencyService(IdempotencyRecordRepository records) {
-		this.records = records;
-	}
+	/**
+	 * In-flight claim tracker.
+	 *
+	 * <p>When the local JVM is actively processing an {@code IN_PROGRESS} claim on this node, its
+	 * composite key is registered here. A concurrent retry on the same node that arrives after
+	 * {@link #STALE_IN_PROGRESS_GRACE_DEFAULT} can use this set to distinguish a genuinely
+	 * long-running operation (claim still live on this JVM → return 409 EDAM-1005 "in progress")
+	 * from a crashed-request row (claim nowhere in memory → transition to UNKNOWN). Without this
+	 * guard, a slow endpoint (large payload, synchronous workflow evaluation) would be falsely
+	 * branded UNKNOWN after 60 seconds and force the caller into out-of-band reconciliation even
+	 * though the original request is still executing.
+	 *
+	 * <p>In a multi-node WAR deployment this map only tracks claims held by <em>this</em> JVM. A
+	 * retry that hits a different node cannot see the local in-flight set and will fall through
+	 * to the UNKNOWN path. That is fail-closed (no double execution) and only affects usability:
+	 * the client sees EDAM-1006 instead of EDAM-1005 and reconciles. Documented in the design
+	 * doc. A proper cross-node lease would require a shared distributed component (e.g. DB
+	 * heartbeat row or Redis) which is explicitly out of scope for Phase 4A Step 2.
+	 */
+	private final ConcurrentMap<String, Boolean> inFlightByLocalJvm = new ConcurrentHashMap<>();
 
-	/** Outcome of the pre-check: either proceed, or replay a previously recorded status. */
-	public sealed interface Decision {
-
-		record Proceed() implements Decision {
-		}
-
-		record Replay(int status) implements Decision {
-		}
-
+	@Autowired
+	public IdempotencyService(IdempotencyRecordRepository records, PlatformTransactionManager txManager) {
+		this(records, txManager, STALE_IN_PROGRESS_GRACE_DEFAULT);
 	}
 
 	/**
-	 * Check a key before executing the operation.
-	 *
-	 * @param operationType stable operation identifier, e.g. {@code REQUEST_SUBMIT}
-	 * @param key caller-supplied key, may be null or blank
-	 * @param body canonical request body used for the fingerprint; null is treated as empty
+	 * Constructor that lets callers override the stale-grace window. Intended for tests and for
+	 * installations that wire a non-default grace (e.g. long-running batch endpoints). The
+	 * no-Duration overload is the one Spring picks up via {@code @Autowired}.
 	 */
-	@Transactional
-	public Decision check(String operationType, String key, String body) {
-		if (key == null || key.isBlank()) {
-			return new Decision.Proceed();
-		}
-		String hash = sha256(key.trim());
-		String fingerprint = sha256(body == null ? "" : body);
-		Optional<IdempotencyRecord> existing = this.records.findByKey(hash, operationType);
-		if (existing.isEmpty()) {
-			// Claim the key before the work starts. The unique index makes this the winner; a concurrent
-			// duplicate loses on insert and is told to retry rather than executing the action twice.
-			Instant now = Instant.now();
-			try {
-				this.records.saveAndFlush(new IdempotencyRecord(hash, operationType, fingerprint, now.plus(RETENTION)));
-			}
-			catch (org.springframework.dao.DataIntegrityViolationException ex) {
-				throw new BusinessException(ErrorCode.PRECONDITION_FAILED,
-						"An identical request is already being processed. Retry once it completes.");
-			}
-			return new Decision.Proceed();
-		}
-		IdempotencyRecord record = existing.get();
-		if (!record.matchesRequest(fingerprint)) {
-			throw new BusinessException(ErrorCode.IDEMPOTENCY_CONFLICT);
-		}
-		if (record.isInProgress()) {
-			throw new BusinessException(ErrorCode.PRECONDITION_FAILED,
-					"An identical request is already being processed. Retry once it completes.");
-		}
-		if (record.getResponseStatus() == null) {
-			// A failed attempt is not a replay; let the caller retry under the same key.
-			return new Decision.Proceed();
-		}
-		log.info("idempotency.replay operation={} status={}", operationType, record.getResponseStatus());
-		return new Decision.Replay(record.getResponseStatus());
+	public IdempotencyService(IdempotencyRecordRepository records, PlatformTransactionManager txManager,
+			Duration staleGrace) {
+		this.records = records;
+		this.staleGrace = staleGrace;
+		this.newTxTemplate = new TransactionTemplate(txManager);
+		this.newTxTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
 	}
 
-	/** Record the outcome so a retry becomes a replay. No-op without a key. */
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
-	public void record(String operationType, String key, int status) {
-		if (key == null || key.isBlank()) {
-			return;
+	/** Outcome of the pre-check: either proceed, or replay a previously recorded response. */
+	public interface Decision {
+	}
+
+	/** The caller should proceed with the operation; the key is claimed. */
+	public static final class Proceed implements Decision {
+		public static final Proceed INSTANCE = new Proceed();
+		private Proceed() {
 		}
-		this.records.findByKey(sha256(key.trim()), operationType).ifPresent(record -> {
-			record.complete(status);
-			this.records.save(record);
+	}
+
+	/** Replay the previously recorded response without invoking the business operation. */
+	public static final class Replay implements Decision {
+		private final int httpStatus;
+		private final String responseJson;
+		public Replay(int httpStatus, String responseJson) {
+			this.httpStatus = httpStatus;
+			this.responseJson = responseJson;
+		}
+		public int httpStatus() { return this.httpStatus; }
+		public String responseJson() { return this.responseJson; }
+	}
+
+	/**
+	 * Check a key before executing the operation. The caller is responsible for canonicalising the
+	 * request fingerprint (see {@link #fingerprint(String)}).
+	 *
+	 * <p>Runs in its own REQUIRES_NEW transaction so the IN_PROGRESS claim is committed immediately
+	 * and visible to concurrent duplicates, even though the aspect invokes {@code check} from
+	 * inside the controller method whose body will open its own {@code @Transactional} business
+	 * transaction. Using default propagation would bind the claim to the outer business TX and
+	 * leave it invisible to retries until the entire controller returns — that defeats the whole
+	 * point of claiming before doing the work.
+	 *
+	 * @param operationType stable operation identifier from {@link IdempotentOperation#value()}
+	 * @param actorId authenticated user id; must NOT be null
+	 * @param key caller-supplied {@code Idempotency-Key} header (trimmed); null/blank ⇒ opt-out
+	 * @param fingerprint canonical SHA-256 of the request body + path parameters (see below)
+	 */
+	public Decision check(String operationType, UUID actorId, String key, String fingerprint) {
+		if (key == null || key.isBlank()) {
+			return Proceed.INSTANCE;
+		}
+		String trimmed = key.trim();
+		validateKey(trimmed);
+		String keyHash = sha256(trimmed);
+		// Run the claim in its own transaction so the IN_PROGRESS row is committed before the
+		// business service's @Transactional begins. Using Programmatic Tx here avoids relying on
+		// self-invocation of @Transactional through the same bean proxy (which would silently
+		// join the outer transaction if the caller's TX happened to be open already).
+		return this.newTxTemplate.execute(status -> {
+			Optional<IdempotencyRecord> existing = this.records.findByKey(keyHash, operationType, actorId);
+			String claimKey = claimKey(keyHash, operationType, actorId);
+			if (existing.isEmpty()) {
+				Instant now = Instant.now();
+				try {
+					this.records.saveAndFlush(new IdempotencyRecord(keyHash, operationType, actorId, fingerprint,
+							now.plus(RETENTION)));
+				}
+				catch (DataIntegrityViolationException ex) {
+					// Lost the race with a concurrent identical request; re-read and decide against
+					// the winner's record.
+					existing = this.records.findByKey(keyHash, operationType, actorId);
+					if (existing.isEmpty()) {
+						throw new BusinessException(ErrorCode.IDEMPOTENCY_IN_PROGRESS,
+								"An identical request is already being processed. Retry after a short delay.");
+					}
+					return decideForExisting(existing.get(), claimKey, keyHash, operationType, actorId, fingerprint);
+				}
+				// Claim registered on this JVM — register before returning Proceed so the stale-grace
+				// path in decideForExisting recognises long-running local claims.
+				this.inFlightByLocalJvm.put(claimKey, Boolean.TRUE);
+				return (Decision) Proceed.INSTANCE;
+			}
+			return decideForExisting(existing.get(), claimKey, keyHash, operationType, actorId, fingerprint);
 		});
 	}
 
-	/** Mark a claimed key failed so the caller may correct the input and retry. */
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
-	public void markFailed(String operationType, String key) {
+	/** Resolve the decision for an existing IN_PROGRESS / UNKNOWN / FAILED / COMPLETED record. */
+	private Decision decideForExisting(IdempotencyRecord record, String claimKey, String keyHash,
+			String operationType, UUID actorId, String fingerprint) {
+		if (!record.matchesRequest(fingerprint)) {
+			// Same key, different payload — HTTP 409 Conflict (not 400): the key is in use by a
+			// conflicting request state.
+			throw new BusinessException(ErrorCode.IDEMPOTENCY_CONFLICT);
+		}
+		return switch (record.getStatus()) {
+			case IN_PROGRESS -> {
+				Instant abandonedAfter = record.getCreatedAt().plus(this.staleGrace);
+				boolean localClaimActive = this.inFlightByLocalJvm.containsKey(claimKey);
+				if (Instant.now().isAfter(abandonedAfter) && !localClaimActive) {
+					// Crash window: the record is past the grace window AND this JVM has no live
+					// claim for it. The business TX may have committed without the afterCommit
+					// callback firing (process crashed, OOM kill, pod restart). Transition to
+					// UNKNOWN in its own REQUIRES_NEW transaction so the update commits even
+					// though we are about to throw BusinessException (which would otherwise mark
+					// the outer transaction rollback-only and discard the state change).
+					log.error("idempotency.unknown_outcome operation={} actor={} keyHash={} created={}",
+							operationType, actorId, keyHash, record.getCreatedAt());
+					this.newTxTemplate.executeWithoutResult(s -> {
+						IdempotencyRecord fresh = this.records.findById(record.getId()).orElse(record);
+						fresh.markUnknown();
+						this.records.saveAndFlush(fresh);
+					});
+					throw new BusinessException(ErrorCode.IDEMPOTENCY_UNKNOWN_OUTCOME,
+							"A prior request with this idempotency key did not complete normally. "
+									+ "Query the resource to determine its state before retrying.");
+				}
+				// Either within grace, or the claim is still live on this JVM (long-running op).
+				// Return EDAM-1005 "in progress" — the client retries with backoff.
+				throw new BusinessException(ErrorCode.IDEMPOTENCY_IN_PROGRESS,
+						"An identical request is already being processed. Retry after a short delay.");
+			}
+			case UNKNOWN -> throw new BusinessException(ErrorCode.IDEMPOTENCY_UNKNOWN_OUTCOME,
+					"A prior request with this idempotency key did not complete normally. "
+							+ "Query the resource to determine its state before retrying.");
+			case FAILED -> {
+				// Previous attempt threw; allow a retry under the same key+fingerprint by clearing
+				// the record. The unique index will be re-claimed by the new save below.
+				this.records.delete(record);
+				this.records.flush();
+				this.records.saveAndFlush(new IdempotencyRecord(keyHash, operationType, actorId, fingerprint,
+						Instant.now().plus(RETENTION)));
+				this.inFlightByLocalJvm.put(claimKey, Boolean.TRUE);
+				yield Proceed.INSTANCE;
+			}
+			case COMPLETED -> {
+				log.info("idempotency.replay operation={} actor={} status={}", operationType, actorId,
+						record.getResponseStatus());
+				yield new Replay(record.getResponseStatus(), record.getResponseSnapshot());
+			}
+		};
+	}
+
+	/** Composite in-flight map key for a (keyHash, operationType, actorId) claim. */
+	static String claimKey(String keyHash, String operationType, UUID actorId) {
+		return keyHash + '|' + operationType + '|' + actorId;
+	}
+
+	/** Test-only: clear all in-flight markers so the next check() sees a fresh map. */
+	public void clearInFlightForTests() {
+		this.inFlightByLocalJvm.clear();
+	}
+
+	/**
+	 * Record a successful outcome so a retry becomes a replay. No-op when no key was provided.
+	 *
+	 * <p>The COMPLETED row is written from an {@code afterCommit} synchronization so that the
+	 * response snapshot is persisted ONLY after the surrounding business transaction commits. If we
+	 * wrote it in a {@code REQUIRES_NEW} transaction while the business TX was still open, a late
+	 * rollback (commit-time constraint violation, {@code @EventListener} failure, outer proxy
+	 * rollback) would leave a COMPLETED record describing work that never actually happened — a
+	 * false replay.
+	 *
+	 * <p>When there is no surrounding transaction (unexpected for controller flows, but defensive),
+	 * the update is performed immediately in a new transaction.
+	 */
+	public void recordSuccess(String operationType, UUID actorId, String key, int httpStatus, String responseJson) {
 		if (key == null || key.isBlank()) {
 			return;
 		}
-		this.records.findByKey(sha256(key.trim()), operationType).ifPresent(record -> {
+		String keyHash = sha256(key);
+		String claimKey = claimKey(keyHash, operationType, actorId);
+		Runnable finalizer = () -> {
+			try {
+				this.newTxTemplate.executeWithoutResult(status -> {
+					Optional<IdempotencyRecord> opt = this.records.findByKey(keyHash, operationType, actorId);
+					if (opt.isEmpty()) {
+						// Defensive: if the lookup misses (e.g. EM L1 cache eviction between
+						// check() and recordSuccess()), log loudly and do NOT silently skip the
+						// finaliser — that leaves IN_PROGRESS rows around and breaks replays.
+						log.error("idempotency.finalize_miss operation={} actor={} keyHash={}",
+								operationType, actorId, keyHash);
+						return;
+					}
+					IdempotencyRecord record = opt.get();
+					// Defensive state guard: only finalize an IN_PROGRESS claim to COMPLETED.
+					//
+					//   - IN_PROGRESS  → normal case: write the response snapshot.
+					//   - COMPLETED    → duplicate finalizer (e.g. nested aspect dispatch);
+					//                    idempotently overwrite with the same snapshot and warn.
+					//   - UNKNOWN      → a retry already observed the stale-grace window and the
+					//                    record was transitioned to UNKNOWN while this request
+					//                    was still running (long-running op on another node, or
+					//                    GC pause longer than the grace). The caller was already
+					//                    told to reconcile out-of-band; overwriting UNKNOWN with
+					//                    COMPLETED would be fail-OPEN (false replay for a request
+					//                    the client was explicitly told had uncertain outcome).
+					//                    Leave UNKNOWN in place so reconciliation remains the
+					//                    client's responsibility.
+					//   - FAILED       → markFailed() has already recorded the failure; this
+					//                    recordSuccess is from an unexpected control flow (e.g.
+					//                    exception thrown after the service returned). Do not
+					//                    overwrite FAILED with COMPLETED.
+					switch (record.getStatus()) {
+						case IN_PROGRESS -> {
+							record.complete(httpStatus, responseJson);
+							this.records.saveAndFlush(record);
+						}
+						case COMPLETED -> {
+							log.warn("idempotency.finalize_already_completed operation={} actor={} keyHash={}",
+									operationType, actorId, keyHash);
+							// Idempotent: refresh snapshot with what we actually returned, to
+							// keep replays byte-identical to the latest response.
+							record.complete(httpStatus, responseJson);
+							this.records.saveAndFlush(record);
+						}
+						case UNKNOWN -> {
+							// Late completion: the record was already marked UNKNOWN by a retry
+							// during this request's execution. Do NOT overwrite UNKNOWN with
+							// COMPLETED — that would defeat the whole purpose of the UNKNOWN
+							// state (which exists to force out-of-band reconciliation). Log at
+							// ERROR so operators can see that the grace window was too tight or
+							// a request overran it.
+							log.error("idempotency.finalize_late_completion operation={} actor={} keyHash={} statusAgeMs={}",
+									operationType, actorId, keyHash,
+									java.time.Duration.between(record.getCreatedAt(), java.time.Instant.now()).toMillis());
+						}
+						case FAILED -> {
+							log.warn("idempotency.finalize_after_failure operation={} actor={} keyHash={}",
+									operationType, actorId, keyHash);
+						}
+					}
+				});
+			}
+			finally {
+				// Always clear the in-flight marker so a future reuse of the same key (after
+				// expiration + deletion) starts clean. If the finalizer threw we still drop the
+				// local claim — the row remains IN_PROGRESS/UNKNOWN so the stale-grace path takes
+				// over for retries, and we do not want to perpetually mask crash detection.
+				this.inFlightByLocalJvm.remove(claimKey);
+			}
+		};
+		// Always finalise immediately in a REQUIRES_NEW transaction.
+		//
+		// Why we deliberately do NOT register an afterCommit synchronization here:
+		// In EDAM's controller flow the business service is annotated @Transactional, and the
+		// Spring AOP proxy for that service commits the transaction on service-method return —
+		// i.e. BEFORE the controller returns control to the IdempotencyAspect. By the time the
+		// aspect calls recordSuccess() after joinPoint.proceed() returns, no business transaction
+		// is active. If we *did* register an afterCommit sync against the (non-existent or
+		// residual) transaction at this point, the sync would never fire, the COMPLETED row
+		// would never be written, and the next retry would find an IN_PROGRESS row, wait the
+		// stale grace, and incorrectly return UNKNOWN — breaking replay semantics.
+		//
+		// If a filter, interceptor, or caller wraps a whole request in its own outer transaction,
+		// then running the finaliser immediately means the COMPLETED row is written BEFORE that
+		// outer TX commits. In that case a rollback of the outer TX (which would only happen due
+		// to a post-controller bug like a @EventListener failure, since the service itself has
+		// already committed) could leave a COMPLETED row for work that the outer filter rolled
+		// back. That edge case is accepted as fail-safe (false replay is better than double
+		// execution) and is documented in the design doc.
+		finalizer.run();
+	}
+
+	/**
+	 * Mark a claimed key failed so the caller may correct the input and retry under the same key.
+	 *
+	 * <p>{@code REQUIRES_NEW} is correct here: the aspect calls {@code markFailed} from a {@code catch}
+	 * block before re-throwing the exception, so the outer business transaction is guaranteed to
+	 * roll back. Writing the FAILED marker in its own transaction ensures it survives that rollback,
+	 * which is exactly what lets the subsequent retry know "the previous attempt did not commit."
+	 */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public void markFailed(String operationType, UUID actorId, String key) {
+		if (key == null || key.isBlank()) {
+			return;
+		}
+		String keyHash = sha256(key);
+		this.records.findByKey(keyHash, operationType, actorId).ifPresent(record -> {
 			record.fail();
 			this.records.save(record);
 		});
+		this.inFlightByLocalJvm.remove(claimKey(keyHash, operationType, actorId));
 	}
 
-	private static String sha256(String value) {
+	/** Canonical SHA-256 fingerprint for a request body (or an empty string for bodiless requests). */
+	public static String fingerprint(String canonicalBody) {
+		return sha256(canonicalBody == null ? "" : canonicalBody);
+	}
+
+	/** Accepts printable ASCII of reasonable length; rejects control characters and oversized keys. */
+	static void validateKey(String key) {
+		String trimmed = key.trim();
+		if (trimmed.length() > MAX_KEY_LENGTH) {
+			throw new BusinessException(ErrorCode.INVALID_REQUEST,
+					"Idempotency-Key exceeds the maximum length of " + MAX_KEY_LENGTH + " characters.");
+		}
+		for (int i = 0; i < trimmed.length(); i++) {
+			char c = trimmed.charAt(i);
+			if (c < 0x20 || c == 0x7f) {
+				throw new BusinessException(ErrorCode.INVALID_REQUEST,
+						"Idempotency-Key contains invalid characters.");
+			}
+		}
+	}
+
+	/** Exposed for tests and internal callers that need to hash an idempotency key. */
+	public static String sha256(String value) {
 		try {
 			MessageDigest digest = MessageDigest.getInstance("SHA-256");
 			return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));

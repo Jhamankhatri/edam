@@ -4,6 +4,7 @@ import java.util.UUID;
 
 import com.edam.common.api.ApiPaths;
 import com.edam.common.api.ApiResponse;
+import com.edam.common.api.IdempotentOperation;
 import com.edam.common.api.PageQuery;
 import com.edam.common.api.PageResponse;
 import com.edam.common.logging.CorrelationId;
@@ -123,8 +124,10 @@ public class ApprovalController {
 
 	@PostMapping("/tasks/{taskId}/approve")
 	@EdamPermission(Permissions.APPROVAL_ACT)
+	@IdempotentOperation("POST /api/v1/approvals/tasks/{taskId}/approve")
 	@Operation(summary = "Approve an assigned task",
-			description = "Advances the workflow when the step's quorum is met. Remarks are required (BRD 8.5).")
+			description = "Advances the workflow when the step's quorum is met. Remarks are required (BRD 8.5). "
+					+ "Supports Idempotency-Key.")
 	public ApiResponse<ActionResponse> approve(@PathVariable UUID taskId,
 			@Valid @RequestBody ApproveRequest body, @AuthenticationPrincipal EdamPrincipal caller,
 			HttpServletRequest request) {
@@ -133,9 +136,10 @@ public class ApprovalController {
 
 	@PostMapping("/tasks/{taskId}/reject")
 	@EdamPermission(Permissions.APPROVAL_ACT)
+	@IdempotentOperation("POST /api/v1/approvals/tasks/{taskId}/reject")
 	@Operation(summary = "Reject an assigned task",
 			description = "Ends the request unless the workflow's published revision declares another target. "
-					+ "Remarks are required (BRD 8.5).")
+					+ "Remarks are required (BRD 8.5). Supports Idempotency-Key.")
 	public ApiResponse<ActionResponse> reject(@PathVariable UUID taskId, @Valid @RequestBody RejectRequest body,
 			@AuthenticationPrincipal EdamPrincipal caller, HttpServletRequest request) {
 		return ok(this.service.reject(taskId, body.remarks(), caller), request);
@@ -143,9 +147,10 @@ public class ApprovalController {
 
 	@PostMapping("/tasks/{taskId}/revert")
 	@EdamPermission(Permissions.APPROVAL_ACT)
+	@IdempotentOperation("POST /api/v1/approvals/tasks/{taskId}/revert")
 	@Operation(summary = "Revert an assigned task",
 			description = "Returns the request for correction. Remarks are required (BRD 8.5). The destination "
-					+ "is the revision's declared revert target, or its initial state.")
+					+ "is the revision's declared revert target, or its initial state. Supports Idempotency-Key.")
 	public ApiResponse<ActionResponse> revert(@PathVariable UUID taskId, @Valid @RequestBody RevertRequest body,
 			@AuthenticationPrincipal EdamPrincipal caller, HttpServletRequest request) {
 		return ok(this.service.revert(taskId, body.remarks(), caller), request);
@@ -153,10 +158,11 @@ public class ApprovalController {
 
 	@PostMapping("/tasks/{taskId}/forward")
 	@EdamPermission(Permissions.APPROVAL_ACT)
+	@IdempotentOperation("POST /api/v1/approvals/tasks/{taskId}/forward")
 	@Operation(summary = "Forward an assigned task to another user",
 			description = "Closes the caller's task and opens an equivalent one for the recipient in the same "
 					+ "step, so the delegate's approval counts toward the same quorum. A recipient and remarks are "
-					+ "both required (BRD 8.5).")
+					+ "both required (BRD 8.5). Supports Idempotency-Key.")
 	public ApiResponse<ActionResponse> forward(@PathVariable UUID taskId, @Valid @RequestBody ForwardRequest body,
 			@AuthenticationPrincipal EdamPrincipal caller, HttpServletRequest request) {
 		return ok(this.service.forward(taskId, body.recipientUserId(), body.remarks(), caller), request);

@@ -4,6 +4,7 @@ import java.util.UUID;
 
 import com.edam.common.api.ApiPaths;
 import com.edam.common.api.ApiResponse;
+import com.edam.common.api.IdempotentOperation;
 import com.edam.common.api.PageQuery;
 import com.edam.common.api.PageResponse;
 import com.edam.common.logging.CorrelationId;
@@ -102,9 +103,11 @@ public class ExpenseRequestController {
 
 	@PostMapping
 	@EdamPermission(Permissions.REQUEST_CREATE)
+	@IdempotentOperation("POST /api/v1/expense-requests")
 	@Operation(summary = "Create a request as a draft",
 			description = "The request number is allocated from the installation's sequence. A draft is checked "
-					+ "for internal consistency only; completeness is enforced at submission.")
+					+ "for internal consistency only; completeness is enforced at submission. "
+					+ "Supports Idempotency-Key.")
 	public ResponseEntity<ApiResponse<RequestResponse>> create(@Valid @RequestBody CreateRequest body,
 			@AuthenticationPrincipal EdamPrincipal caller, HttpServletRequest request) {
 		return ResponseEntity.status(HttpStatus.CREATED).body(ok(this.service.create(body, caller), request));
@@ -112,9 +115,10 @@ public class ExpenseRequestController {
 
 	@PutMapping("/{id}")
 	@EdamPermission(Permissions.REQUEST_EDIT)
+	@IdempotentOperation("PUT /api/v1/expense-requests/{id}")
 	@Operation(summary = "Replace an editable request",
 			description = "Only the requester may change a request, and only while it is a draft or was returned "
-					+ "for correction.")
+					+ "for correction. Supports Idempotency-Key.")
 	public ApiResponse<RequestResponse> update(@PathVariable UUID id, @Valid @RequestBody UpdateRequest body,
 			@AuthenticationPrincipal EdamPrincipal caller, HttpServletRequest request) {
 		return ok(this.service.update(id, body, caller), request);
@@ -126,9 +130,10 @@ public class ExpenseRequestController {
 
 	@PostMapping("/{id}/submit")
 	@EdamPermission(Permissions.REQUEST_SUBMIT)
+	@IdempotentOperation("POST /api/v1/expense-requests/{id}/submit")
 	@Operation(summary = "Submit a request for approval",
 			description = "Applies every conditional rule for the request's classification. Submission does not "
-					+ "choose approvers: routing belongs to the workflow engine.")
+					+ "choose approvers: routing belongs to the workflow engine. Supports Idempotency-Key.")
 	public ApiResponse<RequestResponse> submit(@PathVariable UUID id,
 			@AuthenticationPrincipal EdamPrincipal caller, HttpServletRequest request) {
 		return ok(this.service.submit(id, caller), request);
@@ -136,9 +141,10 @@ public class ExpenseRequestController {
 
 	@PostMapping("/{id}/cancel")
 	@EdamPermission(Permissions.REQUEST_CANCEL)
+	@IdempotentOperation("POST /api/v1/expense-requests/{id}/cancel")
 	@Operation(summary = "Withdraw a request before a decision",
 			description = "Only the requester may cancel. An approved request cannot be cancelled; reversing it "
-					+ "is a separate operation.")
+					+ "is a separate operation. Supports Idempotency-Key.")
 	public ApiResponse<RequestResponse> cancel(@PathVariable UUID id, @Valid @RequestBody CancelRequest body,
 			@AuthenticationPrincipal EdamPrincipal caller, HttpServletRequest request) {
 		return ok(this.service.cancel(id, body.reason(), caller), request);

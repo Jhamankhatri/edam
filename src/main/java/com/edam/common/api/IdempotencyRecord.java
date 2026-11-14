@@ -1,5 +1,6 @@
 package com.edam.common.api;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -24,10 +25,11 @@ import org.hibernate.type.SqlTypes;
  * under load, when clients retry. The key is therefore durable.
  *
  * <h2>What is stored</h2>
- * A SHA-256 of the caller's key and a fingerprint of the request body, plus the recorded status. The key
- * itself is hashed so that a stolen backup cannot be used to replay a client's requests, and the response
- * body is not stored at all: a replay returns the recorded status and the caller re-reads current state,
- * which is also correct when the resource has changed legitimately since.
+ * A SHA-256 of the caller's key (so a stolen backup cannot be used to replay a client's requests), the
+ * operation type, the owning actor id, a fingerprint of the request body (to detect same-key reuse with
+ * different payloads), the HTTP status returned, and a JSON-serialised snapshot of the response body
+ * (in {@code response_snapshot}) so that replays return byte-identical responses to the original caller.
+ * No credentials, authorisation tokens, or sensitive headers are retained.
  *
  * <h2>State machine</h2>
  * {@code IN_PROGRESS} → {@code COMPLETED} or {@code FAILED}. The in-progress state is what makes a
@@ -42,6 +44,14 @@ public class IdempotencyRecord {
 
 		/** A request is executing under this key; a concurrent duplicate must not start. */
 		IN_PROGRESS,
+		/**
+		 * The operation committed but the final response-snapshot write may not have completed
+		 * (process crashed between the business TX commit and the afterCommit finaliser).
+		 * A retry under this status receives {@code 409 Conflict} rather than a blind replay or a
+		 * second execution: the server cannot prove the work did or did not happen, so it fails
+		 * closed and directs the client to query the resource directly.
+		 */
+		UNKNOWN,
 		/** The operation completed; the recorded status is what a replay receives. */
 		COMPLETED,
 		/** The operation failed; a retry under the same key is allowed once the failure is recorded. */
@@ -58,8 +68,12 @@ public class IdempotencyRecord {
 	@Column(name = "idempotency_key", nullable = false, updatable = false, length = 200)
 	private String keyHash;
 
-	@Column(name = "operation_type", nullable = false, updatable = false, length = 100)
+	@Column(name = "operation_type", nullable = false, updatable = false, length = 120)
 	private String operationType;
+
+	/** Authenticated actor that owns this key; one user's key never replays another's response. */
+	@Column(name = "actor_id", nullable = false, updatable = false)
+	private UUID actorId;
 
 	/** SHA-256 of the canonical request body, to detect key reuse with different content. */
 	@Column(name = "request_hash", nullable = false, updatable = false, length = 64)
@@ -76,7 +90,7 @@ public class IdempotencyRecord {
 	@Column(name = "response_status")
 	private Integer responseStatus;
 
-	@Column(name = "expires_at", nullable = false, updatable = false)
+	@Column(name = "expires_at", nullable = false)
 	private Instant expiresAt;
 
 	@Column(name = "created_at", nullable = false, updatable = false)
@@ -86,24 +100,41 @@ public class IdempotencyRecord {
 		// JPA
 	}
 
-	public IdempotencyRecord(String keyHash, String operationType, String requestHash, Instant expiresAt) {
+	public IdempotencyRecord(String keyHash, String operationType, UUID actorId, String requestHash,
+			Instant expiresAt) {
 		this.keyHash = keyHash;
 		this.operationType = operationType;
+		this.actorId = actorId;
 		this.requestHash = requestHash;
 		this.status = Status.IN_PROGRESS;
 		this.expiresAt = expiresAt;
 		this.createdAt = Instant.now();
 	}
 
-	/** Marks the operation complete and records the status a replay should receive. */
-	public void complete(int responseStatus) {
+	/** Marks the operation complete and records the HTTP status and serialized response a replay returns. */
+	public void complete(int responseStatus, String responseSnapshot) {
 		this.status = Status.COMPLETED;
 		this.responseStatus = responseStatus;
+		this.responseSnapshot = responseSnapshot;
 	}
 
 	/** Marks the operation failed so that the caller may correct the input and retry. */
 	public void fail() {
 		this.status = Status.FAILED;
+	}
+
+	/**
+	 * Marks the record UNKNOWN: the in-progress claim is older than the grace window and the
+	 * outcome cannot be determined from the record alone. The caller must reconcile out-of-band;
+	 * the record is retained for an extended period (90 days) instead of the normal seven-day
+	 * window, because automatic deletion of UNKNOWN rows would reopen the double-execution window
+	 * the status exists to close.
+	 */
+	public void markUnknown() {
+		this.status = Status.UNKNOWN;
+		this.responseSnapshot = null;
+		this.responseStatus = null;
+		this.expiresAt = Instant.now().plus(Duration.ofDays(90));
 	}
 
 	public boolean isCompleted() {
@@ -128,6 +159,10 @@ public class IdempotencyRecord {
 
 	public String getOperationType() {
 		return this.operationType;
+	}
+
+	public UUID getActorId() {
+		return this.actorId;
 	}
 
 	public String getRequestHash() {
