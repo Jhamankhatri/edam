@@ -113,14 +113,17 @@ ALTER TABLE theme_tokens
 -- Module C — application settings: widen for typed categories, defaults, validation
 -- -------------------------------------------------------------------------------------
 
+-- V6 created application_settings with a UUID FK updated_by column (and only updated_at).
+-- Add display_name/category/default_value/is_editable so Phase 4B CRUD works, plus the
+-- created_at/created_by stamps that the new entity carries. We do NOT touch updated_by
+-- (FK to users); the audit log records actors.
 ALTER TABLE application_settings
     ADD COLUMN IF NOT EXISTS display_name   VARCHAR(200),
     ADD COLUMN IF NOT EXISTS category       VARCHAR(80)  NOT NULL DEFAULT 'general',
     ADD COLUMN IF NOT EXISTS default_value  JSONB,
     ADD COLUMN IF NOT EXISTS is_editable    BOOLEAN      NOT NULL DEFAULT TRUE,
     ADD COLUMN IF NOT EXISTS created_at     TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    ADD COLUMN IF NOT EXISTS created_by     VARCHAR(100),
-    ADD COLUMN IF NOT EXISTS updated_by_id  UUID REFERENCES users(id);
+    ADD COLUMN IF NOT EXISTS created_by     VARCHAR(100);
 
 -- Replace CHECK to accept INTEGER and DECIMAL as distinct from NUMBER (both numeric,
 -- different validation semantics). Keep STRING, BOOLEAN, JSON, DATE. We do this by
@@ -135,32 +138,14 @@ ALTER TABLE application_settings
 -- (V6 made it UUID REFERENCES users) so we leave that relationship intact.
 
 -- -------------------------------------------------------------------------------------
--- Module D — feature flags: ensure the V6 table exists; if not (shouldn't happen but
--- defensive) create it.
+-- Module D — feature flags: V6 already created this table without created_at/created_by.
+-- Add those columns so the entity and service can stamp creators; updated_by remains a
+-- UUID FK to users (as V6 defined it) and is intentionally not written to by Phase 4B.
 -- -------------------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS feature_flags (
-    id            UUID         PRIMARY KEY DEFAULT uuidv7(),
-    feature_key   VARCHAR(100) NOT NULL,
-    display_name  VARCHAR(150) NOT NULL,
-    description   TEXT,
-    is_enabled    BOOLEAN      NOT NULL DEFAULT FALSE,
-    configuration JSONB,
-    created_at    TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    created_by    VARCHAR(100),
-    updated_at    TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_by    VARCHAR(100),
-    updated_by_id UUID         REFERENCES users(id),
-    version       BIGINT       NOT NULL DEFAULT 0,
-    CONSTRAINT uk_feature_flags_key UNIQUE (feature_key)
-);
-
--- Seed: make sure the required columns exist even if the table was created by V6
--- without created_by/updated_by_id.
 ALTER TABLE feature_flags
     ADD COLUMN IF NOT EXISTS created_at   TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    ADD COLUMN IF NOT EXISTS created_by   VARCHAR(100),
-    ADD COLUMN IF NOT EXISTS updated_by_id UUID REFERENCES users(id);
+    ADD COLUMN IF NOT EXISTS created_by   VARCHAR(100);
 
 -- -------------------------------------------------------------------------------------
 -- Seed data: safe default light theme and essential application settings
@@ -193,40 +178,43 @@ BEGIN
 END $$;
 
 -- Seed essential application settings (idempotent by unique key).
+-- NOTE: application_settings.updated_by is a UUID FK to users (V6), so we cannot put a
+-- plain-text auditor string there. Leave it NULL; the audit log records the seed
+-- operation separately. created_by is VARCHAR(100) (added above) so 'system' is fine.
 INSERT INTO application_settings
         (setting_key, display_name, category, setting_type, setting_value,
-         default_value, description, is_active, is_editable, created_by, updated_by)
+         default_value, description, is_active, is_editable, created_by)
 VALUES
     ('app.displayName',       'Application display name', 'branding',     'STRING',
         to_jsonb('EDAM'::text),  to_jsonb('EDAM'::text),
         'The product/installation name shown in the application shell and browser title.',
-        TRUE, TRUE, 'system', 'system'),
+        TRUE, TRUE, 'system'),
     ('app.defaultLocale',     'Default locale',           'localization', 'STRING',
         to_jsonb('en-GB'::text), to_jsonb('en-GB'::text),
         'Default BCP-47 locale used for number/date formatting until the user chooses one.',
-        TRUE, TRUE, 'system', 'system'),
+        TRUE, TRUE, 'system'),
     ('app.defaultCurrency',   'Default currency code',    'localization', 'STRING',
         NULL,                     NULL,
         'ISO 4217 code of the default currency. Falls back to the organization default_currency_id when null.',
-        TRUE, TRUE, 'system', 'system'),
+        TRUE, TRUE, 'system'),
     ('app.dateFormat',        'Server-side date format',  'localization', 'STRING',
         to_jsonb('dd MMM yyyy'::text), to_jsonb('dd MMM yyyy'::text),
         'Default date format pattern used for date rendering where no user preference exists.',
-        TRUE, TRUE, 'system', 'system'),
+        TRUE, TRUE, 'system'),
     ('app.timeZone',          'Default time zone',        'localization', 'STRING',
         to_jsonb('Asia/Karachi'::text), to_jsonb('Asia/Karachi'::text),
         'IANA time zone used for timestamp rendering when the user has not set a preference.',
-        TRUE, TRUE, 'system', 'system'),
+        TRUE, TRUE, 'system'),
     ('app.pagination.pageSize',   'Default page size',    'pagination',   'INTEGER',
         to_jsonb(20), to_jsonb(20),
         'Default number of rows per page in list views.',
-        TRUE, TRUE, 'system', 'system'),
+        TRUE, TRUE, 'system'),
     ('app.pagination.maxPageSize','Maximum page size',    'pagination',   'INTEGER',
         to_jsonb(200), to_jsonb(200),
         'Hard ceiling on the page_size query parameter to prevent a client from pulling every row at once.',
-        TRUE, FALSE, 'system', 'system'),
+        TRUE, FALSE, 'system'),
     ('notifications.email.enabled','Email notifications enabled', 'notifications', 'BOOLEAN',
         to_jsonb(TRUE), to_jsonb(TRUE),
         'Whether transactional email notifications are dispatched. Does not affect audit logging.',
-        TRUE, TRUE, 'system', 'system')
+        TRUE, TRUE, 'system')
 ON CONFLICT (setting_key) DO NOTHING;
