@@ -175,8 +175,9 @@ public class IdempotencyService {
 		if (key == null || key.isBlank()) {
 			return Proceed.INSTANCE;
 		}
-		validateKey(key);
-		String keyHash = sha256(key);
+		String trimmed = key.trim();
+		validateKey(trimmed);
+		String keyHash = sha256(trimmed);
 		// Run the claim in its own transaction so the IN_PROGRESS row is committed before the
 		// business service's @Transactional begins. Using Programmatic Tx here avoids relying on
 		// self-invocation of @Transactional through the same bean proxy (which would silently
