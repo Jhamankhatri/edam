@@ -169,7 +169,7 @@ public final class RequestFingerprint {
 				}
 			}
 		}
-		catch (java.io.IOException ex) {
+		catch (Exception ex) {
 			// Shouldn't happen when re-serialising an in-memory tree; fall back to leaving the
 			// node as-is. The fingerprint will still be deterministic for the same input, it just
 			// won't normalise key order — which only matters for cross-client retries that reorder
