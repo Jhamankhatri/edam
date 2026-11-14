@@ -264,10 +264,9 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 							"POST /api/v1/expense-requests\0\0" + tamperedFp));
 			org.junit.jupiter.api.Assertions.fail("direct service.check() with tampered fp must throw CONFLICT");
 		}
-		catch (com.edam.common.exception.BusinessException bex) {
-			org.junit.jupiter.api.Assertions.assertEquals(com.edam.common.api.ErrorCode.IDEMPOTENCY_CONFLICT,
-					bex.getErrorCode(),
-					() -> "direct check() should return CONFLICT but got " + bex.getErrorCode());
+		catch (BusinessException bex) {
+			org.junit.jupiter.api.Assertions.assertEquals(ErrorCode.IDEMPOTENCY_CONFLICT, bex.getErrorCode(),
+					"direct check() should return CONFLICT but got " + bex.getErrorCode());
 		}
 		this.mockMvc.perform(post(BASE).with(user(caller)).with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
