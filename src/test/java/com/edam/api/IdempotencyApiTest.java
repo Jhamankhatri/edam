@@ -237,8 +237,14 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 						+ existing.getStatus() + " responseSnapshot=" + existing.getResponseSnapshot());
 		// Now hit the service directly with a tampered fingerprint to confirm service-level
 		// conflict detection works (bypass HTTP / AOP to narrow any failure).
-		String tamperedFp = buildFingerprint("POST", BASE, java.util.Map.of(),
-				opexBody("200.0000", "tampered"));
+		String origBody = opexBody("100.0000", "original");
+		String tamperedBody = opexBody("200.0000", "tampered");
+		String origFp = buildFingerprint("POST", BASE, java.util.Map.of(), origBody);
+		String tamperedFp = buildFingerprint("POST", BASE, java.util.Map.of(), tamperedBody);
+		org.junit.jupiter.api.Assertions.assertNotEquals(origFp, tamperedFp,
+				"fingerprints must differ between original and tampered bodies");
+		org.junit.jupiter.api.Assertions.assertEquals(existing.getRequestHash(), origFp,
+				"stored requestHash must equal the original fingerprint");
 		try {
 			this.idempotencyService.check("POST /api/v1/expense-requests", caller.userId(), key, tamperedFp);
 			org.junit.jupiter.api.Assertions.fail("expected IDEMPOTENCY_CONFLICT from direct check; got Proceed");
@@ -246,7 +252,8 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		catch (com.edam.common.exception.BusinessException bx) {
 			org.junit.jupiter.api.Assertions.assertEquals(
 					com.edam.common.api.ErrorCode.IDEMPOTENCY_CONFLICT, bx.getErrorCode(),
-					"direct check threw " + bx.getErrorCode() + ": " + bx.getMessage());
+					"direct check threw " + bx.getErrorCode() + ": " + bx.getMessage()
+						+ " storedFp=" + existing.getRequestHash() + " tamperedFp=" + tamperedFp);
 		}
 		this.mockMvc.perform(post(BASE).with(user(caller)).with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
