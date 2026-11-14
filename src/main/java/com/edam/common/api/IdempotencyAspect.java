@@ -93,13 +93,6 @@ public class IdempotencyAspect {
 		}
 		int httpStatus = resolveStatus(result, request);
 		String snapshot = serialiseResult(result);
-		// Force the snapshot through the same canonical mapper used for request fingerprints so
-		// that (a) replay snapshots are byte-deterministic and (b) a snapshot write does not
-		// silently change numeric precision. We must NOT rely on the injected application
-		// jsonMapper's configuration — that mapper is used for response rendering and may carry
-		// modules (e.g. Hibernate lazy-loading handlers, Java time serialisers) that interact
-		// badly with detached entities.
-		snapshot = snapshot == null ? null : RequestFingerprint.canonicalJson(this.jsonMapper, snapshot);
 		this.idempotency.recordSuccess(operation, actorId, key.trim(), httpStatus, snapshot);
 		return result;
 	}

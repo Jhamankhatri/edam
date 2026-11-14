@@ -217,8 +217,24 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 	@DisplayName("same key with a different payload returns HTTP 409 Conflict (EDAM-1004)")
 	void differentPayloadIsConflict() throws Exception {
 		String key = "key-conflict-" + UUID.randomUUID();
-		createDraft(opexBody("100.0000", "original"), key, owner(), HttpStatus.CREATED.value());
-		this.mockMvc.perform(post(BASE).with(user(owner())).with(csrf())
+		EdamPrincipal caller = owner();
+		MvcResult first = createDraft(opexBody("100.0000", "original"), key, caller, HttpStatus.CREATED.value());
+		CreatedEnvelope firstEnv = parseCreated(first);
+		assertThat(firstEnv.success()).isTrue();
+		// Sanity: the COMPLETED record must exist after createDraft returns (otherwise the
+		// precondition for this test — that the key is claimed COMPLETED — does not hold and
+		// the second call will appear to succeed as a fresh claim).
+		java.util.List<IdempotencyRecord> mine = this.idempotencyRecords.findAll().stream()
+				.filter(r -> r.getActorId().equals(caller.userId()))
+				.filter(r -> "POST /api/v1/expense-requests".equals(r.getOperationType()))
+				.filter(r -> IdempotencyService.sha256(key).equals(r.getKeyHash()))
+				.toList();
+		org.junit.jupiter.api.Assertions.assertFalse(mine.isEmpty(),
+				"after first createDraft, no idempotency record was found for the test key");
+		org.junit.jupiter.api.Assertions.assertEquals(IdempotencyRecord.Status.COMPLETED, mine.get(0).getStatus(),
+				"idempotency record for key should be COMPLETED after successful create; got "
+						+ mine.get(0).getStatus() + " responseSnapshot=" + mine.get(0).getResponseSnapshot());
+		this.mockMvc.perform(post(BASE).with(user(caller)).with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
 						.accept(MediaType.APPLICATION_JSON)
 						.content(opexBody("200.0000", "tampered"))

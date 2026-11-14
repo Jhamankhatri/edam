@@ -121,6 +121,13 @@ public final class RequestFingerprint {
 	 * which confuses javac's target-type inference when using a generic witness), sort them, and
 	 * rebuild the ObjectNode in sorted order. Arrays are recursed into so nested objects sort too.
 	 */
+	/**
+	 * Canonicalise a JSON string: parse + recursively sort keys + re-serialise. Public so the
+	 * aspect and tests can use it without reflection. The {@code jsonMapper} parameter is
+	 * accepted for API compatibility but ignored — canonicalisation always uses the internal
+	 * canonical mapper (see {@link CanonicalHolder#MAPPER}) so output is byte-identical
+	 * regardless of how the caller's mapper is configured.
+	 */
 	public static String canonicalJson(JsonMapper jsonMapper, String body) {
 		if (body == null || body.isBlank()) {
 			return "";
