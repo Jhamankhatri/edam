@@ -103,13 +103,13 @@ public class ApplicationSettingService {
 		if (req.displayName() != null) s.setDisplayName(req.displayName());
 		if (req.description() != null) s.setDescription(req.description());
 		if (req.category() != null) s.setCategory(req.category().trim());
-		if (req.type() != null) s.setType(ApplicationSetting.SettingType.valueOf(req.type().name()));
+		if (req.type() != null) s.setType(req.type().name());
 		if (req.active() != null) s.setActive(req.active());
 		if (req.editable() != null) s.setEditable(req.editable());
 
-		Object def = coerce(req.defaultValue(), s.getType(), "defaultValue");
+		Object def = coerce(req.defaultValue(), typeOf(s.getType()), "defaultValue");
 		s.setDefaultValueJson(toJson(def));
-		Object val = req.value() == null ? def : coerce(req.value(), s.getType(), "value");
+		Object val = req.value() == null ? def : coerce(req.value(), typeOf(s.getType()), "value");
 		if (!s.isEditable() && !isNew) {
 			throw new BusinessException(ErrorCode.INVALID_STATE_TRANSITION,
 					"Setting '" + req.key() + "' is not editable.");
@@ -142,13 +142,13 @@ public class ApplicationSettingService {
 				throw new BusinessException(ErrorCode.PERMISSION_DENIED,
 						"Setting '" + e.getKey() + "' is reserved.");
 			}
-			coerce(e.getValue(), s.getType(), e.getKey());
+			coerce(e.getValue(), typeOf(s.getType()), e.getKey());
 		}
 		String actor = currentActor();
 		for (var e : toApply) {
 			ApplicationSetting s = this.repo.findByKey(e.getKey()).orElseThrow();
 			Map<String, Object> before = snapshot(s);
-			s.setValueJson(toJson(coerce(e.getValue(), s.getType(), e.getKey())));
+			s.setValueJson(toJson(coerce(e.getValue(), typeOf(s.getType()), e.getKey())));
 			s.touch(actor);
 			this.repo.save(s);
 			this.audit.recordChange(AuditAction.UPDATE, "ApplicationSetting", s.getId(), before, snapshot(s));
@@ -164,10 +164,15 @@ public class ApplicationSettingService {
 
 	private Object effectiveValue(ApplicationSetting s) {
 		String raw = s.getValueJson() != null ? s.getValueJson() : s.getDefaultValueJson();
-		return fromJson(raw, s.getType());
+		return fromJson(raw, typeOf(s.getType()));
 	}
 
-	private Object coerce(Object raw, SettingType type, String field) {
+	private static SettingType typeOf(String name) {
+		try { return SettingType.valueOf(name); }
+		catch (Exception ex) { return SettingType.STRING; }
+	}
+
+	private Object coerce(Object raw, SettingType typeStr, String field) {
 		if (raw == null) return null;
 		try {
 			switch (type) {
@@ -288,8 +293,8 @@ public class ApplicationSettingService {
 
 	private SettingResponse toResponse(ApplicationSetting s) {
 		return new SettingResponse(s.getId(), s.getKey(), s.getDisplayName(), s.getDescription(),
-				s.getCategory(), s.getType().name(), effectiveValue(s),
-				fromJson(s.getDefaultValueJson(), s.getType()),
+				s.getCategory(), s.getType(), effectiveValue(s),
+				fromJson(s.getDefaultValueJson(), typeOf(s.getType())),
 				s.isActive(), s.isEditable(), s.getUpdatedAt());
 	}
 }

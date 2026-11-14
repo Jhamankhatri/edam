@@ -131,7 +131,7 @@ public final class OrganizationDtos {
 	}
 
 	@Schema(name = "OrganizationUnitTypeResponse")
-	public record OrganizationUnitTypeResponse(UUID id, String code, String name, String description, boolean active) {
+	public record OrganizationUnitTypeResponse(UUID id, String code, String name, String description) {
 	}
 
 	// ------------------------------------------------------------------

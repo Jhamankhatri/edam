@@ -6,23 +6,19 @@ import com.edam.common.audit.AuditableEntity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 
 /**
  * A single typed application setting (Phase 4B Module C).
  *
- * <p>Each row carries a declared data type, default value, editable flag and category.
- * The service validates values against their declared type before persisting, so an
- * INTEGER setting can never store a free-form string. JSON values are stored as jsonb
- * and parsed for structural validity; no executable content is ever interpreted.
+ * <p>Each row carries a declared data type (stored as its string name — see
+ * {@code SettingType} in the configuration DTO package), default value, editable flag
+ * and category. The service validates values against their declared type before
+ * persisting, so an INTEGER setting can never store a free-form string.
  */
 @Entity
 @Table(name = "application_settings")
 public class ApplicationSetting extends AuditableEntity {
-
-	public enum SettingType { STRING, BOOLEAN, INTEGER, DECIMAL, JSON, DATE }
 
 	@Column(name = "setting_key", nullable = false, length = 150, unique = true)
 	private String key;
@@ -36,9 +32,8 @@ public class ApplicationSetting extends AuditableEntity {
 	@Column(name = "category", nullable = false, length = 80)
 	private String category = "general";
 
-	@Enumerated(EnumType.STRING)
 	@Column(name = "setting_type", nullable = false, length = 20)
-	private SettingType type = SettingType.STRING;
+	private String type = "STRING";
 
 	@Column(name = "setting_value", columnDefinition = "jsonb")
 	private String valueJson;
@@ -61,8 +56,8 @@ public class ApplicationSetting extends AuditableEntity {
 	public void setDescription(String v) { this.description = v; }
 	public String getCategory() { return this.category; }
 	public void setCategory(String v) { this.category = v; }
-	public SettingType getType() { return this.type; }
-	public void setType(SettingType t) { this.type = t; }
+	public String getType() { return this.type; }
+	public void setType(String t) { this.type = t; }
 	public String getValueJson() { return this.valueJson; }
 	public void setValueJson(String v) { this.valueJson = v; }
 	public String getDefaultValueJson() { return this.defaultValueJson; }
