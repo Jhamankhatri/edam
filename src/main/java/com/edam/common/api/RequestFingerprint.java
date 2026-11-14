@@ -158,24 +158,28 @@ public final class RequestFingerprint {
 		}
 		ObjectNode obj = (ObjectNode) node;
 		List<String> names = new ArrayList<>();
-		// Use reflection to call fieldNames() because tools.jackson declares it with a raw
-		// Iterator return type that confuses javac target-type inference in this build; reflection
-		// sidesteps the compile-time generic signature entirely.
-		try {
-			Object itObj = obj.getClass().getMethod("fieldNames").invoke(obj);
-			if (itObj instanceof Iterator it) {
-				while (it.hasNext()) {
-					Object n = it.next();
-					if (n instanceof String s) {
-						names.add(s);
+		// Use reflection to walk up the class hierarchy and locate fieldNames(), because:
+		//   (a) tools.jackson declares the return type as raw Iterator, which breaks javac
+		//       target-type inference when assigned to a generic Iterator<String>;
+		//   (b) the method is defined on ContainerNode (parent of ObjectNode), so getMethod on
+		//       obj.getClass() alone won't resolve it when Hibernate or other proxies intervene.
+		Class<?> c = obj.getClass();
+		while (c != null && names.isEmpty()) {
+			try {
+				Object itObj = c.getMethod("fieldNames").invoke(obj);
+				if (itObj instanceof Iterator it) {
+					while (it.hasNext()) {
+						Object n = it.next();
+						if (n instanceof String s) {
+							names.add(s);
+						}
 					}
 				}
 			}
-		}
-		catch (ReflectiveOperationException ex) {
-			// Fall back: iterate properties via names from the JSON string representation. Shouldn't
-			// happen with tools.jackson on the classpath.
-			return;
+			catch (ReflectiveOperationException ex) {
+				// try superclass
+			}
+			c = c.getSuperclass();
 		}
 		Collections.sort(names);
 		// Detach each child from obj (so it has no parent) and re-add to sorted in order.
