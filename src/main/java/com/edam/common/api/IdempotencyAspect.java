@@ -72,14 +72,6 @@ public class IdempotencyAspect {
 		String fingerprint = RequestFingerprint.forRequest(this.jsonMapper, request, uriVariables);
 		String operation = idempotentOperation.value();
 		IdempotencyService.Decision decision = this.idempotency.check(operation, actorId, key.trim(), fingerprint);
-		HttpServletResponse response = currentResponse();
-		if (response != null) {
-			response.setHeader("X-Idempotency-Decision",
-					decision instanceof IdempotencyService.Replay ? "replay" : "proceed");
-			Object cachedLen = request.getAttribute("X-Idempotency-CachedBodyLen");
-			response.setHeader("X-Idempotency-FpLen",
-					cachedLen == null ? "none" : cachedLen.toString());
-		}
 		if (decision instanceof IdempotencyService.Replay replay) {
 			return writeReplay(replay);
 		}

@@ -61,18 +61,18 @@ public final class RequestFingerprint {
 
 	private static String readBody(HttpServletRequest request) {
 		if (request instanceof CachedBodyHttpServletRequest cached) {
-			String body = cached.cachedBodyAsString();
-			if (request.getAttribute("X-Idempotency-CachedBodyLen") == null) {
-				request.setAttribute("X-Idempotency-CachedBodyLen", body.length());
-			}
-			return body;
+			return cached.cachedBodyAsString();
 		}
-		// Requests that aren't wrapped carry no body (GET/HEAD) or should not be fingerprinted;
-		// returning an empty string is safe because those endpoints are not annotated.
-		// But if content-length suggests there IS a body, it means the filter didn't wrap and we'd
-		// compute an empty fingerprint (a dangerous false-match). Read the stream directly as a
-		// fallback.
-		if (request.getContentLength() > 0) {
+		// Defence-in-depth: if for any reason the request was not wrapped by CachedBodyFilter but
+		// declares a body, consume the stream directly. This prevents a dangerous false-positive
+		// match where two different bodies both hash to the empty-string fingerprint. The stream
+		// is read once here; Spring MVC will see an empty body in that case — but the filter
+		// should always wrap POST/PUT/PATCH requests (see CachedBodyFilter and its explicit
+		// registration in ServletFilterConfig), so this branch is a last-resort safety net rather
+		// than the expected path.
+		if (request.getContentLength() > 0 || "POST".equalsIgnoreCase(request.getMethod())
+				|| "PUT".equalsIgnoreCase(request.getMethod())
+				|| "PATCH".equalsIgnoreCase(request.getMethod())) {
 			try {
 				byte[] bytes = request.getInputStream().readAllBytes();
 				return new String(bytes, StandardCharsets.UTF_8);
