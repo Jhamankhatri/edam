@@ -239,6 +239,8 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 						.header("Idempotency-Key", key))
 				.andReturn();
 		String body = conflict.getResponse().getContentAsString();
+		String decisionHdr = conflict.getResponse().getHeader("X-Idempotency-Decision");
+		diag.append(" decisionHdr=").append(decisionHdr);
 		org.junit.jupiter.api.Assertions.assertEquals(400, conflict.getResponse().getStatus(),
 				"expected 400 but got status " + conflict.getResponse().getStatus()
 						+ " diag=" + diag + " body=" + body);
