@@ -137,18 +137,18 @@ public final class RequestFingerprint {
 		if (!node.isObject()) {
 			return;
 		}
-		var obj = (ObjectNode) node;
+		ObjectNode obj = (ObjectNode) node;
 		SortedMap<String, JsonNode> byName = new TreeMap<>();
-		java.util.Iterator<java.util.Map.Entry<String, JsonNode>> it = obj.fields();
-		while (it.hasNext()) {
-			java.util.Map.Entry<String, JsonNode> e = it.next();
-			byName.put(e.getKey(), e.getValue());
+		java.util.Iterator<String> names = obj.fieldNames();
+		while (names.hasNext()) {
+			String name = names.next();
+			byName.put(name, obj.get(name));
 		}
 		ObjectNode sorted = CanonicalHolder.MAPPER.createObjectNode();
-		byName.forEach((name, child) -> {
-			sortKeys(child);
-			sorted.set(name, child);
-		});
+		for (java.util.Map.Entry<String, JsonNode> e : byName.entrySet()) {
+			sortKeys(e.getValue());
+			sorted.set(e.getKey(), e.getValue());
+		}
 		obj.removeAll();
 		obj.setAll(sorted);
 	}
