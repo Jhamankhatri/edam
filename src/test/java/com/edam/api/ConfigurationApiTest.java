@@ -59,7 +59,7 @@ class ConfigurationApiTest extends AbstractPostgreSqlIntegrationTest {
 				"Test Dark", "Dark variant", ThemeType.DARK,
 				"#111111", "#222222", "#333333", "#000000", "#0a0a0a",
 				"#eeeeee", "#ffffff", "#111111", "#eeeeee",
-				"#111111", "#eeeeee", "#22c55e", "#facc15", "#ef4444", "#3b82f6", "#3b82f6",
+				"#111111", "#eeeeee", "#22c55e", "#facc15", "#ef4444", "#3b82f6",
 				List.of(new ThemeTokenRequest("fontFamily", "Inter, sans-serif", ThemeTokenType.FONT))));
 		assertThat(created.id()).isNotNull();
 		assertThat(created.tokens()).containsEntry("fontFamily", "Inter, sans-serif");
