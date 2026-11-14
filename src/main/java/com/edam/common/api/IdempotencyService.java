@@ -300,7 +300,7 @@ public class IdempotencyService {
 				this.newTxTemplate.executeWithoutResult(status -> {
 					this.records.findByKey(keyHash, operationType, actorId).ifPresent(record -> {
 						record.complete(httpStatus, responseJson);
-						this.records.save(record);
+						this.records.saveAndFlush(record);
 					});
 				});
 			}
