@@ -257,9 +257,9 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		org.junit.jupiter.api.Assertions.assertTrue(directLookup.isPresent(),
 				"direct findByKey must find the COMPLETED record immediately before retry");
 		// Also ask the service's decision logic directly (bypass HTTP).
-		this.idempotency.clearInFlightForTests();
+		this.idempotencyService.clearInFlightForTests();
 		try {
-			this.idempotency.check("POST /api/v1/expense-requests", caller.userId(), key,
+			this.idempotencyService.check("POST /api/v1/expense-requests", caller.userId(), key,
 					com.edam.common.api.IdempotencyService.fingerprint(
 							"POST /api/v1/expense-requests\0\0" + tamperedFp));
 			org.junit.jupiter.api.Assertions.fail("direct service.check() with tampered fp must throw CONFLICT");
