@@ -169,14 +169,22 @@ public final class RequestFingerprint {
 		// iteration also returned an empty iterator due to a reflective dispatch quirk, so we
 		// avoid fieldNames() entirely and use fields() instead.
 		List<String> names = new ArrayList<>();
-		try {
-			java.util.Iterator<Map.Entry<String, JsonNode>> fields = obj.fields();
-			while (fields.hasNext()) {
-				Map.Entry<String, JsonNode> entry = fields.next();
-				names.add(entry.getKey());
+		// obj.fields() returns a raw Iterator in tools.jackson (same javac inference quirk as
+		// fieldNames()); cast through Object and iterate with instanceof checks so we never
+		// have to mention the raw type at the declaration site.
+		Object rawFields = obj.fields();
+		if (rawFields instanceof Iterator<?> it) {
+			while (it.hasNext()) {
+				Object entry = it.next();
+				if (entry instanceof Map.Entry<?, ?> e && e.getKey() instanceof String s) {
+					names.add(s);
+				}
 			}
 		}
-		catch (Throwable t) {
+		if (names.isEmpty()) {
+			// Fallback: reflective fieldNames() in case fields() returned nothing for this
+			// tools.jackson version.
+			//noinspection unchecked
 			// Last-resort fallback: use reflection on fieldNames() if fields() is unavailable for
 			// some reason (defensive).
 			Object rawIterable = invokeFieldNamesRaw(obj);
