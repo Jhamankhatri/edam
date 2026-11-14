@@ -163,14 +163,29 @@ public final class RequestFingerprint {
 			return;
 		}
 		ObjectNode obj = (ObjectNode) node;
-		// Assign via a raw-typed Object to bypass javac's inference; cast down at use site.
-		Object rawIterable = invokeFieldNamesRaw(obj);
+		// Collect field names via JsonNode.fields(), which returns Iterator<Map.Entry<String,JsonNode>>
+		// (a properly generic signature in tools.jackson). The raw-typed fieldNames() Iterator
+		// returned by earlier approaches tripped javac target-type inference bugs and in one
+		// iteration also returned an empty iterator due to a reflective dispatch quirk, so we
+		// avoid fieldNames() entirely and use fields() instead.
 		List<String> names = new ArrayList<>();
-		if (rawIterable instanceof Iterator it) {
-			while (it.hasNext()) {
-				Object n = it.next();
-				if (n instanceof String s) {
-					names.add(s);
+		try {
+			java.util.Iterator<Map.Entry<String, JsonNode>> fields = obj.fields();
+			while (fields.hasNext()) {
+				Map.Entry<String, JsonNode> entry = fields.next();
+				names.add(entry.getKey());
+			}
+		}
+		catch (Throwable t) {
+			// Last-resort fallback: use reflection on fieldNames() if fields() is unavailable for
+			// some reason (defensive).
+			Object rawIterable = invokeFieldNamesRaw(obj);
+			if (rawIterable instanceof Iterator it) {
+				while (it.hasNext()) {
+					Object n = it.next();
+					if (n instanceof String s) {
+						names.add(s);
+					}
 				}
 			}
 		}
