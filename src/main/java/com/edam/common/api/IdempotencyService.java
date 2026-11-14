@@ -119,8 +119,12 @@ public class IdempotencyService {
 		this(records, txManager, STALE_IN_PROGRESS_GRACE_DEFAULT);
 	}
 
-	/** Test-only constructor that lets callers override the stale-grace window. */
-	IdempotencyService(IdempotencyRecordRepository records, PlatformTransactionManager txManager,
+	/**
+	 * Constructor that lets callers override the stale-grace window. Intended for tests and for
+	 * installations that wire a non-default grace (e.g. long-running batch endpoints). The
+	 * no-Duration overload is the one Spring picks up via {@code @Autowired}.
+	 */
+	public IdempotencyService(IdempotencyRecordRepository records, PlatformTransactionManager txManager,
 			Duration staleGrace) {
 		this.records = records;
 		this.staleGrace = staleGrace;
