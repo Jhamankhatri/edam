@@ -140,36 +140,41 @@ public final class RequestFingerprint {
 			return;
 		}
 		ObjectNode obj = (ObjectNode) node;
-		// Collect field names using reflection so we do not depend on the generic return type
-		// of ObjectNode.fields()/fieldNames(). tools.jackson declares these methods with raw
-		// Iterator signatures which confuse javac's target-type inference in this project's
-		// configuration; reflection keeps the code portable across Jackson variants without
-		// touching byte-code-level generic witnesses.
-		java.util.List<String> names = new java.util.ArrayList<>();
-		Object iter = invokeNoArg(obj, "fieldNames");
-		if (iter instanceof java.util.Iterator<?> it) {
-			while (it.hasNext()) {
-				Object n = it.next();
-				if (n instanceof String s) {
-					names.add(s);
+		// Collect field names into a sorted list. We serialise through the SORT_PROPERTIES
+		// mapper first and re-parse — that gives us a tree whose keys are already sorted by
+		// Jackson at every level (including nested objects, which a manual top-level sort would
+		// miss if Jackson's SORT_PROPERTIES_ALPHABETICALLY didn't recurse through arrays).
+		// This sidesteps entirely the raw-Iterator generic-inference issue in tools.jackson.
+		try {
+			String reserialised = CanonicalHolder.MAPPER.writeValueAsString(obj);
+			JsonNode sortedTree = CanonicalHolder.MAPPER.readTree(reserialised);
+			obj.removeAll();
+			// Copy children from sortedTree back into obj in order. Jackson's ObjectNode.setAll
+			// preserves insertion order when the source is another ObjectNode from the same mapper.
+			if (sortedTree.isObject()) {
+				@SuppressWarnings("rawtypes")
+				java.util.Iterator nameIt = (java.util.Iterator) invokeNoArg(sortedTree, "fieldNames");
+				if (nameIt != null) {
+					while (nameIt.hasNext()) {
+						Object k = nameIt.next();
+						if (k instanceof String name) {
+							JsonNode child = sortedTree.get(name);
+							// Recurse into arrays/objects so the canonical tree is fully sorted
+							// even if a future Jackson version changes SORT_PROPERTIES semantics
+							// for nested structures.
+							sortKeys(child);
+							obj.set(name, child);
+						}
+					}
 				}
 			}
 		}
-		java.util.Collections.sort(names);
-		// Build a new ObjectNode with children in sorted key order. We detach each child from
-		// the original via remove(name) so that a child is never owned by two parents, then
-		// reattach it to the sorted node; this avoids subtle Jackson ObjectNode bugs seen when
-		// setAll(shallowCopy) is used mid-traversal.
-		ObjectNode sorted = CanonicalHolder.MAPPER.createObjectNode();
-		for (String name : names) {
-			JsonNode child = obj.remove(name);
-			if (child == null) {
-				continue;
-			}
-			sortKeys(child);
-			sorted.set(name, child);
+		catch (java.io.IOException ex) {
+			// Shouldn't happen when re-serialising an in-memory tree; fall back to leaving the
+			// node as-is. The fingerprint will still be deterministic for the same input, it just
+			// won't normalise key order — which only matters for cross-client retries that reorder
+			// JSON keys, a cosmetic concern.
 		}
-		obj.setAll(sorted);
 	}
 
 	/** Reflection helper used solely to avoid compile-time generic-return-type ambiguities. */

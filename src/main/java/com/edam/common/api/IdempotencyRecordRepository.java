@@ -33,4 +33,27 @@ public interface IdempotencyRecordRepository extends JpaRepository<IdempotencyRe
 	@Query("delete from IdempotencyRecord r where r.expiresAt < :cutoff and r.status <> 'UNKNOWN'")
 	int deleteExpired(@Param("cutoff") Instant cutoff);
 
+	/**
+	 * Test-only seam: insert an {@code IN_PROGRESS} row with an explicit {@code created_at},
+	 * bypassing JPA's {@code updatable = false} guard on {@link IdempotencyRecord#getCreatedAt()}.
+	 * Production code must never need this because the constructor defaults {@code created_at} to
+	 * {@code now()}; it exists solely so crash-recovery tests can plant a back-dated record.
+	 */
+	@Modifying
+	@Query(value = """
+			insert into idempotency_records
+			    (id, idempotency_key, operation_type, actor_id, request_hash,
+			     response_snapshot, processing_status, response_status, expires_at, created_at)
+			values
+			    (:id, :keyHash, :op, :actor, :fp,
+			     null, 'IN_PROGRESS', null, :expires, :created)
+			""", nativeQuery = true)
+	void insertStaleInProgress(@Param("id") UUID id,
+			@Param("keyHash") String keyHash,
+			@Param("op") String operationType,
+			@Param("actor") UUID actorId,
+			@Param("fp") String requestHash,
+			@Param("expires") Instant expiresAt,
+			@Param("created") Instant createdAt);
+
 }
