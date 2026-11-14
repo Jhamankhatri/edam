@@ -2,10 +2,6 @@ package com.edam.common.api;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -13,7 +9,6 @@ import jakarta.servlet.http.HttpServletRequest;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Builds a deterministic, order-insensitive fingerprint of an idempotent request.
@@ -98,9 +93,9 @@ public final class RequestFingerprint {
 	 * byte-identical regardless of how the incoming JSON was laid out.
 	 *
 	 * <p>{@code SORT_PROPERTIES_ALPHABETICALLY} combined with {@code ORDER_MAP_ENTRIES_BY_KEYS}
-	 * causes Jackson to sort keys during serialisation. We additionally call {@link #sortKeys}
-	 * before serialising so that nested objects inside arrays (which Jackson's top-level sort does
-	 * not descend into) are also ordered deterministically.
+	 * causes Jackson to emit object keys in alphabetical order during serialisation; in
+	 * tools.jackson these features apply recursively to ObjectNode children at any depth, so no
+	 * manual tree rewriting is needed.
 	 */
 	private static final class CanonicalHolder {
 		static final JsonMapper MAPPER = JsonMapper.builder()
@@ -110,23 +105,17 @@ public final class RequestFingerprint {
 	}
 
 	/**
-	 * Parse and re-serialise JSON so whitespace/key-order/nesting-order differences are normalised
-	 * away. Exposed for tests.
+	 * Canonicalise a JSON string: parse + re-serialise with the canonical mapper whose
+	 * SORT_PROPERTIES_ALPHABETICALLY and ORDER_MAP_ENTRIES_BY_KEYS features guarantee keys are
+	 * emitted in alphabetical order at every nesting level. In tools.jackson these features apply
+	 * recursively when the output is produced from a tree model via ObjectCodec (which JsonMapper
+	 * uses), so nested objects — including those inside arrays — are also sorted. We do NOT need
+	 * to manually reorder the JsonNode tree; the MapperFeature handles it at serialisation time.
 	 *
-	 * <p>We parse through the canonical mapper, then recursively rewrite every ObjectNode so that
-	 * fields are inserted in alphabetical order. Jackson's {@code SORT_PROPERTIES_ALPHABETICALLY}
-	 * feature only sorts properties of POJOs; for JsonNode trees, field order follows insertion
-	 * order, so we must reorder explicitly. We collect field names from {@code fieldNames()} via
-	 * a suppressed-rawtypes Iterator (tools.jackson declares the return type as raw {@code Iterator}
-	 * which confuses javac's target-type inference when using a generic witness), sort them, and
-	 * rebuild the ObjectNode in sorted order. Arrays are recursed into so nested objects sort too.
-	 */
-	/**
-	 * Canonicalise a JSON string: parse + recursively sort keys + re-serialise. Public so the
-	 * aspect and tests can use it without reflection. The {@code jsonMapper} parameter is
-	 * accepted for API compatibility but ignored — canonicalisation always uses the internal
-	 * canonical mapper (see {@link CanonicalHolder#MAPPER}) so output is byte-identical
-	 * regardless of how the caller's mapper is configured.
+	 * <p>Public so the aspect and tests can use it without reflection. The {@code jsonMapper}
+	 * parameter is accepted for API compatibility but ignored — canonicalisation always uses the
+	 * internal {@link CanonicalHolder#MAPPER} so output is byte-identical regardless of how the
+	 * caller's mapper is configured.
 	 */
 	public static String canonicalJson(JsonMapper jsonMapper, String body) {
 		if (body == null || body.isBlank()) {
@@ -134,81 +123,13 @@ public final class RequestFingerprint {
 		}
 		try {
 			JsonNode tree = CanonicalHolder.MAPPER.readTree(body);
-			sortKeys(tree);
+			// Re-serialise through the canonical mapper: the SORT_PROPERTIES_ALPHABETICALLY +
+			// ORDER_MAP_ENTRIES_BY_KEYS features handle key ordering at every depth.
 			return CanonicalHolder.MAPPER.writeValueAsString(tree);
 		}
 		catch (Exception ex) {
 			// Not JSON (e.g. form-urlencoded or empty); fall back to the raw trimmed body.
 			return body.trim();
-		}
-	}
-
-	/**
-	 * Recursively sort object keys alphabetically; leave arrays and primitives alone. Implemented
-	 * by detaching all children from each ObjectNode, sorting the names, and re-inserting into a
-	 * new ObjectNode in that order. Because children are removed from the original before being
-	 * attached to the sorted replacement, Jackson's "node already owned" invariant holds.
-	 */
-	@SuppressWarnings("rawtypes")
-	private static void sortKeys(JsonNode node) {
-		if (node == null) {
-			return;
-		}
-		if (node.isArray()) {
-			for (JsonNode child : node) {
-				sortKeys(child);
-			}
-			return;
-		}
-		if (!node.isObject()) {
-			return;
-		}
-		ObjectNode obj = (ObjectNode) node;
-		List<String> names = new ArrayList<>();
-		// Collect field names via reflection to avoid javac's target-type inference bug with
-		// tools.jackson's raw-Iterator return type. See the helper below for the hierarchy walk.
-		Object iter = invokeFieldNames(obj);
-		if (iter instanceof Iterator<?> it) {
-			while (it.hasNext()) {
-				Object n = it.next();
-				if (n instanceof String s) {
-					names.add(s);
-				}
-			}
-		}
-		Collections.sort(names);
-		// Detach each child from obj (so it has no parent) and re-add to sorted in order.
-		ObjectNode sorted = CanonicalHolder.MAPPER.createObjectNode();
-		for (String name : names) {
-			JsonNode child = obj.remove(name);
-			if (child != null) {
-				sortKeys(child);
-				sorted.set(name, child);
-			}
-		}
-		obj.removeAll();
-		obj.setAll(sorted);
-	}
-
-	/**
-	 * Reflectively invoke {@code fieldNames()} on a JsonNode and return the raw Iterator as
-	 * {@code Object}. We use reflection exclusively because tools.jackson declares fieldNames()
-	 * with a raw {@code Iterator} return type, and javac's target-type inference in this build
-	 * refuses to narrow that raw type even when the assignment target is generic. Invoking via
-	 * reflection sidesteps the compile-time generic signature entirely.
-	 */
-	private static Object invokeFieldNames(Object target) {
-		try {
-			// getMethod walks public methods including inherited ones; fieldNames() is public on
-			// tools.jackson.databind.JsonNode (the common base of ObjectNode / ArrayNode).
-			java.lang.reflect.Method m = JsonNode.class.getMethod("fieldNames");
-			return m.invoke(target);
-		}
-		catch (Exception ex) {
-			// JsonNode is always assignable from ObjectNode; this catch is just for the reflective
-			// exceptions. Log nothing — if fieldNames() truly isn't found, names stays empty and
-			// canonicalJson degrades to "{}", which the property-order test will catch.
-			return null;
 		}
 	}
 
