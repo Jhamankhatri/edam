@@ -140,36 +140,33 @@ public final class RequestFingerprint {
 			return;
 		}
 		ObjectNode obj = (ObjectNode) node;
-		// Collect field names into a sorted list first; then build a new ObjectNode in sorted order.
-		// This avoids all generic-Iterator target-type inference issues across Jackson variants.
+		// Collect field names by iterating the raw Iterator returned by tools.jackson's
+		// ObjectNode.fields(). We deliberately avoid generic witnesses because this Jackson
+		// variant declares Iterator (raw) as the return type, which confuses javac's
+		// target-type inference under certain configurations.
 		java.util.List<String> names = new java.util.ArrayList<>();
-		java.util.Iterator<?> nameIt = (java.util.Iterator<?>) invokeNoArg(node, "fieldNames");
-		while (nameIt != null && nameIt.hasNext()) {
-			Object n = nameIt.next();
-			if (n instanceof String s) {
-				names.add(s);
+		@SuppressWarnings("rawtypes")
+		java.util.Iterator it = obj.fields();
+		while (it.hasNext()) {
+			Object e = it.next();
+			if (e instanceof java.util.Map.Entry<?, ?> entry) {
+				Object k = entry.getKey();
+				if (k instanceof String s) {
+					names.add(s);
+				}
 			}
 		}
 		java.util.Collections.sort(names);
 		ObjectNode sorted = CanonicalHolder.MAPPER.createObjectNode();
 		for (String name : names) {
-			JsonNode child = obj.get(name);
+			JsonNode child = obj.remove(name);
+			if (child == null) {
+				continue;
+			}
 			sortKeys(child);
 			sorted.set(name, child);
 		}
-		obj.removeAll();
 		obj.setAll(sorted);
-	}
-
-	/** Reflection helper used solely to avoid compile-time generic-return-type ambiguities. */
-	private static java.util.Iterator<?> invokeNoArg(Object target, String method) {
-		try {
-			Object result = target.getClass().getMethod(method).invoke(target);
-			return (java.util.Iterator<?>) result;
-		}
-		catch (ReflectiveOperationException ex) {
-			return java.util.Collections.emptyIterator();
-		}
 	}
 
 }

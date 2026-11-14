@@ -290,8 +290,9 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		String key = "key-stale-" + UUID.randomUUID();
 		EdamPrincipal caller = owner();
 		String body = opexBody("25.0000", "stale");
-		// Build the same canonical fingerprint the aspect will compute for the retry.
-		String fp = IdempotencyService.fingerprint(RequestFingerprint.canonicalJson(this.jsonMapper, body));
+		// Build the same canonical fingerprint the aspect will compute for the retry
+		// (method + URI + sorted path vars + canonical JSON body).
+		String fp = buildFingerprint("POST", BASE, java.util.Map.of(), body);
 		// Insert a dangling IN_PROGRESS record aged past the grace window with the matching fingerprint.
 		com.edam.common.api.IdempotencyRecord stale = new com.edam.common.api.IdempotencyRecord(
 				IdempotencyService.sha256(key), "POST /api/v1/expense-requests", caller.userId(),
@@ -541,9 +542,15 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		// survives.
 		String key = "key-unknown-retention-" + UUID.randomUUID();
 		EdamPrincipal caller = owner();
+		String op = "POST /api/v1/expense-requests";
+		String body = opexBody("42.0000", "retention");
+		String fp = buildFingerprint("POST", BASE, java.util.Map.of(), body);
+		// Use a service with a 1ms grace window so the check path reliably transitions to UNKNOWN.
+		IdempotencyService shortGrace = new IdempotencyService(this.idempotencyRecords,
+				this.applicationContext.getBean(org.springframework.transaction.PlatformTransactionManager.class),
+				Duration.ofMillis(1));
 		IdempotencyRecord stale = new IdempotencyRecord(
-				IdempotencyService.sha256(key), "POST /api/v1/expense-requests", caller.userId(),
-				IdempotencyService.fingerprint("retention-body"),
+				IdempotencyService.sha256(key), op, caller.userId(), fp,
 				Instant.now().plus(IdempotencyService.RETENTION));
 		try {
 			java.lang.reflect.Field f = IdempotencyRecord.class.getDeclaredField("createdAt");
@@ -554,12 +561,15 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 			throw new RuntimeException(ex);
 		}
 		this.idempotencyRecords.saveAndFlush(stale);
+		try { Thread.sleep(10); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
 		try {
-			this.idempotencyService.check("POST /api/v1/expense-requests", caller.userId(), key,
-					IdempotencyService.fingerprint("retention-body"));
+			shortGrace.check(op, caller.userId(), key, fp);
 		}
 		catch (BusinessException expected) {
 			assertThat(expected.getErrorCode()).isEqualTo(ErrorCode.IDEMPOTENCY_UNKNOWN_OUTCOME);
+		}
+		finally {
+			shortGrace.recordSuccess(op, caller.userId(), key, 201, "{}"); // clear in-flight marker
 		}
 		// The record should now be UNKNOWN with expires_at pushed out ~90 days.
 		IdempotencyRecord unknown = this.idempotencyRecords
