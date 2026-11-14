@@ -238,18 +238,20 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 				opexBody("200.0000", "tampered"));
 		String origFp = com.edam.common.api.RequestFingerprint.canonicalJson(null,
 				opexBody("100.0000", "original"));
+		org.junit.jupiter.api.Assertions.assertNotEquals(origFp, tamperedFp,
+				"orig+tampered canonical bodies must differ");
+		String expectedStoredFp = com.edam.common.api.IdempotencyService.fingerprint(
+				"POST /api/v1/expense-requests\0\0" + origFp);
+		String tamperedFullFp = com.edam.common.api.IdempotencyService.fingerprint(
+				"POST /api/v1/expense-requests\0\0" + tamperedFp);
+		org.junit.jupiter.api.Assertions.assertEquals(expectedStoredFp, existing.getRequestHash(),
+				"stored hash must match orig fingerprint");
+		org.junit.jupiter.api.Assertions.assertNotEquals(tamperedFullFp, existing.getRequestHash(),
+				"stored hash must differ from tampered");
 		System.out.println("DEBUG origCanonical=" + origFp);
 		System.out.println("DEBUG tamperedCanonical=" + tamperedFp);
 		System.out.println("DEBUG existing.requestHash=" + existing.getRequestHash());
-		org.junit.jupiter.api.Assertions.assertNotEquals("orig+tampered canonical bodies must differ",
-				origFp, tamperedFp);
-		String expectedStoredFp = com.edam.common.api.IdempotencyService.fingerprint(
-				"POST /api/v1/expense-requests\0\0" + origFp);
-		org.junit.jupiter.api.Assertions.assertEquals("stored hash must match orig fingerprint",
-				existing.getRequestHash(), expectedStoredFp);
-		org.junit.jupiter.api.Assertions.assertNotEquals("stored hash must differ from tampered",
-				existing.getRequestHash(), com.edam.common.api.IdempotencyService.fingerprint(
-						"POST /api/v1/expense-requests\0\0" + tamperedFp));
+		System.out.println("DEBUG tamperedFullFp=" + tamperedFullFp);
 		// Direct repository lookup using the same parameters the service will use:
 		String keyHash = com.edam.common.api.IdempotencyService.sha256(key);
 		java.util.Optional<IdempotencyRecord> directLookup = this.idempotencyRecords
