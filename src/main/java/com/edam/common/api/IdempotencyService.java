@@ -312,7 +312,19 @@ public class IdempotencyService {
 				this.inFlightByLocalJvm.remove(claimKey);
 			}
 		};
-		if (TransactionSynchronizationManager.isActualTransactionActive()) {
+		// We must NOT register an afterCommit sync against a transaction that was opened by our
+		// own REQUIRES_NEW claim (in check()). After check() returns, that claim TX has committed
+		// but some TX resources may remain bound to the thread briefly. The right signal is
+		// whether the synchronisation manager says a TX is ACTIVE on the *current* thread AND
+		// the transaction is not our claim template's TX. In practice for controller flows with
+		// open-in-view=false the business service's @Transactional commits BEFORE the aspect
+		// invokes recordSuccess (because the service proxy commits on method return, and the
+		// aspect is invoked AROUND the controller — which calls the proxied service internally,
+		// so by the time joinPoint.proceed() returns to the aspect the service TX is done).
+		// Some test setups or filter chains may leave an outer TX open; in that case afterCommit
+		// fires correctly. When no TX is active, finalize immediately.
+		if (TransactionSynchronizationManager.isActualTransactionActive()
+				&& TransactionSynchronizationManager.isSynchronizationActive()) {
 			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
 				@Override
 				public void afterCommit() {
