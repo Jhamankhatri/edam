@@ -297,11 +297,20 @@ public class IdempotencyService {
 		String claimKey = claimKey(keyHash, operationType, actorId);
 		Runnable finalizer = () -> {
 			try {
-				this.newTxTemplate.executeWithoutResult(status -> {
-					this.records.findByKey(keyHash, operationType, actorId).ifPresent(record -> {
-						record.complete(httpStatus, responseJson);
-						this.records.saveAndFlush(record);
-					});
+				this.newTxTemplate.execute(status -> {
+					Optional<IdempotencyRecord> opt = this.records.findByKey(keyHash, operationType, actorId);
+					if (opt.isEmpty()) {
+						// Defensive: if the lookup misses (e.g. EM L1 cache eviction between
+						// check() and recordSuccess()), log loudly and do NOT silently skip the
+						// finaliser — that leaves IN_PROGRESS rows around and breaks replays.
+						log.error("idempotency.finalize_miss operation={} actor={} keyHash={}",
+								operationType, actorId, keyHash);
+						return;
+					}
+					IdempotencyRecord record = opt.get();
+					record.complete(httpStatus, responseJson);
+					this.records.saveAndFlush(record);
+					return null;
 				});
 			}
 			finally {
