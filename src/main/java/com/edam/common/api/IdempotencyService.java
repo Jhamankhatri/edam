@@ -224,13 +224,17 @@ public class IdempotencyService {
 				if (Instant.now().isAfter(abandonedAfter) && !localClaimActive) {
 					// Crash window: the record is past the grace window AND this JVM has no live
 					// claim for it. The business TX may have committed without the afterCommit
-					// callback firing (process crashed, OOM kill, pod restart). Mark UNKNOWN
-					// (fail-closed) rather than deleting and double-executing. The retry gets 409
-					// and must reconcile out-of-band (GET the resource).
+					// callback firing (process crashed, OOM kill, pod restart). Transition to
+					// UNKNOWN in its own REQUIRES_NEW transaction so the update commits even
+					// though we are about to throw BusinessException (which would otherwise mark
+					// the outer transaction rollback-only and discard the state change).
 					log.error("idempotency.unknown_outcome operation={} actor={} keyHash={} created={}",
 							operationType, actorId, keyHash, record.getCreatedAt());
-					record.markUnknown();
-					this.records.saveAndFlush(record);
+					this.newTxTemplate.executeWithoutResult(s -> {
+						IdempotencyRecord fresh = this.records.findById(record.getId()).orElse(record);
+						fresh.markUnknown();
+						this.records.saveAndFlush(fresh);
+					});
 					throw new BusinessException(ErrorCode.IDEMPOTENCY_UNKNOWN_OUTCOME,
 							"A prior request with this idempotency key did not complete normally. "
 									+ "Query the resource to determine its state before retrying.");

@@ -2,12 +2,18 @@ package com.edam.common.api;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
 import jakarta.servlet.http.HttpServletRequest;
 
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Builds a deterministic, order-insensitive fingerprint of an idempotent request.
@@ -107,28 +113,70 @@ public final class RequestFingerprint {
 	 * Parse and re-serialise JSON so whitespace/key-order/nesting-order differences are normalised
 	 * away. Exposed for tests.
 	 *
-	 * <p>We rely entirely on the canonical mapper's {@code SORT_PROPERTIES_ALPHABETICALLY} and
-	 * {@code ORDER_MAP_ENTRIES_BY_KEYS} features, which in tools.jackson apply recursively to
-	 * every ObjectNode during serialisation — including objects nested inside arrays. No manual
-	 * tree rewriting is needed, and we avoid calling {@code fields()}/{@code fieldNames()}
-	 * directly because tools.jackson declares them with raw {@code Iterator} return types that
-	 * confuse javac's target-type inference in this project.
+	 * <p>We parse through the canonical mapper, then recursively rewrite every ObjectNode so that
+	 * fields are inserted in alphabetical order. Jackson's {@code SORT_PROPERTIES_ALPHABETICALLY}
+	 * feature only sorts properties of POJOs; for JsonNode trees, field order follows insertion
+	 * order, so we must reorder explicitly. We collect field names from {@code fieldNames()} via
+	 * a suppressed-rawtypes Iterator (tools.jackson declares the return type as raw {@code Iterator}
+	 * which confuses javac's target-type inference when using a generic witness), sort them, and
+	 * rebuild the ObjectNode in sorted order. Arrays are recursed into so nested objects sort too.
 	 */
 	public static String canonicalJson(JsonMapper jsonMapper, String body) {
 		if (body == null || body.isBlank()) {
 			return "";
 		}
 		try {
-			// Parse then re-serialise through the canonical mapper; the sort features produce
-			// a deterministic byte string regardless of input property order or whitespace.
-			// Using writeValueAsString(readTree(...)) is sufficient because Jackson serialises
-			// using the configured ordering features on the way out.
-			return CanonicalHolder.MAPPER.writeValueAsString(CanonicalHolder.MAPPER.readTree(body));
+			JsonNode tree = CanonicalHolder.MAPPER.readTree(body);
+			sortKeys(tree);
+			return CanonicalHolder.MAPPER.writeValueAsString(tree);
 		}
 		catch (Exception ex) {
 			// Not JSON (e.g. form-urlencoded or empty); fall back to the raw trimmed body.
 			return body.trim();
 		}
+	}
+
+	/**
+	 * Recursively sort object keys alphabetically; leave arrays and primitives alone. Implemented
+	 * by detaching all children from each ObjectNode, sorting the names, and re-inserting into a
+	 * new ObjectNode in that order. Because children are removed from the original before being
+	 * attached to the sorted replacement, Jackson's "node already owned" invariant holds.
+	 */
+	@SuppressWarnings("rawtypes")
+	private static void sortKeys(JsonNode node) {
+		if (node == null) {
+			return;
+		}
+		if (node.isArray()) {
+			for (JsonNode child : node) {
+				sortKeys(child);
+			}
+			return;
+		}
+		if (!node.isObject()) {
+			return;
+		}
+		ObjectNode obj = (ObjectNode) node;
+		List<String> names = new ArrayList<>();
+		Iterator it = obj.fieldNames(); // raw Iterator on tools.jackson
+		while (it.hasNext()) {
+			Object n = it.next();
+			if (n instanceof String s) {
+				names.add(s);
+			}
+		}
+		Collections.sort(names);
+		// Detach each child from obj (so it has no parent) and re-add to sorted in order.
+		ObjectNode sorted = CanonicalHolder.MAPPER.createObjectNode();
+		for (String name : names) {
+			JsonNode child = obj.remove(name);
+			if (child != null) {
+				sortKeys(child);
+				sorted.set(name, child);
+			}
+		}
+		obj.removeAll();
+		obj.setAll(sorted);
 	}
 
 }
