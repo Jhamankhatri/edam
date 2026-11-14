@@ -35,7 +35,7 @@ public class BrandingTheme extends AuditableEntity {
 
 	public enum ThemeType { LIGHT, DARK }
 
-	@Column(name = "theme_name", nullable = false, length = 100, unique = true)
+	@Column(name = "theme_name", nullable = false, length = 100)
 	private String themeName;
 
 	@Column(name = "description")
