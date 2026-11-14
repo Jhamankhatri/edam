@@ -65,6 +65,10 @@ public class IdempotencyAspect {
 			return joinPoint.proceed();
 		}
 		EdamPrincipal principal = this.institutionContext.principal();
+		if (log.isDebugEnabled()) {
+			log.debug("idempotency.aspect key={} uri={} principal={}",
+					key.trim(), request.getRequestURI(), principal == null ? "null" : principal.userId());
+		}
 		if (principal == null) {
 			log.warn("idempotency.no_principal header_present=true path={}", request != null ? request.getRequestURI() : "?");
 			return joinPoint.proceed();
