@@ -165,44 +165,17 @@ public final class RequestFingerprint {
 		}
 		ObjectNode obj = (ObjectNode) node;
 		List<String> names = new ArrayList<>();
-		// Collect field names by walking up the class hierarchy via reflection. tools.jackson
-		// declares ObjectNode.fieldNames() with a raw Iterator return type; assigning it to a
-		// generic Iterator<String> breaks javac's target-type inference in this project, so we
-		// invoke it reflectively and iterate the result as a raw Iterator. The loop is wrapped
-		// defensively so that if the reflective call fails for any reason (e.g. a Jackson
-		// version that renames the method), we fall through with names empty and log loudly —
-		// but the production dependency ships with tools.jackson where fieldNames() is inherited
-		// from ContainerNode and always present.
-		Class<?> c = obj.getClass();
-		Throwable reflectiveFailure = null;
-		while (c != null && names.isEmpty()) {
-			try {
-				java.lang.reflect.Method m = c.getDeclaredMethod("fieldNames");
-				m.setAccessible(true);
-				Object itObj = m.invoke(obj);
-				if (itObj instanceof Iterator it) {
-					while (it.hasNext()) {
-						Object n = it.next();
-						if (n instanceof String s) {
-							names.add(s);
-						}
-					}
-				}
+		// Collect field names. tools.jackson declares fieldNames() with a raw Iterator return
+		// type; javac's target-type inference chokes when assigning to Iterator<String> here.
+		// We use a raw Iterator variable with a suppression. The method is declared on
+		// ContainerNode (parent of ObjectNode) and always present in tools.jackson.
+		@SuppressWarnings("rawtypes")
+		java.util.Iterator rawIt = obj.fieldNames();
+		while (rawIt.hasNext()) {
+			Object n = rawIt.next();
+			if (n instanceof String s) {
+				names.add(s);
 			}
-			catch (NoSuchMethodException nsme) {
-				// try superclass
-			}
-			catch (Exception ex) {
-				reflectiveFailure = ex;
-			}
-			c = c.getSuperclass();
-		}
-		if (reflectiveFailure != null) {
-			// Log via stderr at class-init time; slf4j would be cleaner but avoid static-init
-			// ordering issues with the mapper. If reflection fails, names is empty and every
-			// body canonicalises to "{}" — we'd rather surface that immediately via the
-			// jsonPropertyOrder test.
-			reflectiveFailure.printStackTrace();
 		}
 		Collections.sort(names);
 		// Detach each child from obj (so it has no parent) and re-add to sorted in order.
