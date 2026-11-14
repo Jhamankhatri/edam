@@ -301,10 +301,12 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		// Insert a dangling IN_PROGRESS record aged well past the 1ms grace via native SQL
 		// (created_at is @Column(updatable=false), so plain JPA save would ignore a reflected field).
 		UUID staleId = UUID.randomUUID();
-		this.idempotencyRecords.insertStaleInProgress(staleId,
-				IdempotencyService.sha256(key), op, caller.userId(), fp,
-				Instant.now().plus(IdempotencyService.RETENTION),
-				Instant.now().minus(Duration.ofMinutes(10)));
+		new org.springframework.transaction.support.TransactionTemplate(
+				this.applicationContext.getBean(org.springframework.transaction.PlatformTransactionManager.class))
+				.executeWithoutResult(s -> this.idempotencyRecords.insertStaleInProgress(staleId,
+						IdempotencyService.sha256(key), op, caller.userId(), fp,
+						Instant.now().plus(IdempotencyService.RETENTION),
+						Instant.now().minus(Duration.ofMinutes(10))));
 		// Direct service call with no live local claim must transition to UNKNOWN.
 		try {
 			shortGrace.check(op, caller.userId(), key, fp);
@@ -549,10 +551,12 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 				this.applicationContext.getBean(org.springframework.transaction.PlatformTransactionManager.class),
 				Duration.ofMillis(1));
 		UUID staleId = UUID.randomUUID();
-		this.idempotencyRecords.insertStaleInProgress(staleId,
-				IdempotencyService.sha256(key), op, caller.userId(), fp,
-				Instant.now().plus(IdempotencyService.RETENTION),
-				Instant.now().minus(Duration.ofMinutes(10)));
+		new org.springframework.transaction.support.TransactionTemplate(
+				this.applicationContext.getBean(org.springframework.transaction.PlatformTransactionManager.class))
+				.executeWithoutResult(s -> this.idempotencyRecords.insertStaleInProgress(staleId,
+						IdempotencyService.sha256(key), op, caller.userId(), fp,
+						Instant.now().plus(IdempotencyService.RETENTION),
+						Instant.now().minus(Duration.ofMinutes(10))));
 		try {
 			shortGrace.check(op, caller.userId(), key, fp);
 			org.junit.jupiter.api.Assertions.fail("expected IDEMPOTENCY_UNKNOWN_OUTCOME");
@@ -567,7 +571,9 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		assertThat(unknown.getStatus()).isEqualTo(IdempotencyRecord.Status.UNKNOWN);
 		assertThat(unknown.getExpiresAt()).isAfter(Instant.now().plus(Duration.ofDays(89)));
 		// Run the retention sweep at cutoff=now: the UNKNOWN row must survive.
-		this.idempotencyRecords.deleteExpired(Instant.now());
+		new org.springframework.transaction.support.TransactionTemplate(
+				this.applicationContext.getBean(org.springframework.transaction.PlatformTransactionManager.class))
+				.executeWithoutResult(s -> this.idempotencyRecords.deleteExpired(Instant.now()));
 		assertThat(this.idempotencyRecords.findById(unknown.getId())).isPresent();
 	}
 

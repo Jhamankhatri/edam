@@ -140,41 +140,44 @@ public final class RequestFingerprint {
 			return;
 		}
 		ObjectNode obj = (ObjectNode) node;
-		// Collect field names into a sorted list. We serialise through the SORT_PROPERTIES
-		// mapper first and re-parse — that gives us a tree whose keys are already sorted by
-		// Jackson at every level (including nested objects, which a manual top-level sort would
-		// miss if Jackson's SORT_PROPERTIES_ALPHABETICALLY didn't recurse through arrays).
-		// This sidesteps entirely the raw-Iterator generic-inference issue in tools.jackson.
-		try {
-			String reserialised = CanonicalHolder.MAPPER.writeValueAsString(obj);
-			JsonNode sortedTree = CanonicalHolder.MAPPER.readTree(reserialised);
-			obj.removeAll();
-			// Copy children from sortedTree back into obj in order. Jackson's ObjectNode.setAll
-			// preserves insertion order when the source is another ObjectNode from the same mapper.
-			if (sortedTree.isObject()) {
-				@SuppressWarnings("rawtypes")
-				java.util.Iterator nameIt = (java.util.Iterator) invokeNoArg(sortedTree, "fieldNames");
-				if (nameIt != null) {
-					while (nameIt.hasNext()) {
-						Object k = nameIt.next();
-						if (k instanceof String name) {
-							JsonNode child = sortedTree.get(name);
-							// Recurse into arrays/objects so the canonical tree is fully sorted
-							// even if a future Jackson version changes SORT_PROPERTIES semantics
-							// for nested structures.
-							sortKeys(child);
-							obj.set(name, child);
-						}
-					}
+		// Collect field names via reflection (tools.jackson returns raw Iterators that break
+		// javac target-type inference, so we avoid all generic witnesses).
+		java.util.List<String> names = new java.util.ArrayList<>();
+		Object iter = invokeNoArg(obj, "fieldNames");
+		if (iter instanceof java.util.Iterator<?> it) {
+			while (it.hasNext()) {
+				Object n = it.next();
+				if (n instanceof String s) {
+					names.add(s);
 				}
 			}
 		}
-		catch (Exception ex) {
-			// Shouldn't happen when re-serialising an in-memory tree; fall back to leaving the
-			// node as-is. The fingerprint will still be deterministic for the same input, it just
-			// won't normalise key order — which only matters for cross-client retries that reorder
-			// JSON keys, a cosmetic concern.
+		java.util.Collections.sort(names);
+		// Deep-copy the obj into a fresh ObjectNode using the shared JsonMapper's tree readValue,
+		// which gives us children owned by the canonical mapper (and already in their natural
+		// Jackson tree form), then insert them under obj in sorted order. We deep-copy each child
+		// so sortKeys(child) mutates the copy, not a node still attached elsewhere.
+		ObjectNode sorted = CanonicalHolder.MAPPER.createObjectNode();
+		for (String name : names) {
+			JsonNode child = obj.get(name);
+			if (child == null) {
+				continue;
+			}
+			// Deep-copy via writeValueAsString/readTree so the child tree is owned by the
+			// canonical mapper and detached from obj before we recurse. This guarantees sortKeys
+			// can mutate freely without triggering Jackson's "node already owned" errors.
+			JsonNode detached;
+			try {
+				detached = CanonicalHolder.MAPPER.readTree(CanonicalHolder.MAPPER.writeValueAsString(child));
+			}
+			catch (Exception ex) {
+				detached = child; // fallback: attach original; key-order normalisation is best-effort
+			}
+			sortKeys(detached);
+			sorted.set(name, detached);
 		}
+		obj.removeAll();
+		obj.setAll(sorted);
 	}
 
 	/** Reflection helper used solely to avoid compile-time generic-return-type ambiguities. */
