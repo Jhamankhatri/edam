@@ -3,14 +3,11 @@ package com.edam.common.api;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
-import java.util.SortedMap;
 import java.util.TreeMap;
 
 import jakarta.servlet.http.HttpServletRequest;
 
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Builds a deterministic, order-insensitive fingerprint of an idempotent request.
@@ -106,87 +103,31 @@ public final class RequestFingerprint {
 				.build();
 	}
 
-	/** Parse and re-serialise JSON so whitespace/key-order/nesting-order differences are normalised away. Exposed for tests. */
+	/**
+	 * Parse and re-serialise JSON so whitespace/key-order/nesting-order differences are normalised
+	 * away. Exposed for tests.
+	 *
+	 * <p>We rely entirely on the canonical mapper's {@code SORT_PROPERTIES_ALPHABETICALLY} and
+	 * {@code ORDER_MAP_ENTRIES_BY_KEYS} features, which in tools.jackson apply recursively to
+	 * every ObjectNode during serialisation — including objects nested inside arrays. No manual
+	 * tree rewriting is needed, and we avoid calling {@code fields()}/{@code fieldNames()}
+	 * directly because tools.jackson declares them with raw {@code Iterator} return types that
+	 * confuse javac's target-type inference in this project.
+	 */
 	public static String canonicalJson(JsonMapper jsonMapper, String body) {
 		if (body == null || body.isBlank()) {
 			return "";
 		}
 		try {
-			JsonNode tree = CanonicalHolder.MAPPER.readTree(body);
-			sortKeys(tree);
-			return CanonicalHolder.MAPPER.writeValueAsString(tree);
+			// Parse then re-serialise through the canonical mapper; the sort features produce
+			// a deterministic byte string regardless of input property order or whitespace.
+			// Using writeValueAsString(readTree(...)) is sufficient because Jackson serialises
+			// using the configured ordering features on the way out.
+			return CanonicalHolder.MAPPER.writeValueAsString(CanonicalHolder.MAPPER.readTree(body));
 		}
-		catch (RuntimeException ex) {
+		catch (Exception ex) {
 			// Not JSON (e.g. form-urlencoded or empty); fall back to the raw trimmed body.
-			// tools.jackson.core.exc.StreamReadException is a RuntimeException in this Jackson variant.
 			return body.trim();
-		}
-	}
-
-	/**
-	 * Recursively sort the keys of every ObjectNode so that property order in the incoming JSON
-	 * cannot change the canonical serialisation. Array ordering is preserved (it carries meaning).
-	 * Primitives and nulls are left untouched.
-	 */
-	private static void sortKeys(JsonNode node) {
-		if (node == null) {
-			return;
-		}
-		if (node.isArray()) {
-			node.forEach(RequestFingerprint::sortKeys);
-			return;
-		}
-		if (!node.isObject()) {
-			return;
-		}
-		ObjectNode obj = (ObjectNode) node;
-		// Collect field names via reflection (tools.jackson returns raw Iterators that break
-		// javac target-type inference, so we avoid all generic witnesses).
-		java.util.List<String> names = new java.util.ArrayList<>();
-		Object iter = invokeNoArg(obj, "fieldNames");
-		if (iter instanceof java.util.Iterator<?> it) {
-			while (it.hasNext()) {
-				Object n = it.next();
-				if (n instanceof String s) {
-					names.add(s);
-				}
-			}
-		}
-		java.util.Collections.sort(names);
-		// Deep-copy the obj into a fresh ObjectNode using the shared JsonMapper's tree readValue,
-		// which gives us children owned by the canonical mapper (and already in their natural
-		// Jackson tree form), then insert them under obj in sorted order. We deep-copy each child
-		// so sortKeys(child) mutates the copy, not a node still attached elsewhere.
-		ObjectNode sorted = CanonicalHolder.MAPPER.createObjectNode();
-		for (String name : names) {
-			JsonNode child = obj.get(name);
-			if (child == null) {
-				continue;
-			}
-			// Deep-copy via writeValueAsString/readTree so the child tree is owned by the
-			// canonical mapper and detached from obj before we recurse. This guarantees sortKeys
-			// can mutate freely without triggering Jackson's "node already owned" errors.
-			JsonNode detached;
-			try {
-				detached = CanonicalHolder.MAPPER.readTree(CanonicalHolder.MAPPER.writeValueAsString(child));
-			}
-			catch (Exception ex) {
-				detached = child; // fallback: attach original; key-order normalisation is best-effort
-			}
-			sortKeys(detached);
-			sorted.set(name, detached);
-		}
-		obj.removeAll();
-		obj.setAll(sorted);
-	}
-
-	/** Reflection helper used solely to avoid compile-time generic-return-type ambiguities. */
-	private static Object invokeNoArg(Object target, String method) {
-		try {
-			return target.getClass().getMethod(method).invoke(target);
-		}
-		catch (ReflectiveOperationException ex) {
-			return null;
 		}
 	}
 

@@ -92,6 +92,8 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 	@Autowired private IdempotencyRecordRepository idempotencyRecords;
 	@Autowired private IdempotencyService idempotencyService;
 	@Autowired private ApplicationContext applicationContext;
+	@jakarta.persistence.PersistenceContext
+	private jakarta.persistence.EntityManager em;
 
 	private Department department;
 	private User requester;
@@ -303,10 +305,14 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		UUID staleId = UUID.randomUUID();
 		new org.springframework.transaction.support.TransactionTemplate(
 				this.applicationContext.getBean(org.springframework.transaction.PlatformTransactionManager.class))
-				.executeWithoutResult(s -> this.idempotencyRecords.insertStaleInProgress(staleId,
-						IdempotencyService.sha256(key), op, caller.userId(), fp,
-						Instant.now().plus(IdempotencyService.RETENTION),
-						Instant.now().minus(Duration.ofHours(1))));
+				.executeWithoutResult(s -> {
+					this.idempotencyRecords.insertStaleInProgress(staleId,
+							IdempotencyService.sha256(key), op, caller.userId(), fp,
+							Instant.now().plus(IdempotencyService.RETENTION),
+							Instant.now().minus(Duration.ofHours(1)));
+					this.em.flush();
+				});
+		this.em.clear();
 		// Direct service call with no live local claim must transition to UNKNOWN.
 		shortGrace.clearInFlightForTests();
 		try {
@@ -553,10 +559,14 @@ class IdempotencyApiTest extends AbstractPostgreSqlIntegrationTest {
 		UUID staleId = UUID.randomUUID();
 		new org.springframework.transaction.support.TransactionTemplate(
 				this.applicationContext.getBean(org.springframework.transaction.PlatformTransactionManager.class))
-				.executeWithoutResult(s -> this.idempotencyRecords.insertStaleInProgress(staleId,
-						IdempotencyService.sha256(key), op, caller.userId(), fp,
-						Instant.now().plus(IdempotencyService.RETENTION),
-						Instant.now().minus(Duration.ofHours(1))));
+				.executeWithoutResult(s -> {
+					this.idempotencyRecords.insertStaleInProgress(staleId,
+							IdempotencyService.sha256(key), op, caller.userId(), fp,
+							Instant.now().plus(IdempotencyService.RETENTION),
+							Instant.now().minus(Duration.ofHours(1)));
+					this.em.flush();
+				});
+		this.em.clear();
 		shortGrace.clearInFlightForTests();
 		try {
 			shortGrace.check(op, caller.userId(), key, fp);
