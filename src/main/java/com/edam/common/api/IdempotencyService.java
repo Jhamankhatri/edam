@@ -267,7 +267,7 @@ public class IdempotencyService {
 	}
 
 	/** Test-only: clear all in-flight markers so the next check() sees a fresh map. */
-	void clearInFlightForTests() {
+	public void clearInFlightForTests() {
 		this.inFlightByLocalJvm.clear();
 	}
 
