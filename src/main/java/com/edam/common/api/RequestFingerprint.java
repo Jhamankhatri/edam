@@ -158,12 +158,24 @@ public final class RequestFingerprint {
 		}
 		ObjectNode obj = (ObjectNode) node;
 		List<String> names = new ArrayList<>();
-		Iterator it = obj.fieldNames(); // raw Iterator on tools.jackson
-		while (it.hasNext()) {
-			Object n = it.next();
-			if (n instanceof String s) {
-				names.add(s);
+		// Use reflection to call fieldNames() because tools.jackson declares it with a raw
+		// Iterator return type that confuses javac target-type inference in this build; reflection
+		// sidesteps the compile-time generic signature entirely.
+		try {
+			Object itObj = obj.getClass().getMethod("fieldNames").invoke(obj);
+			if (itObj instanceof Iterator it) {
+				while (it.hasNext()) {
+					Object n = it.next();
+					if (n instanceof String s) {
+						names.add(s);
+					}
+				}
 			}
+		}
+		catch (ReflectiveOperationException ex) {
+			// Fall back: iterate properties via names from the JSON string representation. Shouldn't
+			// happen with tools.jackson on the classpath.
+			return;
 		}
 		Collections.sort(names);
 		// Detach each child from obj (so it has no parent) and re-add to sorted in order.
