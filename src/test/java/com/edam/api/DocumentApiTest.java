@@ -122,7 +122,11 @@ class DocumentApiTest extends AbstractPostgreSqlIntegrationTest {
 				new ExpenseRequestDtos.CreateRequest(
 						rt.getId(), cat.getId(), null, nat.getId(),
 						dept.getId(), null, currency.getId(),
-						RequestFixtures.money("500.0000"), "document test", null));
+						RequestFixtures.money("500.0000"), "document test",
+						new ExpenseRequestDtos.OpexDetailPayload(true, "MONTHLY", null, null, null, null,
+								null, null, null, null, null, null, null, null),
+						null, java.util.List.of(), java.util.List.of(), java.util.List.of(),
+						java.util.List.of(), java.util.List.of(), java.util.List.of(), java.util.List.of()));
 		this.requestId = created.id();
 	}
 
