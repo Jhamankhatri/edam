@@ -66,7 +66,9 @@ CREATE INDEX IF NOT EXISTS ix_media_assets_uploaded_by  ON media_assets (uploade
 -- -------------------------------------------------------------------------------------
 
 ALTER TABLE request_documents
-    ADD COLUMN IF NOT EXISTS description      TEXT;
+    ADD COLUMN IF NOT EXISTS description      TEXT,
+    ADD COLUMN IF NOT EXISTS required_by_rule VARCHAR(150),
+    ADD COLUMN IF NOT EXISTS version          BIGINT NOT NULL DEFAULT 0;
 
 ALTER TABLE request_documents
     DROP CONSTRAINT IF EXISTS ck_request_documents_type;
