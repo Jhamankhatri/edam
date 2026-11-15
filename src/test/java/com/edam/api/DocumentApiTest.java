@@ -127,7 +127,7 @@ class DocumentApiTest extends AbstractPostgreSqlIntegrationTest {
 								null, null, null, null, null, null, null, null),
 						null, java.util.List.of(), java.util.List.of(), java.util.List.of(),
 						java.util.List.of(), java.util.List.of(), java.util.List.of(), java.util.List.of(),
-						java.util.List.of()));
+						java.util.List.of()), this.requester);
 		this.requestId = created.id();
 	}
 
