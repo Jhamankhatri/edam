@@ -34,8 +34,10 @@ class DocumentApiTest extends AbstractPostgreSqlIntegrationTest {
 
 	@TestConfiguration
 	static class Fakes {
-		@Bean @Primary StorageProvider fakeStorage() { return new FakeStorageProvider(); }
-		@Bean @Primary MalwareScanner fakeScanner() {
+		@org.springframework.context.annotation.Primary
+		@Bean StorageProvider fakeStorage() { return new FakeStorageProvider(); }
+		@org.springframework.context.annotation.Primary
+		@Bean MalwareScanner fakeScanner() {
 			FakeMalwareScanner s = new FakeMalwareScanner();
 			s.forcedStatus = "CLEAN";
 			return s;

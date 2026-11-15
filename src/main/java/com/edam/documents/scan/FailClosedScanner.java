@@ -2,15 +2,16 @@ package com.edam.documents.scan;
 
 import java.io.InputStream;
 
-import org.springframework.context.annotation.Primary;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.stereotype.Component;
 
 /**
- * Default fail-closed scanner used when no production scanner is wired. Returns
- * SCAN_FAILED for every scan so that new documents remain quarantined until a real
- * scanner is configured and run. Tests override this with a {@code @Primary} fake.
+ * Default fail-closed scanner registered only when no other {@link MalwareScanner} is
+ * present. Returns SCAN_FAILED for every scan so new documents remain quarantined until a
+ * real scanner is configured and run.
  */
 @Component
+@ConditionalOnMissingBean(MalwareScanner.class)
 public class FailClosedScanner implements MalwareScanner {
 
 	public static final String NAME = "none-fail-closed";
