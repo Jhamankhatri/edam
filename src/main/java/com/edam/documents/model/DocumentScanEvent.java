@@ -70,3 +70,4 @@ public class DocumentScanEvent {
 
 	public void finish() { this.scanFinishedAt = Instant.now(); }
 }
+
