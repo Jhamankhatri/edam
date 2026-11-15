@@ -62,7 +62,11 @@ public class DocumentScanEvent {
 	public UUID getMediaAssetId() { return this.mediaAssetId; }
 	public String getScanStatus() { return this.scanStatus; }
 	public String getScanner() { return this.scanner; }
+	public String getScannerVersion() { return this.scannerVersion; }
+	public String getThreatName() { return this.threatName; }
 	public Instant getScanStartedAt() { return this.scanStartedAt; }
+	public Instant getScanFinishedAt() { return this.scanFinishedAt; }
+	public String getDetail() { return this.detail; }
 
 	public void finish() { this.scanFinishedAt = Instant.now(); }
 }

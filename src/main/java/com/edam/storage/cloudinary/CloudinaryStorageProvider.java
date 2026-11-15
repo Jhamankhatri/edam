@@ -20,10 +20,8 @@ import org.springframework.stereotype.Component;
  * Cloudinary-backed {@link StorageProvider}.
  *
  * <p>Uploads always use {@code type=authenticated} so assets are only reachable with a
- * signed URL; the SDK's {@code apiSignRequest} produces time-limited download URLs that
- * we return to callers after an authorization check. The public-id is server-generated
- * (UUIDv7-style) and placed under the configured {@code folder}; clients cannot choose
- * the path or force {@code type=upload} (public delivery).
+ * signed URL. The public-id is server-generated (UUID suffix under the configured
+ * {@code folder}) so clients cannot force public delivery or choose paths.
  */
 @Component
 public class CloudinaryStorageProvider implements StorageProvider {
@@ -35,9 +33,6 @@ public class CloudinaryStorageProvider implements StorageProvider {
 
 	public CloudinaryStorageProvider(CloudinaryProperties props, ObjectProvider<Cloudinary> cloudinaryProvider) {
 		this.props = props;
-		// Prefer the container-managed client (which is only present when credentials are set);
-		// this avoids duplicating the URL construction logic and keeps credential handling in
-		// one place. When the bean is absent the provider reports isConfigured()=false.
 		Cloudinary c = cloudinaryProvider.getIfAvailable();
 		if (c == null && props.isConfigured()) {
 			c = new Cloudinary("cloudinary://" + props.getApiKey() + ":" + props.getApiSecret()
@@ -47,9 +42,7 @@ public class CloudinaryStorageProvider implements StorageProvider {
 	}
 
 	@Override public String providerName() { return NAME; }
-
-	@Override
-	public boolean isConfigured() { return this.cloudinary != null; }
+	@Override public boolean isConfigured() { return this.cloudinary != null; }
 
 	@Override
 	@SuppressWarnings("unchecked")
@@ -61,9 +54,9 @@ public class CloudinaryStorageProvider implements StorageProvider {
 		Map<String, Object> params = new HashMap<>();
 		params.put("public_id", suggestedPublicId);
 		params.put("folder", folder == null ? this.props.getFolder() : folder);
-		params.put("resource_type", "raw"); // treat all banking documents as opaque blobs
+		params.put("resource_type", "raw");
 		params.put("type", this.props.getDeliveryType()); // 'authenticated' — not public
-		params.put("overwrite", false);
+		params.put("overwrite", Boolean.FALSE);
 		if (contentType != null) params.put("context", "mime=" + contentType);
 		try {
 			Map<String, Object> result = this.cloudinary.uploader().uploadLarge(content, params);
@@ -80,37 +73,31 @@ public class CloudinaryStorageProvider implements StorageProvider {
 			throw ioe;
 		}
 		catch (Exception ex) {
-			// Never echo SDK messages that could include credential echoes back to the client.
 			throw new StorageException("Upload to document storage failed.", ex);
 		}
 	}
 
 	@Override
+	@SuppressWarnings({"rawtypes", "unchecked"})
 	public String signDownloadUrl(String publicId, String resourceType, long ttlSeconds) throws StorageException {
 		if (!isConfigured()) throw new StorageException("Cloudinary credentials are not configured.");
 		try {
 			String resType = resourceType == null ? "raw" : resourceType;
 			long expiresAt = System.currentTimeMillis() / 1000L + ttlSeconds;
-			// Use Cloudinary's UrlBuilder to produce a signed URL for 'authenticated' delivery.
-			// privateCdn is false on the default shared account; signUrl with a long-lived
-			// expiration is the documented pattern for authenticated asset delivery.
-			@SuppressWarnings("rawtypes")
-			Map signed = this.cloudinary.signRequest(
-					this.cloudinary.url()
-						.secure(true)
-						.resourceType(resType)
-						.type(this.props.getDeliveryType())
-						.publicId(publicId)
-						.generate(),
-					ObjectUtils.asMap("expires_at", expiresAt));
-			Object url = signed.get("signed_url");
-			if (url == null) url = signed.get("url");
-			if (url == null) {
-				// Fall back to privateDownload URL which returns an expiring redirect.
-				return this.cloudinary.privateDownload(publicId, this.props.getDeliveryType(),
-						ObjectUtils.asMap("resource_type", resType, "expires_at", expiresAt));
-			}
-			return url.toString();
+			// Build a URL for the authenticated asset and sign it using Cloudinary's apiSignRequest.
+			String base = this.cloudinary.url()
+					.secure(true)
+					.resourceType(resType)
+					.type(this.props.getDeliveryType())
+					.publicId(publicId)
+					.generate();
+			Map toSign = ObjectUtils.asMap("public_id", publicId, "type", this.props.getDeliveryType(),
+					"resource_type", resType, "expires_at", expiresAt);
+			Map signed = this.cloudinary.signRequest(toSign, this.cloudinary.config.apiSecret);
+			String sig = (String) signed.get("signature");
+			String key = (String) signed.get("api_key");
+			String sep = base.contains("?") ? "&" : "?";
+			return base + sep + "api_key=" + key + "&timestamp=" + expiresAt + "&signature=" + sig;
 		}
 		catch (StorageException se) { throw se; }
 		catch (Exception ex) {
@@ -121,12 +108,11 @@ public class CloudinaryStorageProvider implements StorageProvider {
 	@Override
 	@SuppressWarnings("unchecked")
 	public void delete(String publicId, String resourceType) throws StorageException {
-		if (!isConfigured()) return; // nothing to delete; safe no-op
+		if (!isConfigured()) return;
 		try {
 			Map<String, Object> result = this.cloudinary.uploader().destroy(publicId,
 					ObjectUtils.asMap("resource_type", resourceType == null ? "raw" : resourceType,
-							"invalidate", true));
-			// Cloudinary returns {"result":"ok"} or {"result":"not found"} — either is fine for idempotency.
+							"invalidate", Boolean.TRUE));
 			String status = (String) result.get("result");
 			if (!"ok".equals(status) && !"not found".equals(status)) {
 				throw new StorageException("Document storage reported: " + status);
