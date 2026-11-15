@@ -19,14 +19,12 @@ import com.edam.documents.service.DocumentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.Valid;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -53,8 +51,11 @@ public class DocumentController {
 	@Operation(summary = "Upload a document and attach it to an expense request")
 	public ResponseEntity<ApiResponse<DocumentResponse>> upload(
 			@RequestParam("file") MultipartFile file,
-			@Valid @ModelAttribute UploadDocumentRequest meta,
+			@RequestParam("expenseRequestId") UUID expenseRequestId,
+			@RequestParam("category") String category,
+			@RequestParam(value = "description", required = false) String description,
 			HttpServletRequest request) {
+		UploadDocumentRequest meta = new UploadDocumentRequest(expenseRequestId, category, description);
 		DocumentResponse saved = this.documents.upload(file, meta);
 		return ResponseEntity.status(HttpStatus.CREATED)
 				.body(ApiResponse.success(saved, CorrelationId.current(), request.getRequestURI()));

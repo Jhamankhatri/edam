@@ -12,9 +12,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 
 import org.hibernate.annotations.Generated;
-import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.generator.EventType;
-import org.hibernate.type.SqlTypes;
 
 /**
  * A reference to a binary asset stored in an external provider (Cloudinary). No bytes live
