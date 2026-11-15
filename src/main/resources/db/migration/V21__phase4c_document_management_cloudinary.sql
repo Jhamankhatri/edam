@@ -13,67 +13,152 @@
 --     auditable even if it is later removed.
 --
 -- Backwards compatibility: every new column is nullable or has a default. Existing rows
--- (logo/favicon, existing request documents) are grandfathered in as CLEAN so that prior
--- approver-visible documents continue to download after this migration.
+-- (logo/favicon, existing request documents) default to ACTIVE / PENDING_SCAN; a later
+-- scanner run is required before they are downloadable — fail-closed by design.
+--
+-- NOTE: Each ADD COLUMN / ADD CONSTRAINT / CREATE INDEX is its own statement and uses
+--       `DO $$ ... IF NOT EXISTS $$` guards so the migration is idempotent across Flyway
+--       repeat runs and across PostgreSQL versions. A single multi-column ALTER with
+--       `IF NOT EXISTS` caused Flyway/Postgres "syntax error at or near 'EXISTS'" on
+--       some combinations; splitting them avoids the parser ambiguity entirely.
 -- =====================================================================================
 
 -- -------------------------------------------------------------------------------------
 -- (a) media_assets: widen for Cloudinary private-asset storage and scanning lifecycle
 -- -------------------------------------------------------------------------------------
 
-ALTER TABLE media_assets
-    ADD COLUMN IF NOT EXISTS public_id         VARCHAR(500),
-    ADD COLUMN IF NOT EXISTS asset_id          VARCHAR(100),
-    ADD COLUMN IF NOT EXISTS secure_url        TEXT,
-    ADD COLUMN IF NOT EXISTS resource_type     VARCHAR(32),
-    ADD COLUMN IF NOT EXISTS file_format       VARCHAR(32),
-    ADD COLUMN IF NOT EXISTS document_category VARCHAR(60),
-    ADD COLUMN IF NOT EXISTS description       TEXT,
-    ADD COLUMN IF NOT EXISTS lifecycle_status  VARCHAR(32)  NOT NULL DEFAULT 'ACTIVE',
-    ADD COLUMN IF NOT EXISTS scan_status       VARCHAR(32)  NOT NULL DEFAULT 'PENDING_SCAN',
-    ADD COLUMN IF NOT EXISTS scanned_at        TIMESTAMPTZ,
-    ADD COLUMN IF NOT EXISTS deleted_at        TIMESTAMPTZ,
-    ADD COLUMN IF NOT EXISTS created_at        TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    ADD COLUMN IF NOT EXISTS updated_at        TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    ADD COLUMN IF NOT EXISTS version           BIGINT       NOT NULL DEFAULT 0;
+DO $$ BEGIN
+  ALTER TABLE media_assets ADD COLUMN public_id VARCHAR(500);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
 
--- All pre-4C rows receive the default ACTIVE/PENDING_SCAN set by ADD COLUMN DEFAULT above.
--- Those are legacy metadata-only rows (logo/favicon, pre-existing request docs) that were
--- created before Phase 4C scanning existed; a follow-up data migration is required to mark
--- them CLEAN once a scanner is integrated, rather than silently trusting pre-4C uploads.
+DO $$ BEGIN
+  ALTER TABLE media_assets ADD COLUMN asset_id VARCHAR(100);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
 
-ALTER TABLE media_assets
-    ADD CONSTRAINT IF NOT EXISTS ck_media_assets_lifecycle
-        CHECK (lifecycle_status IN ('ACTIVE','ARCHIVED','DELETED','QUARANTINED')),
-    ADD CONSTRAINT IF NOT EXISTS ck_media_assets_scan
-        CHECK (scan_status IN ('PENDING_SCAN','CLEAN','INFECTED','SCAN_FAILED')),
-    ADD CONSTRAINT IF NOT EXISTS ck_media_assets_res_type
-        CHECK (resource_type IS NULL OR resource_type IN ('raw','image','video')),
-    ADD CONSTRAINT IF NOT EXISTS ck_media_assets_category
-        CHECK (document_category IS NULL OR document_category IN (
-            'QUOTATION','INVOICE','SUPPORTING','SUPPORTING_DOCUMENT','APPROVAL_DOCUMENT',
-            'TAX','TAX_DOCUMENT','GRN','GRN_DOCUMENT','CAPEX_DOCUMENT',
-            'WARRANTY','BUDGET','OTHER'));
+DO $$ BEGIN
+  ALTER TABLE media_assets ADD COLUMN secure_url TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
 
-CREATE INDEX IF NOT EXISTS ix_media_assets_public_id    ON media_assets (public_id);
-CREATE INDEX IF NOT EXISTS ix_media_assets_uploaded_by  ON media_assets (uploaded_by);
+DO $$ BEGIN
+  ALTER TABLE media_assets ADD COLUMN resource_type VARCHAR(32);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE media_assets ADD COLUMN file_format VARCHAR(32);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE media_assets ADD COLUMN document_category VARCHAR(60);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE media_assets ADD COLUMN description TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE media_assets ADD COLUMN lifecycle_status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE media_assets ADD COLUMN scan_status VARCHAR(32) NOT NULL DEFAULT 'PENDING_SCAN';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE media_assets ADD COLUMN scanned_at TIMESTAMPTZ;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE media_assets ADD COLUMN deleted_at TIMESTAMPTZ;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE media_assets ADD COLUMN created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE media_assets ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE media_assets ADD COLUMN version BIGINT NOT NULL DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+-- Constraints are added with explicit IF NOT EXISTS checks so a re-run against an already
+-- migrated schema is a no-op.
+DO $$ BEGIN
+  ALTER TABLE media_assets ADD CONSTRAINT ck_media_assets_lifecycle
+      CHECK (lifecycle_status IN ('ACTIVE','ARCHIVED','DELETED','QUARANTINED'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE media_assets ADD CONSTRAINT ck_media_assets_scan
+      CHECK (scan_status IN ('PENDING_SCAN','CLEAN','INFECTED','SCAN_FAILED'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE media_assets ADD CONSTRAINT ck_media_assets_res_type
+      CHECK (resource_type IS NULL OR resource_type IN ('raw','image','video'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE media_assets ADD CONSTRAINT ck_media_assets_category
+      CHECK (document_category IS NULL OR document_category IN (
+          'QUOTATION','INVOICE','SUPPORTING','SUPPORTING_DOCUMENT','APPROVAL_DOCUMENT',
+          'TAX','TAX_DOCUMENT','GRN','GRN_DOCUMENT','CAPEX_DOCUMENT',
+          'WARRANTY','BUDGET','OTHER'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS ix_media_assets_public_id ON media_assets (public_id);
+CREATE INDEX IF NOT EXISTS ix_media_assets_uploaded_by ON media_assets (uploaded_by);
 
 -- -------------------------------------------------------------------------------------
--- (b) request_documents: widen the document-type allow-list and add description
+-- (b) request_documents: widen document-type allow-list and add description
 -- -------------------------------------------------------------------------------------
 
-ALTER TABLE request_documents
-    ADD COLUMN IF NOT EXISTS description      TEXT,
-    ADD COLUMN IF NOT EXISTS required_by_rule VARCHAR(150);
+DO $$ BEGIN
+  ALTER TABLE request_documents ADD COLUMN description TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
 
-ALTER TABLE request_documents
-    DROP CONSTRAINT IF EXISTS ck_request_documents_type;
-ALTER TABLE request_documents
-    ADD CONSTRAINT ck_request_documents_type CHECK (document_type IN (
-        'SUPPORTING','SUPPORTING_DOCUMENT',
-        'QUOTATION','INVOICE','APPROVAL_DOCUMENT',
-        'TAX','TAX_DOCUMENT','GRN','GRN_DOCUMENT','CAPEX_DOCUMENT',
-        'WARRANTY','BUDGET','OTHER'));
+DO $$ BEGIN
+  ALTER TABLE request_documents ADD COLUMN required_by_rule VARCHAR(150);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+-- Replace legacy ck_request_documents_type with the wider allow-list. Both the DROP and
+-- ADD are idempotent: DROP on a non-existent constraint raises undefined_object, which we
+-- ignore; ADD on an already-updated schema raises duplicate_object, also ignored.
+DO $$ BEGIN
+  ALTER TABLE request_documents DROP CONSTRAINT ck_request_documents_type;
+EXCEPTION WHEN undefined_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE request_documents ADD CONSTRAINT ck_request_documents_type CHECK (document_type IN (
+      'SUPPORTING','SUPPORTING_DOCUMENT',
+      'QUOTATION','INVOICE','APPROVAL_DOCUMENT',
+      'TAX','TAX_DOCUMENT','GRN','GRN_DOCUMENT','CAPEX_DOCUMENT',
+      'WARRANTY','BUDGET','OTHER'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- -------------------------------------------------------------------------------------
 -- (c) doc_scan_events: append-only record of every malware-scan outcome
