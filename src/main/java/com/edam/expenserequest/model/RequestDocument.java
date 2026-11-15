@@ -38,8 +38,11 @@ public class RequestDocument {
 	 * against this list so an unknown value is rejected with a readable message instead of a constraint
 	 * violation.
 	 */
-	public static final java.util.Set<String> TYPES = java.util.Set.of("SUPPORTING", "QUOTATION", "INVOICE", "TAX",
-			"GRN", "WARRANTY", "BUDGET", "OTHER");
+	public static final java.util.Set<String> TYPES = java.util.Set.of(
+			"SUPPORTING", "SUPPORTING_DOCUMENT",
+			"QUOTATION", "INVOICE", "APPROVAL_DOCUMENT",
+			"TAX", "TAX_DOCUMENT", "GRN", "GRN_DOCUMENT", "CAPEX_DOCUMENT",
+			"WARRANTY", "BUDGET", "OTHER");
 
 	@Id
 	@Generated(event = EventType.INSERT)
@@ -63,6 +66,9 @@ public class RequestDocument {
 
 	@Column(name = "uploaded_by")
 	private UUID uploadedBy;
+
+	@Column(name = "description")
+	private String description;
 
 	@Column(name = "uploaded_at", nullable = false)
 	private Instant uploadedAt;
@@ -112,5 +118,8 @@ public class RequestDocument {
 	public Instant getUploadedAt() {
 		return this.uploadedAt;
 	}
+
+	public String getDescription() { return this.description; }
+	public void setDescription(String v) { this.description = v; }
 
 }
