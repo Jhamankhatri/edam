@@ -105,7 +105,11 @@ public class SecurityConfig {
 				PathPatternRequestMatcher.pathPattern("/api/v1/auth/installation"),
 				PathPatternRequestMatcher.pathPattern("/api/v1/auth/bootstrap"),
 				PathPatternRequestMatcher.pathPattern("/api/v1/auth/forgot-password"),
-				PathPatternRequestMatcher.pathPattern("/api/v1/auth/reset-password") };
+				PathPatternRequestMatcher.pathPattern("/api/v1/auth/reset-password"),
+				// Public branding/configuration for the login page and app shell (Phase 4B).
+				// This endpoint returns a tightly curated whitelist of non-sensitive values
+				// (application name, organization display name, logo, active theme tokens, locale).
+				PathPatternRequestMatcher.pathPattern("/api/v1/public/configuration") };
 		http.authorizeHttpRequests(authorize -> authorize.requestMatchers(publicMatchers).permitAll()
 			.anyRequest()
 			.authenticated())

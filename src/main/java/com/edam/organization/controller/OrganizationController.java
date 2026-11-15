@@ -9,6 +9,7 @@ import com.edam.common.logging.CorrelationId;
 import com.edam.common.security.EdamPermission;
 import com.edam.common.security.Permissions;
 import com.edam.organization.dto.OrganizationDtos.BranchResponse;
+import com.edam.organization.dto.OrganizationDtos.CreateOrganizationProfileRequest;
 import com.edam.organization.dto.OrganizationDtos.CreateOrganizationUnitRequest;
 import com.edam.organization.dto.OrganizationDtos.DepartmentResponse;
 import com.edam.organization.dto.OrganizationDtos.OrganizationProfileResponse;
@@ -83,6 +84,15 @@ public class OrganizationController {
 	@Operation(summary = "Read the organization profile")
 	public ApiResponse<OrganizationProfileResponse> getProfile(HttpServletRequest request) {
 		return ok(this.profile.current(), request);
+	}
+
+	@PostMapping("/profile")
+	@EdamPermission(Permissions.CONFIGURATION_MANAGE)
+	@Operation(summary = "Create the organization profile",
+			description = "Bootstraps the singleton profile. Fails if a profile already exists.")
+	public ResponseEntity<ApiResponse<OrganizationProfileResponse>> createProfile(
+			@Valid @RequestBody CreateOrganizationProfileRequest body, HttpServletRequest request) {
+		return created(this.profile.create(body), request);
 	}
 
 	@PatchMapping("/profile")

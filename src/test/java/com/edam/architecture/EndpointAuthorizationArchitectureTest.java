@@ -155,11 +155,16 @@ class EndpointAuthorizationArchitectureTest {
 		// methods of that same controller (GET /auth/me, POST /auth/change-password) are NOT in this
 		// list — they carry @EdamPermission-style authentication requirements and are covered by the
 		// first test.
+		// ConfigurationController#publicConfiguration is public because the login shell and
+		// unauthenticated landing page must be able to read branding/name/locale before a
+		// session exists. The service layer whitelists the returned fields and never leaks
+		// secrets or internal settings.
 		assertThat(publicEndpoints)
 			.as("unexpected public endpoint(s); add them here only with a security justification")
 			.allMatch(entry -> entry.contains("Health") || entry.contains("Probe") || entry.contains("System")
 					|| entry.contains("Platform") || entry.startsWith("DevUserController")
-					|| entry.startsWith("AuthController"));
+					|| entry.startsWith("AuthController")
+					|| entry.equals("ConfigurationController#publicConfiguration"));
 	}
 
 	private static List<Class<?>> controllers() throws ClassNotFoundException {
