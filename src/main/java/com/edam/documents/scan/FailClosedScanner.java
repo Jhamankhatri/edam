@@ -2,17 +2,14 @@ package com.edam.documents.scan;
 
 import java.io.InputStream;
 
-import org.springframework.stereotype.Component;
-
 /**
  * Placeholder scanner that fails closed when no production scanner is configured.
  *
- * <p>The BRD is explicit: "Never automatically mark a document clean because a scanner is
- * unavailable." This component returns SCAN_FAILED for every upload, which keeps the
- * document quarantined (downloads are rejected) until an operator integrates a real
- * scanner and an explicit rescan is performed. No attempt is made to scan the bytes here.
+ * <p>This class is deliberately NOT a Spring bean: production deployments register exactly
+ * one {@link MalwareScanner} via configuration (ClamAV, cloud scanner, etc.) and the
+ * {@link com.edam.config.ScanAutoConfiguration} adds this fail-closed fallback only when
+ * no other scanner is present. The tests register their own {@code @Primary} fake scanner.
  */
-@Component
 public class FailClosedScanner implements MalwareScanner {
 
 	public static final String NAME = "none-fail-closed";
