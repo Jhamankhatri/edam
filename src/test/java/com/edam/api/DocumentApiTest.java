@@ -98,6 +98,8 @@ class DocumentApiTest extends AbstractPostgreSqlIntegrationTest {
 		((FakeStorageProvider) this.storage).objects.clear();
 		((FakeStorageProvider) this.storage).throwOnUpload = false;
 		((FakeStorageProvider) this.storage).throwOnDelete = false;
+		((FakeStorageProvider) this.storage).deleteCount = 0;
+		((FakeMalwareScanner) this.scanner).throwOnScan = false;
 		((FakeMalwareScanner) this.scanner).forcedStatus = "CLEAN";
 		((FakeMalwareScanner) this.scanner).invocationCount = 0;
 
