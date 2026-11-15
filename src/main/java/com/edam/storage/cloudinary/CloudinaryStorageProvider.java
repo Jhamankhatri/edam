@@ -93,7 +93,7 @@ public class CloudinaryStorageProvider implements StorageProvider {
 					.generate();
 			Map toSign = ObjectUtils.asMap("public_id", publicId, "type", this.props.getDeliveryType(),
 					"resource_type", resType, "expires_at", expiresAt);
-			Map signed = this.cloudinary.signRequest(toSign, this.cloudinary.config.apiSecret);
+			Map signed = this.cloudinary.signRequest(toSign, Long.toString(expiresAt), this.cloudinary.config.apiSecret);
 			String sig = (String) signed.get("signature");
 			String key = (String) signed.get("api_key");
 			String sep = base.contains("?") ? "&" : "?";

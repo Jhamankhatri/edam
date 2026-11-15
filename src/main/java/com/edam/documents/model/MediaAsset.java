@@ -149,6 +149,7 @@ public class MediaAsset {
 	public UUID getUploadedBy() { return this.uploadedBy; }
 	public void setUploadedBy(UUID v) { this.uploadedBy = v; }
 	public Instant getUploadedAt() { return this.uploadedAt; }
+	public Instant getDeletedAt() { return this.deletedAt; }
 	public Instant getCreatedAt() { return this.createdAt; }
 	public Instant getUpdatedAt() { return this.updatedAt; }
 	public long getVersion() { return this.version; }
