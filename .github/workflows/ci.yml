@@ -33,30 +33,38 @@ jobs:
           rc=${PIPESTATUS[0]}
           python3 tools/ci-report.py build.log
           if [ "$rc" != "0" ]; then
-            # Write a focused excerpt so the CI annotations surface it via the GitHub UI
-            # (raw artifact download is flaky from some networks).
-            excerpt=$(awk '
-              /ERROR|Caused by:|Unsatisfied dependency|BeanCreation|BeanInstantiation|PSQLException|Flyway|Schema-validation|Schema management|APPLICATION FAILED|ExceptionInInitializer|NoClassDefFoundError|NoSuchMethodError|ClassNotFoundException|MappingException|InvalidDataAccess|HibernateException|Validation failed|org.springframework.beans.factory|required a bean|could not be found|Detected applied migration|Check constraint|NullPointerException|IllegalStateException: Failed to load ApplicationContext/ {
-                print; if (!block) { block=1; depth=0 }
-              }
-              block && /^\s+at / { if (depth<25) print; depth++ }
-              block && depth>=25 { block=0 }
-            ' build.log | tail -c 3500)
-            echo "ROOT_CAUSE<<EOF"
-            echo "$excerpt"
-            echo "EOF"
-            # Also drop ConfigurationApiTest.txt into the log inline, truncated.
-            for f in target/surefire-reports/TEST-com.edam.api.ConfigurationApiTest.txt; do
-              if [ -f "$f" ]; then
-                echo "----- $f (first 80 lines) -----"
-                head -c 4000 "$f"
-              fi
-            done
-            # Emit a dedicated error annotation carrying the deepest cause line.
-            deepest=$(echo "$excerpt" | grep -E "Caused by:" | tail -1)
+            # 1) Drop the full Maven log into the step summary (survives as a separate tab
+            #    in the Actions UI even when the raw artifact download fails).
+            {
+              echo "# Build failure diagnostics"
+              echo ""
+              echo "### Deepest Caused-by chain"
+              echo '```'
+              awk '
+                /Caused by:|BeanCreationException|BeanInstantiationException|UnsatisfiedDependencyException|NoSuchBeanDefinitionException|PSQLException|Flyway|Schema-validation|APPLICATION FAILED TO START|NoClassDefFoundError|NoSuchMethodError|ClassNotFoundException|MappingException|HibernateException|NullPointerException|IllegalStateException: Failed to load/ {
+                  print; if (!block) { block=1; depth=0 }
+                }
+                block && /^\s+at / { if (depth<15) print; depth++ }
+                block && depth>=15 { block=0 }
+              ' build.log | tail -200
+              echo '```'
+              echo ""
+              echo "### Surefire ConfigurationApiTest report (first 200 lines)"
+              echo '```'
+              f=target/surefire-reports/TEST-com.edam.api.ConfigurationApiTest.txt
+              if [ -f "$f" ]; then head -n 200 "$f"; else echo "(report not found)"; fi
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            # 2) Also emit an ::error with the single deepest cause so it shows as an annotation.
+            deepest=$(grep -E "Caused by:" build.log | tail -1 | head -c 3800)
             if [ -n "$deepest" ]; then
               echo "::error title=ROOT_CAUSE::${deepest}"
             fi
+
+            # 3) Print excerpt to stdout too (appears in the raw step log).
+            echo "----- ROOT CAUSE EXCERPT -----"
+            awk '/Caused by:|APPLICATION FAILED|BeanCreation|NoClassDefFound|ClassNotFound|NoSuchMethod|NullPointer|Flyway|Schema-validation|PSQLException/' build.log | head -80
           fi
           exit $rc
       - name: Upload diagnostic logs and reports (failure only)
