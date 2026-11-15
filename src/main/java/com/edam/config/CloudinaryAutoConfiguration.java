@@ -27,4 +27,12 @@ public class CloudinaryAutoConfiguration {
 		return new Cloudinary("cloudinary://" + props.getApiKey() + ":" + props.getApiSecret()
 				+ "@" + props.getCloudName());
 	}
+
+	@Bean
+	@ConditionalOnExpression("!'${cloudinary.cloud-name:}'.trim().isEmpty() "
+			+ "&& !'${cloudinary.api-key:}'.trim().isEmpty() "
+			+ "&& !'${cloudinary.api-secret:}'.trim().isEmpty()")
+	public com.edam.storage.StorageProvider cloudinaryStorageProvider(CloudinaryProperties props, Cloudinary cloudinary) {
+		return new com.edam.storage.cloudinary.CloudinaryStorageProvider(props, cloudinary);
+	}
 }

@@ -13,17 +13,18 @@ import com.edam.storage.StoredObject;
 import com.edam.storage.StorageException;
 import com.edam.storage.StorageProvider;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
-
 /**
  * Cloudinary-backed {@link StorageProvider}.
  *
  * <p>Uploads always use {@code type=authenticated} so assets are only reachable with a
  * signed URL. The public-id is server-generated (UUID suffix under the configured
  * {@code folder}) so clients cannot force public delivery or choose paths.
+ *
+ * <p>Registered as a bean in {@link com.edam.config.CloudinaryAutoConfiguration} only when
+ * Cloudinary credentials are actually supplied; this keeps the application context
+ * startable in environments without credentials (tests, dev) where an alternate
+ * {@link StorageProvider} can take over.
  */
-@Component
 public class CloudinaryStorageProvider implements StorageProvider {
 
 	private static final String NAME = "CLOUDINARY";
@@ -31,8 +32,7 @@ public class CloudinaryStorageProvider implements StorageProvider {
 	private final CloudinaryProperties props;
 	private final Cloudinary cloudinary;
 
-	public CloudinaryStorageProvider(CloudinaryProperties props,
-			@Autowired(required = false) Cloudinary cloudinary) {
+	public CloudinaryStorageProvider(CloudinaryProperties props, Cloudinary cloudinary) {
 		this.props = props;
 		this.cloudinary = cloudinary;
 	}
