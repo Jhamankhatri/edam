@@ -2,7 +2,6 @@ package com.edam.config;
 
 import com.cloudinary.Cloudinary;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnCloudinaryConfigured;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
