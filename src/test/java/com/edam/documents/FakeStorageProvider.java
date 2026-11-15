@@ -21,7 +21,7 @@ public class FakeStorageProvider implements StorageProvider {
 	public boolean throwOnDelete = false;
 	public int deleteCount = 0;
 
-	@Override public String providerName() { return "FAKE"; }
+	@Override public String providerName() { return "LOCAL"; }
 	@Override public boolean isConfigured() { return true; }
 
 	@Override
