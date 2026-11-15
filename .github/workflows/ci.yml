@@ -27,11 +27,22 @@ jobs:
           cache: maven
       - name: Build and test
         run: |
+          set -o pipefail
           set +e
-          mvn verify > build.log 2>&1
-          rc=$?
+          mvn -B -ntp -Dstyle.color=never -e -DtrimStackTrace=false verify 2>&1 | tee build.log
+          rc=${PIPESTATUS[0]}
           python3 tools/ci-report.py build.log
           exit $rc
+      - name: Upload diagnostic logs and reports (failure only)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-diagnostics
+          path: |
+            build.log
+            target/surefire-reports/
+          retention-days: 3
+          if-no-files-found: warn
       - name: Upload WAR
         if: success()
         uses: actions/upload-artifact@v4
@@ -39,6 +50,7 @@ jobs:
           name: edam-war
           path: target/edam.war
           retention-days: 7
+          if-no-files-found: error
 
   # Renders the JSP views from the packaged executable WAR, which is the artifact that is
   # actually deployed. Spring Boot cannot render JSPs inside an embedded test container, so
