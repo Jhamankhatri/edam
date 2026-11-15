@@ -2,7 +2,7 @@ package com.edam.storage.cloudinary;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.HashMap;
+
 import java.util.Map;
 
 import com.cloudinary.Cloudinary;
@@ -73,33 +73,20 @@ public class CloudinaryStorageProvider implements StorageProvider {
 	}
 
 	@Override
-	@SuppressWarnings("unchecked")
+	@SuppressWarnings({"rawtypes", "unchecked"})
 	public String signDownloadUrl(String publicId, String resourceType, long ttlSeconds) throws StorageException {
 		if (!isConfigured()) throw new StorageException("Cloudinary credentials are not configured.");
 		try {
 			String resType = resourceType == null ? "raw" : resourceType;
 			long expiresAt = System.currentTimeMillis() / 1000L + ttlSeconds;
-			// Build a signed authenticated-delivery URL. We use cloudinary.url() to generate the
-			// base URL then sign it with the configured api_secret via apiSignRequest, producing
-			// an expiring signed URL for private/authenticated delivery.
-			@SuppressWarnings("rawtypes")
-			java.util.Map toSign = ObjectUtils.asMap(
-					"public_id", publicId,
-					"type", this.props.getDeliveryType(),
+			// privateDownload(format, deliveryType, options) returns a short-lived signed URL.
+			Map opts = ObjectUtils.asMap(
 					"resource_type", resType,
-					"expires_at", Long.toString(expiresAt));
-			@SuppressWarnings("rawtypes")
-			java.util.Map signed = this.cloudinary.apiSignRequest(toSign, this.cloudinary.config.apiSecret);
-			String sig = (String) signed.get("signature");
-			String key = (String) signed.get("api_key");
-			String base = this.cloudinary.url()
-					.secure(true)
-					.resourceType(resType)
-					.type(this.props.getDeliveryType())
-					.publicId(publicId)
-					.generate();
-			String sep = base.contains("?") ? "&" : "?";
-			return base + sep + "api_key=" + key + "&expires_at=" + expiresAt + "&signature=" + sig;
+					"type", this.props.getDeliveryType(),
+					"expires_at", expiresAt,
+					"attachment", Boolean.TRUE);
+			Object url = this.cloudinary.privateDownload(publicId, this.props.getDeliveryType(), opts);
+			return url == null ? null : url.toString();
 		}
 		catch (StorageException se) { throw se; }
 		catch (Exception ex) {
