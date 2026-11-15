@@ -32,20 +32,31 @@ jobs:
           mvn -B -ntp -Dstyle.color=never -e -DtrimStackTrace=false verify 2>&1 | tee build.log
           rc=${PIPESTATUS[0]}
           python3 tools/ci-report.py build.log
-          # If the build failed, surface the first deep root cause directly in the workflow
-          # log (artifacts are uploaded too, but in environments where artifact downloads are
-          # flaky this guarantees the cause is visible in the job output).
           if [ "$rc" != "0" ]; then
-            echo ":::::::::::::::: ROOT CAUSE EXCERPT ::::::::::::::::"
-            awk '
-              /ERROR|Caused by|Unsatisfied|BeanCreation|PSQLException|Flyway|Schema|APPLICATION FAILED|ExceptionInInitializer|NoClassDefFound|NoSuchMethod|ClassNotFoundException/ {print}
-              /^\s+at / { if (in_cause) { print; depth++ }; if (depth>25) {in_cause=0} }
-            ' build.log | head -200
-            echo "::group::surefire ConfigurationApiTest.txt"
-            for f in target/surefire-reports/*ConfigurationApiTest* target/surefire-reports/TEST-com.edam.api.ConfigurationApiTest.txt; do
-              [ -f "$f" ] && { echo "--- $f ---"; cat "$f"; }
+            # Write a focused excerpt so the CI annotations surface it via the GitHub UI
+            # (raw artifact download is flaky from some networks).
+            excerpt=$(awk '
+              /ERROR|Caused by:|Unsatisfied dependency|BeanCreation|BeanInstantiation|PSQLException|Flyway|Schema-validation|Schema management|APPLICATION FAILED|ExceptionInInitializer|NoClassDefFoundError|NoSuchMethodError|ClassNotFoundException|MappingException|InvalidDataAccess|HibernateException|Validation failed|org.springframework.beans.factory|required a bean|could not be found|Detected applied migration|Check constraint|NullPointerException|IllegalStateException: Failed to load ApplicationContext/ {
+                print; if (!block) { block=1; depth=0 }
+              }
+              block && /^\s+at / { if (depth<25) print; depth++ }
+              block && depth>=25 { block=0 }
+            ' build.log | tail -c 3500)
+            echo "ROOT_CAUSE<<EOF"
+            echo "$excerpt"
+            echo "EOF"
+            # Also drop ConfigurationApiTest.txt into the log inline, truncated.
+            for f in target/surefire-reports/TEST-com.edam.api.ConfigurationApiTest.txt; do
+              if [ -f "$f" ]; then
+                echo "----- $f (first 80 lines) -----"
+                head -c 4000 "$f"
+              fi
             done
-            echo "::endgroup::"
+            # Emit a dedicated error annotation carrying the deepest cause line.
+            deepest=$(echo "$excerpt" | grep -E "Caused by:" | tail -1)
+            if [ -n "$deepest" ]; then
+              echo "::error title=ROOT_CAUSE::${deepest}"
+            fi
           fi
           exit $rc
       - name: Upload diagnostic logs and reports (failure only)
