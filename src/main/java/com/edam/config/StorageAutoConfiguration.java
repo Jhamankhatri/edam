@@ -29,7 +29,7 @@ public class StorageAutoConfiguration {
 	public StorageProvider unconfiguredStorageProvider() {
 		return new StorageProvider() {
 			private final ConcurrentMap<String, StoredObject> store = new ConcurrentHashMap<>();
-			@Override public String providerName() { return "UNCONFIGURED"; }
+			@Override public String providerName() { return "LOCAL"; }
 			@Override public boolean isConfigured() { return false; }
 			@Override public StoredObject upload(String pid, String folder, String ct, InputStream in) {
 				throw new StorageException("No document storage provider is configured. Configure Cloudinary credentials.");
