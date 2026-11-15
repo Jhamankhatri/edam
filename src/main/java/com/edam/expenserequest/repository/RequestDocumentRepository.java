@@ -12,6 +12,8 @@ public interface RequestDocumentRepository extends JpaRepository<RequestDocument
 
 	List<RequestDocument> findByExpenseRequestId(UUID expenseRequestId);
 
+	java.util.Optional<RequestDocument> findFirstByMediaAssetId(UUID mediaAssetId);
+
 	boolean existsByExpenseRequestIdAndDocumentType(UUID expenseRequestId, String documentType);
 
 	boolean existsByExpenseRequestIdAndMediaAssetId(UUID expenseRequestId, UUID mediaAssetId);
