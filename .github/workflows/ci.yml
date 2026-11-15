@@ -71,7 +71,7 @@ jobs:
             for f in target/surefire-reports/*.txt; do
               [ -f "$f" ] && grep -E "Caused by:" "$f" 2>/dev/null || true
             done
-          } | grep -vE "MojoFailureException|SurefireBooterForkException" | tail -1 | head -c 1000)
+          } | grep -vE "MojoFailureException|SurefireBooterForkException|threshold exceeded|IllegalStateException: Failed to load ApplicationContext" | head -2 | tail -1 | head -c 1000)
           if [ -n "$deep" ]; then
             printf '::error title=ROOT_CAUSE::%s\n' "$deep"
           else
