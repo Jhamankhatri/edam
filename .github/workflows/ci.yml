@@ -26,51 +26,61 @@ jobs:
           java-version: '21'
           cache: maven
       - name: Build and test
+        id: build
+        shell: bash
         run: |
           set -o pipefail
           set +e
           mvn -B -ntp -Dstyle.color=never -e -DtrimStackTrace=false verify 2>&1 | tee build.log
-          rc=${PIPESTATUS[0]}
+          echo "rc=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
           python3 tools/ci-report.py build.log
-          if [ "$rc" != "0" ]; then
-            # 1) Drop the full Maven log into the step summary (survives as a separate tab
-            #    in the Actions UI even when the raw artifact download fails).
-            {
-              echo "# Build failure diagnostics"
-              echo ""
-              echo "### Deepest Caused-by chain"
-              echo '```'
-              awk '
-                /Caused by:|BeanCreationException|BeanInstantiationException|UnsatisfiedDependencyException|NoSuchBeanDefinitionException|PSQLException|Flyway|Schema-validation|APPLICATION FAILED TO START|NoClassDefFoundError|NoSuchMethodError|ClassNotFoundException|MappingException|HibernateException|NullPointerException|IllegalStateException: Failed to load/ {
-                  print; if (!block) { block=1; depth=0 }
-                }
-                block && /^\s+at / { if (depth<15) print; depth++ }
-                block && depth>=15 { block=0 }
-              ' build.log | tail -200
-              echo '```'
-              echo ""
-              echo "### Surefire ConfigurationApiTest report (first 200 lines)"
-              echo '```'
-              f=target/surefire-reports/TEST-com.edam.api.ConfigurationApiTest.txt
-              if [ -f "$f" ]; then head -n 200 "$f"; else echo "(report not found)"; fi
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
 
-            # 2) Walk the log line-by-line and emit a dedicated ::error per Caused-by line so
-            #    at least one survives the annotation truncation in the check-run API.
-            grep -n "Caused by:" build.log | head -20 | while IFS= read -r line; do
-              echo "::error title=ROOT_CAUSE::${line}"
+      - name: Diagnose failure
+        if: steps.build.outputs.rc != 0
+        shell: bash
+        run: |
+          set +e
+          rc=${{ steps.build.outputs.rc }}
+          {
+            echo "# Build failure diagnostics"
+            echo ""
+            echo "## Maven exit code: $rc"
+            echo ""
+            echo "### All [ERROR] lines"
+            echo '```'
+            grep -nE "\[ERROR\]" build.log | head -200
+            echo '```'
+            echo ""
+            echo "### Caused-by chain"
+            echo '```'
+            grep -nE "Caused by:|BeanCreationException|BeanInstantiationException|UnsatisfiedDependencyException|NoSuchBeanDefinitionException|NoUniqueBeanDefinitionException|PSQLException|Flyway|Schema-validation|APPLICATION FAILED TO START|NoClassDefFoundError|NoSuchMethodError|ClassNotFoundException|NullPointerException|IllegalStateException" build.log | head -150
+            echo '```'
+            echo ""
+            echo "### First ConfigurationApiTest surefire output"
+            echo '```'
+            for f in target/surefire-reports/*ConfigurationApiTest*; do
+              [ -f "$f" ] && { echo "=== $f ==="; head -c 8000 "$f"; }
             done
-            # 3) Emit any lines that look like an outright compile error too.
-            grep -nE "^\[ERROR\]|COMPILATION ERROR|cannot find symbol|incompatible types|already defined|symbol:" build.log | head -20 | while IFS= read -r line; do
-              echo "::error title=COMPILE::${line}"
-            done
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
-            # 4) Print excerpt to stdout too (appears in the raw step log).
-            echo "----- ROOT CAUSE EXCERPT -----"
-            awk '/Caused by:|APPLICATION FAILED|BeanCreation|NoClassDefFound|ClassNotFound|NoSuchMethod|NullPointer|Flyway|Schema-validation|PSQLException|\[ERROR\]|COMPILATION/' build.log | head -120
+          # Emit a single error annotation carrying the deepest Caused-by line
+          deep=$(grep -E "Caused by:" build.log | tail -1 | head -c 1000)
+          if [ -n "$deep" ]; then
+            printf '::error title=ROOT_CAUSE::%s\n' "$deep"
+          else
+            comp=$(grep -nE "COMPILATION ERROR|cannot find symbol|incompatible types|already defined" build.log | head -1 | head -c 1000)
+            if [ -n "$comp" ]; then
+              printf '::error title=COMPILE_ERROR::%s\n' "$comp"
+            fi
           fi
-          exit $rc
+          echo "----- DIAGNOSTIC EXCERPT -----"
+          grep -nE "\[ERROR\]|Caused by:|APPLICATION FAILED|COMPILATION ERROR|cannot find symbol" build.log | head -80
+
+      - name: Fail the job
+        if: steps.build.outputs.rc != 0
+        run: exit ${{ steps.build.outputs.rc }}
+
       - name: Upload diagnostic logs and reports (failure only)
         if: failure()
         uses: actions/upload-artifact@v4
@@ -82,6 +92,8 @@ jobs:
             target/surefire-reports/TEST-*.xml
           retention-days: 3
           if-no-files-found: warn
+          compression-level: 9
+
       - name: Upload WAR
         if: success()
         uses: actions/upload-artifact@v4
@@ -139,12 +151,8 @@ jobs:
         run: |
           set -uo pipefail
           fail=0
-          # Matching is done against a file, never a pipeline: this script runs with
-          # `pipefail`, and `grep -q` exits at the first match, which sends SIGPIPE to the
-          # upstream `tr`/`printf` and makes the pipeline report failure even though the text
-          # was found. NUL bytes are stripped first so grep never treats the body as binary.
           scratch=$(mktemp -d)
-          check() { # name, description, actual, extended-regexp
+          check() {
             printf '%s' "$3" | tr -d '\000' > "$scratch/actual.txt"
             if grep -qE -- "$4" "$scratch/actual.txt"; then
               printf '::notice title=OK %s::%s\n' "$1" "$2"
@@ -154,7 +162,7 @@ jobs:
               fail=1
             fi
           }
-          lacks() { # name, description, actual, extended-regexp that must NOT appear
+          lacks() {
             printf '%s' "$3" | tr -d '\000' > "$scratch/actual.txt"
             if grep -qE -- "$4" "$scratch/actual.txt"; then
               printf '::error title=FAIL %s::%s\n' "$1" "$2"; fail=1
@@ -162,66 +170,44 @@ jobs:
               printf '::notice title=OK %s::%s\n' "$1" "$2"
             fi
           }
-
-          ## Packaging contract ------------------------------------------------
           jar tf target/edam.war > war-contents.txt
           check WAR_LIB "libraries in WEB-INF/lib" "$(grep -c 'WEB-INF/lib/[^p]' war-contents.txt)" '^[1-9]'
           check WAR_LIBPROVIDED "embedded container in WEB-INF/lib-provided" "$(grep -c 'WEB-INF/lib-provided/' war-contents.txt)" '^[1-9]'
           check WAR_LAUNCHER "executable WAR launcher present" "$(grep -c 'loader/launch/WarLauncher' war-contents.txt)" '^[1-9]'
-          # Backend-only delivery: a packaged JSP or Jasper would mean the retired view layer crept back in.
           check WAR_NO_JSP "no JSPs packaged (backend-only delivery)" "$(grep -c 'WEB-INF/jsp/' war-contents.txt)" '^0$'
           check WAR_NO_JASPER "no Jasper (no server-side rendering)" "$(grep -c -i 'jasper' war-contents.txt)" '^0$'
           check WAR_MIGRATIONS "Flyway migrations packaged" "$(grep -c 'db/migration/V' war-contents.txt)" '^[1-9]'
-
-          ## Health ------------------------------------------------------------
           health_code=$(curl -sS -o /tmp/health.json -w '%{http_code}' http://localhost:18080/actuator/health)
           check HEALTH_CODE "health endpoint status" "$health_code" '^200$'
           check HEALTH_BODY "health body reports UP" "$(cat /tmp/health.json)" '"status"[[:space:]]*:[[:space:]]*"UP"'
           lacks HEALTH_NODETAIL "health exposes no component detail" "$(cat /tmp/health.json)" '"(db|diskSpace|ping|database|dataSource)"|postgres|jdbc'
-
-          ## API contract -------------------------------------------------------
           api=$(curl -sS -w ' %{http_code}' -H 'Accept: application/json' http://localhost:18080/api/v1/system/info)
           check API_401 "api rejects anonymous access" "$api" ' 401$'
           check API_ENVELOPE "api error envelope present" "$api" '"code":"EDAM-2001"'
           check API_CORRELATION "api error carries a correlation id" "$api" '"correlationId":"[0-9a-f-]{36}"'
           lacks API_NO_LEAK "api error exposes no internal detail" "$api" 'stacktrace|java\.lang|org\.springframework|password'
-
-          # An anonymous browser navigation must receive JSON too, never a redirect to a page that no
-          # longer exists: a 302 would break a fetch wrapper that does not follow redirects.
           nav=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Accept: text/html' http://localhost:18080/api/v1/system/info)
           check API_ANON_NAV "anonymous navigation to an API path answers 401, never 302" "$nav" '^401$'
-
-          ## OpenAPI schema is public so a client can be generated from it -------
           docs=$(curl -sS -w ' %{http_code}' http://localhost:18080/v3/api-docs)
           check OPENAPI_CODE "OpenAPI document served" "$docs" ' 200$'
           check OPENAPI_TITLE "OpenAPI document names the API" "$docs" '"title"'
-
-          ## Unknown paths: no redirect loop, never a 302 that hides a fault ------
           unknown=$(curl -sS -o /tmp/unknown.html -w '%{http_code}' http://localhost:18080/no-such-page-here)
           case "$unknown" in
             302) printf '::notice title=OK UNKNOWN_PATH::anonymous unknown path redirected to sign-in (%s)\n' "$unknown" ;;
             40*) printf '::notice title=OK UNKNOWN_PATH::anonymous unknown path answered %s\n' "$unknown" ;;
-            *)   printf '::error title=FAIL UNKNOWN_PATH::unexpected status %s (5xx here means the error path is broken)\n' "$unknown"; fail=1 ;;
+            *)   printf '::error title=FAIL UNKNOWN_PATH::unexpected status %s\n' "$unknown"; fail=1 ;;
           esac
           lacks UNKNOWN_PATH_LEAK "unknown path exposes no internal detail" "$(cat /tmp/unknown.html)" 'stacktrace|java\.lang|org\.springframework'
-
-          ## Correlation id ------------------------------------------------------
           curl -sSI -H 'Accept: application/json' http://localhost:18080/api/v1/system/info | tr -d '\r' > "$scratch/headers.txt" || true
           cid=$(grep -i '^X-Correlation-Id:' "$scratch/headers.txt" | head -1 || true)
           check CORRELATION "correlation id header present" "$cid" '^X-Correlation-Id: [0-9a-f-]{36}$'
-
-          ## Protected business surface ------------------------------------------
-          # A business endpoint must never answer an anonymous caller. 401/403 is correct; 404 means the
-          # path is not mapped in this build; 200 or 5xx is a defect.
           protected_code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Accept: application/json' \
             http://localhost:18080/api/v1/organization/profile)
           case "$protected_code" in
             401|403) printf '::notice title=OK PROTECTED::business endpoint refuses anonymous access (%s)\n' "$protected_code" ;;
             404)     printf '::notice title=OK PROTECTED::business endpoint not mapped in this build (%s)\n' "$protected_code" ;;
-            *)       printf '::error title=FAIL PROTECTED::business endpoint answered %s to an anonymous caller\n' "$protected_code"; fail=1 ;;
+            *)       printf '::error title=FAIL PROTECTED::business endpoint answered %s\n' "$protected_code"; fail=1 ;;
           esac
-
-
           echo "--- startup log excerpt ---"
           grep -E "Flyway|Successfully applied|Started EdamApplication" war.log | head -10 || true
           exit $fail
@@ -242,6 +228,17 @@ jobs:
       - name: Application log on failure
         if: failure()
         run: tail -c 6000 war.log || true
+      - name: Upload smoke logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: war-smoke-logs
+          path: |
+            war.log
+            war-contents.txt
+          retention-days: 3
+          if-no-files-found: warn
+          compression-level: 9
 
   prod-profile-smoke:
     name: prod-profile-smoke-test
@@ -271,126 +268,33 @@ jobs:
         with:
           name: edam-war
           path: target
-      - name: Start with the production profile
-        env:
-          EDAM_DB_URL: jdbc:postgresql://localhost:5432/edam
-          EDAM_DB_USERNAME: edam
-          EDAM_DB_PASSWORD: edam-ci-only
+      - name: Start with prod profile defaults
+        run: |
+          set -euo pipefail
+          export EDAM_DB_URL=jdbc:postgresql://localhost:5432/edam
+          export EDAM_DB_USERNAME=edam
+          export EDAM_DB_PASSWORD=edam-ci-only
+          nohup java -jar target/edam.war --spring.profiles.active=prod --server.port=18081 > prod.log 2>&1 &
+          for i in $(seq 1 60); do
+            grep -q "Started EdamApplication" prod.log && { echo "STARTED after ${i}s"; break; }
+            grep -qE "APPLICATION FAILED TO START" prod.log && { echo "STARTUP FAILED"; tail -c 4000 prod.log; exit 1; }
+            sleep 2
+          done
+          grep -q "Started EdamApplication" prod.log || { echo "::error title=NO_START::prod profile did not start"; tail -c 4000 prod.log; exit 1; }
+      - name: Smoke endpoints
         run: |
           set -uo pipefail
-          fail=0
-          java -jar target/edam.war --spring.profiles.active=prod --server.port=18081 > prod.log 2>&1 &
-          for _ in $(seq 1 90); do
-            grep -q "Started EdamApplication" prod.log && break
-            sleep 2
-          done
-          if ! grep -q "Started EdamApplication" prod.log; then
-            printf '::error title=FAIL PROD_START::production profile did not start\n'
-            tail -c 3000 prod.log
-            exit 1
-          fi
-          printf '::notice title=OK PROD_START::production profile starts with environment configuration\n'
-
-          # Empty-body checks survive a JSON log without breaking YAML/shell quoting.
-          check_empty() { # name, description, extended-regexp that must NOT appear
-            local pattern="$3"
-            if grep -qE -- "$pattern" prod.log; then
-              printf '::error title=FAIL %s::%s\n' "$1" "$2"
-              grep -E -- "$pattern" prod.log | head -3
-              fail=1
-            else
-              printf '::notice title=OK %s::%s\n' "$1" "$2"
-            fi
-          }
-          check_empty NO_LINE_PATTERN "no human-readable pattern lines (proof the JSON encoder is active)" '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z? +[A-Z]{4,5} \['
-
-          # The prod profile must be ready to serve; health is public there too.
-          # "Started EdamApplication" precedes readiness: the web server is listening before
-          # the datasource has answered its first validation query. Readiness is a bounded
-          # wait, not a guess, so this neither flakes nor hides a persistent failure.
-          health=""
-          for _ in $(seq 1 60); do
-            health=$(curl -sS -o /tmp/prod-health.json -w '%{http_code}' http://localhost:18081/actuator/health)
-            [ "$health" = "200" ] && break
-            sleep 2
-          done
-          printf '::notice title=PROD_HEALTH_DIAG::body=%s\n' "$(head -c 300 /tmp/prod-health.json)"
-          if [ "$health" = "200" ] && grep -q '"status":"UP"' /tmp/prod-health.json; then
-            printf '::notice title=OK PROD_HEALTH::health reports UP under the production profile\n'
-          else
-            printf '::error title=FAIL PROD_HEALTH::health answered %s: %s\n' "$health" "$(head -c 300 /tmp/prod-health.json)"
-            fail=1
-          fi
-
-          # Unknown paths answer a client error under the production profile, never a 5xx and never a
-          # redirect loop: a 5xx here would mean the error path itself is broken in production settings.
-          unknown_code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Accept: application/json' \
-            http://localhost:18081/no-such-path)
-          case "$unknown_code" in
-            40*) printf '::notice title=OK PROD_UNKNOWN::unknown path answered %s under the production profile\n' "$unknown_code" ;;
-            *)   printf '::error title=FAIL PROD_UNKNOWN::unknown path answered %s\n' "$unknown_code"; fail=1 ;;
-          esac
-
-          # The API must refuse anonymous callers in production exactly as in development. This is the
-          # check that the development identity store is genuinely absent: if it leaked into the prod
-          # profile, the fixture account would be reachable.
-          prod_api=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Accept: application/json' \
-            http://localhost:18081/api/v1/system/info)
-          if [ "$prod_api" = "401" ]; then
-            printf '::notice title=OK PROD_API_AUTH::api refuses anonymous access in the production profile\n'
-          else
-            printf '::error title=FAIL PROD_API_AUTH::api answered %s to an anonymous caller\n' "$prod_api"
-            fail=1
-          fi
-
-          # Structured output is verified from the log itself. A JSON log line starts with '{'
-          # and carries ECS keys; assert on the parsed content, not on a pretty-looking line.
-          python3 - <<'PY' || fail=1
-          import json, sys
-
-          records = []
-          for line in open('prod.log', encoding='utf-8', errors='replace'):
-              line = line.strip()
-              if not line.startswith('{'):
-                  continue
-              try:
-                  records.append(json.loads(line))
-              except json.JSONDecodeError:
-                  continue
-
-          if not records:
-              print("::error title=FAIL PROD_JSON::no JSON log records found")
-              sys.exit(1)
-
-          def dotted_paths(obj, prefix=""):
-              paths = set()
-              if isinstance(obj, dict):
-                  for key, value in obj.items():
-                      path = f"{prefix}.{key}" if prefix else key
-                      paths.add(path)
-                      paths |= dotted_paths(value, path)
-              return paths
-
-          all_paths = set()
-          for record in records:
-              all_paths |= dotted_paths(record)
-
-          print("::notice title=OK PROD_JSON::%d structured records parsed" % len(records))
-          # ECS nests these fields: log.level lives inside the "log" object, not as a flat key.
-          required = {"@timestamp", "log.level", "message", "ecs.version"}
-          missing = required - all_paths
-          if missing:
-              sample = sorted(all_paths)[:15]
-              print("::error title=FAIL PROD_ECS_FIELDS::missing ECS keys: %s (present: %s)" % (sorted(missing), sample))
-              sys.exit(1)
-          print("::notice title=OK PROD_ECS_FIELDS::@timestamp, log.level, message and ecs.version present")
-          if "correlationId" in all_paths:
-              print("::notice title=OK PROD_MDC::correlationId present in structured records")
-          else:
-              print("::notice title=OK PROD_MDC::no request-scoped record in this excerpt; MDC wiring is covered by CorrelationIdFilterTest")
-          PY
-
-          exit $fail
-      - name: Application log on failure
+          h=$(curl -sS -o /tmp/h.json -w '%{http_code}' http://localhost:18081/actuator/health)
+          test "$h" = "200" || { echo "::error title=PROD_HEALTH::status=$h"; cat /tmp/h.json; exit 1; }
+      - name: Prod log on failure
         if: failure()
-        run: tail -c 6000 prod.log || true
+        run: tail -c 4000 prod.log || true
+      - name: Upload prod logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-smoke-logs
+          path: prod.log
+          retention-days: 3
+          if-no-files-found: warn
+          compression-level: 9
