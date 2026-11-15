@@ -32,6 +32,21 @@ jobs:
           mvn -B -ntp -Dstyle.color=never -e -DtrimStackTrace=false verify 2>&1 | tee build.log
           rc=${PIPESTATUS[0]}
           python3 tools/ci-report.py build.log
+          # If the build failed, surface the first deep root cause directly in the workflow
+          # log (artifacts are uploaded too, but in environments where artifact downloads are
+          # flaky this guarantees the cause is visible in the job output).
+          if [ "$rc" != "0" ]; then
+            echo ":::::::::::::::: ROOT CAUSE EXCERPT ::::::::::::::::"
+            awk '
+              /ERROR|Caused by|Unsatisfied|BeanCreation|PSQLException|Flyway|Schema|APPLICATION FAILED|ExceptionInInitializer|NoClassDefFound|NoSuchMethod|ClassNotFoundException/ {print}
+              /^\s+at / { if (in_cause) { print; depth++ }; if (depth>25) {in_cause=0} }
+            ' build.log | head -200
+            echo "::group::surefire ConfigurationApiTest.txt"
+            for f in target/surefire-reports/*ConfigurationApiTest* target/surefire-reports/TEST-com.edam.api.ConfigurationApiTest.txt; do
+              [ -f "$f" ] && { echo "--- $f ---"; cat "$f"; }
+            done
+            echo "::endgroup::"
+          fi
           exit $rc
       - name: Upload diagnostic logs and reports (failure only)
         if: failure()
@@ -40,7 +55,8 @@ jobs:
           name: ci-diagnostics
           path: |
             build.log
-            target/surefire-reports/
+            target/surefire-reports/TEST-*.txt
+            target/surefire-reports/TEST-*.xml
           retention-days: 3
           if-no-files-found: warn
       - name: Upload WAR
