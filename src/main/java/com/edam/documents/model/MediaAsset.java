@@ -77,11 +77,6 @@ public class MediaAsset {
 	@Column(name = "document_category", length = 60)
 	private String documentCategory = DocumentCategory.OTHER.name();
 
-	public void setDocumentCategory(String v) {
-		// accept both legacy (SUPPORTING) and new (SUPPORTING_DOCUMENT) category codes
-		this.documentCategory = v;
-	}
-
 	@Column(name = "description")
 	private String description;
 
