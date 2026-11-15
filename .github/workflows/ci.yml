@@ -64,18 +64,27 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-          # Emit a single error annotation carrying the deepest Caused-by line
-          deep=$(grep -E "Caused by:" build.log | tail -1 | head -c 1000)
+          # Emit a single error annotation carrying the deepest Caused-by line from BOTH
+          # the Maven log AND surefire reports. Maven's own MojoFailure wrapper is filtered.
+          deep=$( {
+            grep -E "Caused by:" build.log 2>/dev/null || true
+            for f in target/surefire-reports/*.txt; do
+              [ -f "$f" ] && grep -E "Caused by:" "$f" 2>/dev/null || true
+            done
+          } | grep -vE "MojoFailureException|SurefireBooterForkException" | tail -1 | head -c 1000)
           if [ -n "$deep" ]; then
             printf '::error title=ROOT_CAUSE::%s\n' "$deep"
           else
-            comp=$(grep -nE "COMPILATION ERROR|cannot find symbol|incompatible types|already defined" build.log | head -1 | head -c 1000)
+            comp=$(grep -nE "COMPILATION ERROR|cannot find symbol|incompatible types|already defined|does not exist" build.log | head -1 | head -c 1000)
             if [ -n "$comp" ]; then
               printf '::error title=COMPILE_ERROR::%s\n' "$comp"
             fi
           fi
           echo "----- DIAGNOSTIC EXCERPT -----"
-          grep -nE "\[ERROR\]|Caused by:|APPLICATION FAILED|COMPILATION ERROR|cannot find symbol" build.log | head -80
+          grep -nE "\[ERROR\]|Caused by:|APPLICATION FAILED|COMPILATION ERROR|cannot find symbol|Tests run:" build.log | head -80
+          echo "----- FIRST SUREFIRE FAILURE REPORT -----"
+          firstf=$(ls target/surefire-reports/TEST-com.edam.api.ConfigurationApiTest.txt 2>/dev/null)
+          if [ -n "$firstf" ]; then head -n 120 "$firstf"; else echo "(no surefire report for ConfigurationApiTest)"; fi
 
       - name: Fail the job
         if: steps.build.outputs.rc != 0
