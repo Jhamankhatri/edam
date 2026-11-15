@@ -56,15 +56,19 @@ jobs:
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
 
-            # 2) Also emit an ::error with the single deepest cause so it shows as an annotation.
-            deepest=$(grep -E "Caused by:" build.log | tail -1 | head -c 3800)
-            if [ -n "$deepest" ]; then
-              echo "::error title=ROOT_CAUSE::${deepest}"
-            fi
+            # 2) Walk the log line-by-line and emit a dedicated ::error per Caused-by line so
+            #    at least one survives the annotation truncation in the check-run API.
+            grep -n "Caused by:" build.log | head -20 | while IFS= read -r line; do
+              echo "::error title=ROOT_CAUSE::${line}"
+            done
+            # 3) Emit any lines that look like an outright compile error too.
+            grep -nE "^\[ERROR\]|COMPILATION ERROR|cannot find symbol|incompatible types|already defined|symbol:" build.log | head -20 | while IFS= read -r line; do
+              echo "::error title=COMPILE::${line}"
+            done
 
-            # 3) Print excerpt to stdout too (appears in the raw step log).
+            # 4) Print excerpt to stdout too (appears in the raw step log).
             echo "----- ROOT CAUSE EXCERPT -----"
-            awk '/Caused by:|APPLICATION FAILED|BeanCreation|NoClassDefFound|ClassNotFound|NoSuchMethod|NullPointer|Flyway|Schema-validation|PSQLException/' build.log | head -80
+            awk '/Caused by:|APPLICATION FAILED|BeanCreation|NoClassDefFound|ClassNotFound|NoSuchMethod|NullPointer|Flyway|Schema-validation|PSQLException|\[ERROR\]|COMPILATION/' build.log | head -120
           fi
           exit $rc
       - name: Upload diagnostic logs and reports (failure only)
