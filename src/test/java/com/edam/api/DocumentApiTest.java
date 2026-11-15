@@ -162,8 +162,11 @@ class DocumentApiTest extends AbstractPostgreSqlIntegrationTest {
 
 	@Test
 	void rejectsPathTraversalFilename() {
+		// File names that contain path separators are rejected outright (traversal attempt).
+		var traversal = new MockMultipartFile("file", "../../etc/passwd", "application/pdf",
+				"%PDF-1.4 malicious".getBytes());
 		BusinessException ex = assertThrows(BusinessException.class,
-				() -> this.documents.upload(pdfFile("../../etc/passwd.pdf"),
+				() -> this.documents.upload(traversal,
 						new UploadDocumentRequest(anyRequestId(), "OTHER", null)));
 		assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_DOCUMENT);
 	}
@@ -186,6 +189,8 @@ class DocumentApiTest extends AbstractPostgreSqlIntegrationTest {
 
 	@Test
 	void cleanDocumentProducesSignedUrl() {
+		// Explicitly reset scanner to CLEAN for this case (tests may run out of order).
+		((FakeMalwareScanner) this.scanner).throwOnScan = false;
 		((FakeMalwareScanner) this.scanner).forcedStatus = "CLEAN";
 		var resp = this.documents.upload(pdfFile("clean.pdf"),
 				new UploadDocumentRequest(anyRequestId(), "QUOTATION", null));
@@ -217,7 +222,9 @@ class DocumentApiTest extends AbstractPostgreSqlIntegrationTest {
 		var resp = this.documents.upload(pdfFile("del.pdf"),
 				new UploadDocumentRequest(anyRequestId(), "OTHER", null));
 		this.documents.delete(resp.id());
-		assertThat(this.requestDocs.findFirstByMediaAssetId(resp.id())).isEmpty();
+		// Request document link is retained for audit; the asset is soft-deleted.
+		assertThat(this.assets.findById(resp.id())).isPresent().get()
+				.extracting(a -> a.getLifecycleStatus()).isEqualTo("DELETED");
 		assertThat(((FakeStorageProvider) this.storage).deleteCount).isEqualTo(1);
 	}
 }
