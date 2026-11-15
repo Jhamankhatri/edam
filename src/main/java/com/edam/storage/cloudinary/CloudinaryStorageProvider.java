@@ -13,17 +13,13 @@ import com.edam.storage.StoredObject;
 import com.edam.storage.StorageException;
 import com.edam.storage.StorageProvider;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
-import org.springframework.stereotype.Component;
-
 /**
- * Cloudinary-backed {@link StorageProvider}. Activated only when a {@link Cloudinary} SDK
+ * Cloudinary-backed {@link StorageProvider}. Registered by
+ * {@link com.edam.config.CloudinaryAutoConfiguration} only when a {@link Cloudinary} SDK
  * client is present (i.e. {@code CLOUDINARY_*} credentials are configured). Uploads use
  * {@code type=authenticated} so assets are not publicly guessable; download URLs are
  * short-lived signed URLs produced via {@link Cloudinary#privateDownload}.
  */
-@Component
-@ConditionalOnBean(Cloudinary.class)
 public class CloudinaryStorageProvider implements StorageProvider {
 
 	private static final String NAME = "CLOUDINARY";
