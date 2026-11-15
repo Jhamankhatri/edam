@@ -134,7 +134,7 @@ class DocumentApiTest extends AbstractPostgreSqlIntegrationTest {
 		var resp = this.documents.upload(pdfFile("q.pdf"),
 				new UploadDocumentRequest(anyRequestId(), "QUOTATION", null));
 		String url = this.documents.downloadUrl(resp.id());
-		assertThat(url).contains("signed/").or().contains("fake.example");
+		assertThat(url).isNotNull().contains("fake.example");
 	}
 
 	@Test
