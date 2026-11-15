@@ -75,7 +75,12 @@ public class MediaAsset {
 	private String checksum;
 
 	@Column(name = "document_category", length = 60)
-	private String documentCategory;
+	private String documentCategory = DocumentCategory.OTHER.name();
+
+	public void setDocumentCategory(String v) {
+		// accept both legacy (SUPPORTING) and new (SUPPORTING_DOCUMENT) category codes
+		this.documentCategory = v;
+	}
 
 	@Column(name = "description")
 	private String description;
