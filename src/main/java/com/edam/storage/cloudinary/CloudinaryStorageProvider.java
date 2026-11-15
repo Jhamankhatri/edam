@@ -13,7 +13,7 @@ import com.edam.storage.StoredObject;
 import com.edam.storage.StorageException;
 import com.edam.storage.StorageProvider;
 
-import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -31,10 +31,10 @@ public class CloudinaryStorageProvider implements StorageProvider {
 	private final CloudinaryProperties props;
 	private final Cloudinary cloudinary;
 
-	public CloudinaryStorageProvider(CloudinaryProperties props, ObjectProvider<Cloudinary> cloudinaryProvider) {
+	public CloudinaryStorageProvider(CloudinaryProperties props,
+			@Autowired(required = false) Cloudinary cloudinary) {
 		this.props = props;
-		Cloudinary c = cloudinaryProvider.getIfAvailable();
-		this.cloudinary = c;
+		this.cloudinary = cloudinary;
 	}
 
 	@Override public String providerName() { return NAME; }

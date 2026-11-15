@@ -47,15 +47,16 @@ UPDATE media_assets
 
 ALTER TABLE media_assets
     ADD CONSTRAINT IF NOT EXISTS ck_media_assets_lifecycle
-        CHECK (lifecycle_status IN ('ACTIVE','ARCHIVED','DELETED','CLEAN','QUARANTINED')),
+        CHECK (lifecycle_status IN ('ACTIVE','ARCHIVED','DELETED','QUARANTINED')),
     ADD CONSTRAINT IF NOT EXISTS ck_media_assets_scan
         CHECK (scan_status IN ('PENDING_SCAN','CLEAN','INFECTED','SCAN_FAILED')),
     ADD CONSTRAINT IF NOT EXISTS ck_media_assets_res_type
         CHECK (resource_type IS NULL OR resource_type IN ('raw','image','video')),
     ADD CONSTRAINT IF NOT EXISTS ck_media_assets_category
         CHECK (document_category IS NULL OR document_category IN (
-            'QUOTATION','INVOICE','SUPPORTING_DOCUMENT','APPROVAL_DOCUMENT',
-            'TAX_DOCUMENT','GRN_DOCUMENT','CAPEX_DOCUMENT','OTHER'));
+            'QUOTATION','INVOICE','SUPPORTING','SUPPORTING_DOCUMENT','APPROVAL_DOCUMENT',
+            'TAX','TAX_DOCUMENT','GRN','GRN_DOCUMENT','CAPEX_DOCUMENT',
+            'WARRANTY','BUDGET','OTHER'));
 
 CREATE INDEX IF NOT EXISTS ix_media_assets_public_id    ON media_assets (public_id);
 CREATE INDEX IF NOT EXISTS ix_media_assets_uploaded_by  ON media_assets (uploaded_by);

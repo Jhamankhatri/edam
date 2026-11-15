@@ -28,7 +28,7 @@ import org.hibernate.type.SqlTypes;
 @Table(name = "media_assets")
 public class MediaAsset {
 
-	public enum Lifecycle { ACTIVE, ARCHIVED, DELETED, CLEAN, QUARANTINED }
+	public enum Lifecycle { ACTIVE, ARCHIVED, DELETED, QUARANTINED }
 	public enum ScanStatus { PENDING_SCAN, CLEAN, INFECTED, SCAN_FAILED }
 	public enum DocumentCategory {
 		QUOTATION, INVOICE, SUPPORTING_DOCUMENT, APPROVAL_DOCUMENT,
