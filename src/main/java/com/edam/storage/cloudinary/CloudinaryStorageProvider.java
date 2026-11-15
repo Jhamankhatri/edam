@@ -78,26 +78,20 @@ public class CloudinaryStorageProvider implements StorageProvider {
 	}
 
 	@Override
-	@SuppressWarnings({"rawtypes", "unchecked"})
+	@SuppressWarnings("unchecked")
 	public String signDownloadUrl(String publicId, String resourceType, long ttlSeconds) throws StorageException {
 		if (!isConfigured()) throw new StorageException("Cloudinary credentials are not configured.");
 		try {
 			String resType = resourceType == null ? "raw" : resourceType;
-			long expiresAt = System.currentTimeMillis() / 1000L + ttlSeconds;
-			// Build a URL for the authenticated asset and sign it using Cloudinary's apiSignRequest.
-			String base = this.cloudinary.url()
-					.secure(true)
-					.resourceType(resType)
-					.type(this.props.getDeliveryType())
-					.publicId(publicId)
-					.generate();
-			Map toSign = ObjectUtils.asMap("public_id", publicId, "type", this.props.getDeliveryType(),
-					"resource_type", resType, "expires_at", expiresAt);
-			Map signed = this.cloudinary.signRequest(toSign, Long.toString(expiresAt), this.cloudinary.config.apiSecret);
-			String sig = (String) signed.get("signature");
-			String key = (String) signed.get("api_key");
-			String sep = base.contains("?") ? "&" : "?";
-			return base + sep + "api_key=" + key + "&timestamp=" + expiresAt + "&signature=" + sig;
+			// Cloudinary's privateDownload generates a short-lived signed redirect URL for
+			// authenticated/private assets. attachment=true forces Content-Disposition on the
+			// response so browsers don't render banking documents inline.
+			Map<String, Object> opts = ObjectUtils.asMap(
+					"resource_type", resType,
+					"type", this.props.getDeliveryType(),
+					"expires_at", System.currentTimeMillis() / 1000L + ttlSeconds,
+					"attachment", true);
+			return this.cloudinary.privateDownload(publicId, this.props.getDeliveryType(), opts);
 		}
 		catch (StorageException se) { throw se; }
 		catch (Exception ex) {
