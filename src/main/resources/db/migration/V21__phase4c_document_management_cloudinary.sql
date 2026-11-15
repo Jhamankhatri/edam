@@ -29,20 +29,21 @@ ALTER TABLE media_assets
     ADD COLUMN IF NOT EXISTS file_format       VARCHAR(32),
     ADD COLUMN IF NOT EXISTS document_category VARCHAR(60),
     ADD COLUMN IF NOT EXISTS description       TEXT,
-    ADD COLUMN IF NOT EXISTS lifecycle_status  VARCHAR(32)  NOT NULL DEFAULT 'CLEAN',
-    ADD COLUMN IF NOT EXISTS scan_status       VARCHAR(32)  NOT NULL DEFAULT 'CLEAN',
+    ADD COLUMN IF NOT EXISTS lifecycle_status  VARCHAR(32)  NOT NULL DEFAULT 'ACTIVE',
+    ADD COLUMN IF NOT EXISTS scan_status       VARCHAR(32)  NOT NULL DEFAULT 'PENDING_SCAN',
     ADD COLUMN IF NOT EXISTS scanned_at        TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS deleted_at        TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS created_at        TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    ADD COLUMN IF NOT EXISTS updated_at        TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP;
+    ADD COLUMN IF NOT EXISTS updated_at        TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS version           BIGINT       NOT NULL DEFAULT 0;
 
--- Pre-4C rows were created when scanning was not yet enforced. Mark them CLEAN so
--- approvers can continue to view documents they already approved, without weakening the
--- rule that NEW uploads must pass a scan.
+-- Pre-4C rows (logos/favicons/prior request docs) existed before scanning was enforced;
+-- grandfather them as ACTIVE/CLEAN so prior approver-visible documents continue to load
+-- after the migration. New uploads will be inserted PENDING_SCAN by the service.
 UPDATE media_assets
-   SET lifecycle_status = 'CLEAN',
+   SET lifecycle_status = 'ACTIVE',
        scan_status      = 'CLEAN'
- WHERE lifecycle_status = 'CLEAN' AND scan_status = 'CLEAN';
+ WHERE lifecycle_status = 'ACTIVE' AND scan_status = 'PENDING_SCAN';
 
 ALTER TABLE media_assets
     ADD CONSTRAINT IF NOT EXISTS ck_media_assets_lifecycle
