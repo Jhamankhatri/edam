@@ -34,10 +34,6 @@ public class CloudinaryStorageProvider implements StorageProvider {
 	public CloudinaryStorageProvider(CloudinaryProperties props, ObjectProvider<Cloudinary> cloudinaryProvider) {
 		this.props = props;
 		Cloudinary c = cloudinaryProvider.getIfAvailable();
-		if (c == null && props.isConfigured()) {
-			c = new Cloudinary("cloudinary://" + props.getApiKey() + ":" + props.getApiSecret()
-					+ "@" + props.getCloudName());
-		}
 		this.cloudinary = c;
 	}
 

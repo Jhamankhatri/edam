@@ -58,7 +58,6 @@ public class MediaAsset {
 	@Column(name = "asset_id", length = 100)
 	private String assetId;
 
-	@JdbcTypeCode(SqlTypes.LONGVARCHAR)
 	@Column(name = "secure_url")
 	private String secureUrl;
 
