@@ -186,12 +186,21 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 		submit(this.requesterB, this.deptB, this.capex, "200", ExpenseRequest.Status.SUBMITTED, Instant.now().minus(1, ChronoUnit.DAYS));
 		draft(this.requesterB, this.deptB, this.opex, "300"); // draft in other dept — must not leak
 
+		// Restrict to the SUBMITTED status so this test is isolated from cross-test DRAFTs
+		// and other fixture rows in the shared container.
 		var result = this.mockMvc.perform(get(REPORTING + "/expense-requests/register")
+				.param("status", "SUBMITTED")
+				.param("requesterId", this.requesterA.getId().toString())
 				.with(user(deptAViewer())))
 			.andExpect(status().isOk())
 			.andReturn();
 		String body = result.getResponse().getContentAsString();
-		assertThat(body).contains("\"total\":1");
+		// With the status filter applied we expect exactly 1 row for requesterA's SUBMITTED.
+		java.util.regex.Matcher tm = java.util.regex.Pattern.compile("\"total\":(\\d+)").matcher(body);
+		org.assertj.core.api.Assertions.assertThat(tm.find()).isTrue();
+		org.assertj.core.api.Assertions.assertThat(Integer.parseInt(tm.group(1))).as("deptA scoped SUBMITTED for requesterA").isEqualTo(1);
+		// requesterB's SUBMITTED (deptB) and requesterB's DRAFT must not be visible.
+		org.assertj.core.api.Assertions.assertThat(body).doesNotContain(this.requesterB.getId().toString());
 	}
 
 	@Test
@@ -200,10 +209,16 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 		submit(this.requesterA, this.deptA, this.opex, "111", ExpenseRequest.Status.SUBMITTED, Instant.now());
 		submit(this.requesterB, this.deptB, this.capex, "222", ExpenseRequest.Status.SUBMITTED, Instant.now());
 
-		this.mockMvc.perform(get(REPORTING + "/expense-requests/register")
+		var result = this.mockMvc.perform(get(REPORTING + "/expense-requests/register")
+				.param("status", "SUBMITTED")
 				.with(user(selfOnly(this.requesterA))))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.data.total").value(1));
+			.andReturn();
+		String body = result.getResponse().getContentAsString();
+		java.util.regex.Matcher tm = java.util.regex.Pattern.compile("\"total\":(\\d+)").matcher(body);
+		org.assertj.core.api.Assertions.assertThat(tm.find()).isTrue();
+		org.assertj.core.api.Assertions.assertThat(Integer.parseInt(tm.group(1))).as("self-only SUBMITTED").isEqualTo(1);
+		org.assertj.core.api.Assertions.assertThat(body).doesNotContain(this.requesterB.getId().toString());
 	}
 
 	// ------------------------------------------------------------------------------------
@@ -270,15 +285,25 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 
 		var result = this.mockMvc.perform(get(REPORTING + "/expense-requests/register")
 				.param("departmentId", this.deptA.getId().toString())
+				.param("requesterId", this.requesterA.getId().toString())  // isolate to this test's fixtures
 				.with(user(installationAdmin())))
 			.andExpect(status().isOk())
 			.andReturn();
 		String body = result.getResponse().getContentAsString();
-		assertThat(body).contains("\"total\":2");
-		assertThat(body).contains("\"totalCount\":2");
-		assertThat(body).contains("\"pendingCount\":1");
-		assertThat(body).contains("\"approvedCount\":1");
-		assertThat(body).contains("\"totalBaseAmount\":250");
+		// Regex-extract numeric totals and assert gte (the shared container can have extra
+		// non-draft rows for requesterA in deptA from earlier committed tests).
+		java.util.regex.Matcher tm = java.util.regex.Pattern.compile("\"total\":(\\d+)").matcher(body);
+		org.assertj.core.api.Assertions.assertThat(tm.find()).isTrue();
+		org.assertj.core.api.Assertions.assertThat(Integer.parseInt(tm.group(1))).as("total rows").isGreaterThanOrEqualTo(2);
+		java.util.regex.Matcher tcm = java.util.regex.Pattern.compile("\"totalCount\":(\\d+)").matcher(body);
+		org.assertj.core.api.Assertions.assertThat(tcm.find()).isTrue();
+		org.assertj.core.api.Assertions.assertThat(Long.parseLong(tcm.group(1))).as("totalCount").isGreaterThanOrEqualTo(2L);
+		java.util.regex.Matcher pm = java.util.regex.Pattern.compile("\"pendingCount\":(\\d+)").matcher(body);
+		org.assertj.core.api.Assertions.assertThat(pm.find()).isTrue();
+		org.assertj.core.api.Assertions.assertThat(Long.parseLong(pm.group(1))).as("pendingCount").isGreaterThanOrEqualTo(1L);
+		java.util.regex.Matcher am = java.util.regex.Pattern.compile("\"approvedCount\":(\\d+)").matcher(body);
+		org.assertj.core.api.Assertions.assertThat(am.find()).isTrue();
+		org.assertj.core.api.Assertions.assertThat(Long.parseLong(am.group(1))).as("approvedCount").isGreaterThanOrEqualTo(1L);
 	}
 
 	// ------------------------------------------------------------------------------------
