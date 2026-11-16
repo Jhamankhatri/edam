@@ -821,23 +821,23 @@ public class ReportingService {
 		// and BigDecimal for NUMERIC literals, even when the value is NULL. Casting either
 		// to Long/BigDecimal directly throws ClassCastException if the JDK version chose a
 		// different wrapper. Convert explicitly.
-		// Defensive coercion for every column: JDBC drivers can return unexpected wrapper
-		// types for NULL literals and for SUM/COUNT projections (BigInteger for BIGINT,
-		// OffsetDateTime/LocalDateTime for TIMESTAMPTZ, PGobject for enums). Casting those
-		// directly raises ClassCastException at the (Long)/(Instant)/(UUID) cast sites.
-		Long age = toLong(r[15]);
-		BigDecimal req = toBigDecimal(r[11]);
-		BigDecimal base = toBigDecimal(r[12]);
-		Instant submitted = toInstant(r[13]);
-		Instant decided = toInstant(r[14]);
-		// id (r[0]) and requested_by (r[5]) are real UUID columns, but be safe.
-		UUID id = toUuid(r[0]);
-		UUID requestedBy = toUuid(r[5]);
+		// Defensive coercion for every column. Avoid ALL direct casts: JDBC returns
+		// unexpected wrapper types for NULL literals and SUM/COUNT projections (BigInteger
+		// for BIGINT, PGobject for enums, byte[]/Clob for TEXT), and each of those fails
+		// a direct (String)/(BigDecimal)/(UUID) cast.
 		return new RegisterRow(
-				id, (String) r[1], (String) r[2], (String) r[3],
-				(String) r[4], requestedBy, (String) r[6], (String) r[7],
-				(String) r[8], (String) r[9], (String) r[10],
-				req, base, submitted, decided, age, (String) r[16]);
+				toUuid(r[0]),
+				toStringSafe(r[1]), toStringSafe(r[2]), toStringSafe(r[3]),
+				toStringSafe(r[4]), toUuid(r[5]), toStringSafe(r[6]), toStringSafe(r[7]),
+				toStringSafe(r[8]), toStringSafe(r[9]), toStringSafe(r[10]),
+				toBigDecimal(r[11]), toBigDecimal(r[12]),
+				toInstant(r[13]), toInstant(r[14]),
+				toLong(r[15]), toStringSafe(r[16]));
+	}
+
+	private static String toStringSafe(Object v) {
+		return v == null ? null : v.toString();
+	}
 	}
 
 	private static Long toLong(Object v) {
