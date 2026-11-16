@@ -98,15 +98,14 @@ public class ReportingService {
 			"requested_amount", "base_currency_amount", "submitted_at", "decided_at",
 			"decision_age_seconds", "last_actor_name");
 
-	/**
-	 * Terminal (decision) action codes. CANCEL actions on the request itself are handled via
-	 * {@code CANCELLED} status; workflow_actions only carries approval-flow actions.
-	 * We treat APPROVE and REJECT as final decisions; REVERT/FORWARD/ESCALATE are
-	 * intermediate routing actions and must NOT determine decidedAt or lastActorName.
+	/** Aliases all queries expose; kept in one place to avoid drift.
+	 *
+	 * <p>Note on {@code decided_at}/{@code last_actor_name}: we filter {@code workflow_actions}
+	 * to the terminal action codes {@code ('APPROVE','REJECT')} only. REVERT/FORWARD/ESCALATE
+	 * are intermediate routing actions and must not be mistaken for the final decision.
+	 * CANCEL actions are represented by the {@code CANCELLED} request status rather than a
+	 * row in {@code workflow_actions}.
 	 */
-	private static final String FINAL_ACTION_CODES = "'APPROVE','REJECT'";
-
-	/** Aliases all queries expose; kept in one place to avoid drift. */
 	static final String REGISTER_SELECT = """
 			select r.id, r.request_number, r.current_status_code,
 			       coalesce(ec.expense_type, 'OPEX')::text as expense_type,
@@ -125,7 +124,7 @@ public class ReportingService {
 			            (select wt.id from workflow_tasks wt
 			               where wt.workflow_instance_id = r.current_workflow_instance_id
 			                 and wt.completed_at is not null)
-			          and wa.action_code in (""" + FINAL_ACTION_CODES + """)
+			          and wa.action_code in ('APPROVE','REJECT')
 			       ) as decided_at,
 			       case when r.submitted_at is not null and (
 			         select max(wa.action_at) from workflow_actions wa
@@ -133,7 +132,7 @@ public class ReportingService {
 			            (select wt.id from workflow_tasks wt
 			               where wt.workflow_instance_id = r.current_workflow_instance_id
 			                 and wt.completed_at is not null)
-			            and wa.action_code in (""" + FINAL_ACTION_CODES + """)
+			            and wa.action_code in ('APPROVE','REJECT')
 			       ) is not null then
 			         extract(epoch from (
 			           (select max(wa.action_at) from workflow_actions wa
@@ -141,7 +140,7 @@ public class ReportingService {
 			               (select wt.id from workflow_tasks wt
 			                  where wt.workflow_instance_id = r.current_workflow_instance_id
 			                    and wt.completed_at is not null)
-			               and wa.action_code in (""" + FINAL_ACTION_CODES + """))
+			               and wa.action_code in ('APPROVE','REJECT'))
 			           - r.submitted_at))
 			       else null end as decision_age_seconds,
 			       (select (uu.first_name || ' ' || uu.last_name)
@@ -151,7 +150,7 @@ public class ReportingService {
 			               (select wt.id from workflow_tasks wt
 			                  where wt.workflow_instance_id = r.current_workflow_instance_id
 			                    and wt.completed_at is not null)
-			               and wa.action_code in (""" + FINAL_ACTION_CODES + """)
+			               and wa.action_code in ('APPROVE','REJECT')
 			             order by wa.action_at desc limit 1)
 			       ) as last_actor_name
 			  from expense_requests r

@@ -25,14 +25,11 @@ import com.edam.expenseconfiguration.model.ExpenseRequestType;
 import com.edam.expenseconfiguration.repository.ExpenseCategoryRepository;
 import com.edam.expenseconfiguration.repository.ExpenseNatureRepository;
 import com.edam.expenseconfiguration.repository.ExpenseRequestTypeRepository;
-import com.edam.expenseconfiguration.repository.ExpenseSubcategoryRepository;
 import com.edam.expenserequest.model.ExpenseRequest;
 import com.edam.expenserequest.repository.ExpenseRequestRepository;
 import com.edam.masterdata.model.Currency;
 import com.edam.masterdata.repository.CurrencyRepository;
 import com.edam.organization.model.Department;
-import com.edam.organization.model.OrganizationProfile;
-import com.edam.organization.repository.BranchRepository;
 import com.edam.organization.repository.DepartmentRepository;
 import com.edam.organization.repository.OrganizationProfileRepository;
 import com.edam.organization.repository.OrganizationUnitRepository;
@@ -64,13 +61,11 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 
 	@Autowired private UserRepository users;
 	@Autowired private DepartmentRepository departments;
-	@Autowired private BranchRepository branches;
 	@Autowired private OrganizationUnitRepository units;
 	@Autowired private OrganizationUnitTypeRepository unitTypes;
 	@Autowired private OrganizationProfileRepository profiles;
 	@Autowired private CurrencyRepository currencies;
 	@Autowired private ExpenseCategoryRepository categories;
-	@Autowired private ExpenseSubcategoryRepository subcategories;
 	@Autowired private ExpenseNatureRepository natures;
 	@Autowired private ExpenseRequestTypeRepository requestTypes;
 	@Autowired private ExpenseRequestRepository requests;
@@ -242,7 +237,7 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 		assertThat(body).contains("\"totalCount\":2");
 		assertThat(body).contains("\"pendingCount\":1");
 		assertThat(body).contains("\"approvedCount\":1");
-		assertThat(body).contains("\"totalAmount\":250");
+		assertThat(body).contains("\"totalBaseAmount\":250");
 	}
 
 	// ------------------------------------------------------------------------------------
