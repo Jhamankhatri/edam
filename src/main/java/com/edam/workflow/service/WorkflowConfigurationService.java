@@ -428,7 +428,7 @@ public class WorkflowConfigurationService {
 		return !sa.equals(sb);
 	}
 
-	private static Map<String, WorkflowTransition> transitionMap(WorkflowVersion v, Map<String, String> idToCode) {
+	private static Map<String, WorkflowTransition> transitionMap(WorkflowVersion v, Map<UUID, String> idToCode) {
 		Map<String, WorkflowTransition> map = new java.util.LinkedHashMap<>();
 		for (WorkflowTransition t : v.getTransitions()) {
 			String key = idToCode.getOrDefault(t.getFromStateId(), "?") + "::" + t.getActionCode().name();
