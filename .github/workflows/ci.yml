@@ -195,14 +195,20 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
-      - name: Download WAR
+      - name: Download WAR (fall back to local package if artifact storage is exhausted)
+        id: dl
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: edam-war
           path: target
+      - name: Package WAR locally if download failed
+        if: steps.dl.outcome != 'success'
+        run: mvn -B -ntp -DskipTests package
       - name: Start the executable WAR
         run: |
           set -euo pipefail
+          ls -la target/edam.war
           export EDAM_DB_URL=jdbc:postgresql://localhost:5432/edam
           export EDAM_DB_USERNAME=edam
           export EDAM_DB_PASSWORD=edam-ci-only
@@ -329,14 +335,20 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
-      - name: Download WAR
+      - name: Download WAR (fall back to local package if artifact storage is exhausted)
+        id: dl
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: edam-war
           path: target
+      - name: Package WAR locally if download failed
+        if: steps.dl.outcome != 'success'
+        run: mvn -B -ntp -DskipTests package
       - name: Start with prod profile defaults
         run: |
           set -euo pipefail
+          ls -la target/edam.war
           export EDAM_DB_URL=jdbc:postgresql://localhost:5432/edam
           export EDAM_DB_USERNAME=edam
           export EDAM_DB_PASSWORD=edam-ci-only
