@@ -1,38 +1,30 @@
 -- Phase 4E — Administration & Product Configuration Management
 --
--- Structural changes supporting the new administrative operations in this phase.
--- All behavioral guarantees (manager-cycle detection, exchange-rate close semantics,
--- delegation overlap, workflow version immutability, etc.) are enforced at the service
--- layer with existing JPA/EXCLUDE constraints and the new endpoints added in this phase.
+-- Phase 4E is a code-only phase on top of the configuration surfaces delivered in
+-- Phases 4A–4D. After review of the existing schema, every new capability (user
+-- unlock, effective-permissions view, tax-authority update/activation, exchange-
+-- rate close, delegation overlap guard, workflow rollback-as-new-version and
+-- version comparison) is enforced at the service or entity layer against tables
+-- and columns that already exist from earlier migrations:
 --
--- This migration is intentionally conservative: it only adds a CHECK constraint that
--- mirrors a rule already enforced by the service (close-after-start for exchange rates).
--- Other Phase 4E additions (new endpoints, service methods, DTOs, audit action) do not
--- require DDL.
+--   * users.manager_id (V5) + ck_users_not_own_manager cover reporting assignments;
+--     UserManagementService walks the chain to reject transitive cycles.
+--   * users.failed_login_count / users.locked_until (V5) support unlock via
+--     User.clearFailedLogins() which already existed.
+--   * tax_authorities (V7) already has the columns required for update/activation.
+--   * exchange_rates.effective_to (V7) is already nullable and bounded by
+--     ck_exchange_rates_period (effective_to IS NULL OR effective_to > effective_from);
+--     the JPA entity is relaxed to allow endPeriod(Instant) and the service
+--     enforces the only-supported mutation.
+--   * expense_delegation_rules (V7) is already guarded by
+--     ex_expense_delegation_rules_no_overlap; Phase 4E adds a readable pre-check.
+--   * workflow_versions / workflow_steps / workflow_states / workflow_transitions (V8)
+--     already support drafts and publication; rollback reuses the existing clone
+--     path into a new draft.
+--   * audit_event.action is VARCHAR(40) (V3) so the new UNLOCK AuditAction needs
+--     no DDL.
 --
--- The previously-attempted PL/pgSQL reporting-cycle trigger is deferred: the service
--- layer walks the chain on every manager assignment, and V5 already installs
--- ck_users_not_own_manager for self-loops. A trigger can be added in a follow-up
--- migration after broader concurrency testing.
+-- Therefore this migration is intentionally a no-op. The Phase 4E changelist is
+-- captured in code and in PHASE4E_REPORT.md at the repository root.
 
--- ----------------------------------------------------------------------------
--- Exchange rate end-dating guard
---
---    The effective_to column was previously set updatable=false in JPA only.
---    Phase 4E adds an explicit close endpoint; this CHECK refuses to close a
---    period before its start, matching the service rule.
--- ----------------------------------------------------------------------------
-
-ALTER TABLE exchange_rates
-    DROP CONSTRAINT IF EXISTS ck_exchange_rate_close_after_start;
-ALTER TABLE exchange_rates
-    ADD CONSTRAINT ck_exchange_rate_close_after_start
-        CHECK (effective_to IS NULL OR effective_to > effective_from);
-
--- ----------------------------------------------------------------------------
--- Audit documentation comment
--- ----------------------------------------------------------------------------
-
-COMMENT ON TABLE audit_event IS
-    'Append-only audit trail. Action set includes UNLOCK (Phase 4E user-administration '
-    'account unlock) and ROLLBACK (Phase 4E workflow rollback-as-new-version).';
+SELECT 1;
