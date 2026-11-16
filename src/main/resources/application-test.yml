@@ -38,3 +38,7 @@ edam:
     bootstrap-token: test-installation-token-not-a-secret
   cors:
     allowed-origins: http://localhost:5173
+  mail:
+    master-key: "0000000000000000000000000000000000000000000000000000000000000001"
+    outbox:
+      enabled: false

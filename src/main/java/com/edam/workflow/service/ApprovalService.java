@@ -18,6 +18,7 @@ import com.edam.common.exception.BusinessException;
 import com.edam.common.exception.ResourceNotFoundException;
 import com.edam.common.logging.CorrelationId;
 import com.edam.common.security.EdamPrincipal;
+import com.edam.communication.model.CommunicationEvent;
 import com.edam.expenserequest.dto.ExpenseRequestDtos.RequestResponse;
 import com.edam.expenserequest.model.ExpenseRequest;
 import com.edam.expenserequest.repository.ExpenseRequestRepository;
@@ -109,11 +110,14 @@ public class ApprovalService {
 
 	private final com.edam.rolemanagement.repository.RoleRepository roles;
 
+	private final com.edam.communication.service.NotificationDispatcher notifications;
+
 	public ApprovalService(TasksRepository tasks, InstancesRepository instances, VersionsRepository versions,
 			StatesRepository states, StepsRepository steps, TransitionsRepository transitions,
 			ActionsRepository actions, ExpenseRequestRepository requests, ExpenseRequestService requestService,
 			UserRepository users, com.edam.rolemanagement.repository.RoleRepository roles, WorkflowEngine engine,
-			AuditRecorder audit) {
+			AuditRecorder audit,
+			com.edam.communication.service.NotificationDispatcher notifications) {
 		this.tasks = tasks;
 		this.instances = instances;
 		this.versions = versions;
@@ -127,6 +131,7 @@ public class ApprovalService {
 		this.engine = engine;
 		this.roles = roles;
 		this.audit = audit;
+		this.notifications = notifications;
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -404,7 +409,50 @@ public class ApprovalService {
 		this.audit.recordChange(auditActionFor(action), "WorkflowTask", taskId, before, after);
 		log.info("approval.{} taskId={} instanceId={} requestId={} actor={} completed={}", action, taskId,
 				instance.getId(), request.getId(), caller.userId(), outcome.workflowCompleted());
+		fireActionNotifications(action, request, caller.userId(), remarks, outcome);
 		return response(task, outcome, request);
+	}
+
+	private void fireActionNotifications(WorkflowTransition.ActionCode action, ExpenseRequest request,
+			UUID actorId, String remarks, WorkflowEngine.ActionOutcome outcome) {
+		String num = request.getRequestNumber();
+		UUID reqId = request.getId();
+		String link = "/requests/" + reqId;
+		Map<String, String> vars = Map.of("requestId", num, "remarks", remarks == null ? "" : remarks.trim());
+
+		switch (action) {
+			case APPROVE -> {
+				if (outcome.workflowCompleted()) {
+					notifications.dispatch(CommunicationEvent.EXPENSE_APPROVED, vars,
+							"Expense " + num + " approved",
+							"Your expense request " + num + " has been fully approved.",
+							link, reqId);
+				}
+			}
+			case REJECT -> {
+				notifications.dispatch(CommunicationEvent.EXPENSE_REJECTED, vars,
+						"Expense " + num + " rejected",
+						"Your expense request " + num + " was rejected."
+							+ (remarks == null ? "" : " Reason: " + remarks.trim()),
+						link, reqId);
+			}
+			case REVERT -> {
+				notifications.dispatch(CommunicationEvent.EXPENSE_RETURNED, vars,
+						"Expense " + num + " returned for correction",
+						"Your expense request " + num + " was returned for correction."
+							+ (remarks == null ? "" : " Reason: " + remarks.trim()),
+						link, reqId);
+			}
+		}
+		// Next-step approvers (opened by advance or revert) get APPROVAL_REQUIRED. The dispatcher
+		// resolves role-assigned tasks automatically via NotificationRecipientResolver when the
+		// group list includes ASSIGNED_APPROVER.
+		if (outcome.openedTasks() != null && !outcome.openedTasks().isEmpty()) {
+			notifications.dispatch(CommunicationEvent.APPROVAL_REQUIRED, vars,
+					"Approval required: " + num,
+					"Expense request " + num + " is awaiting your approval.",
+					link, reqId);
+		}
 	}
 
 	/**
@@ -454,6 +502,19 @@ public class ApprovalService {
 		after.put("openedTaskIds", opened.stream().map(WorkflowTask::getId).toList());
 		this.audit.recordChange(AuditAction.FORWARD, "WorkflowTask", taskId, before, after);
 		log.info("approval.forward taskId={} to={} actor={}", taskId, recipientUserId, caller.userId());
+		String num = request.getRequestNumber();
+		Map<String, String> vars = Map.of("requestId", num);
+		// FORWARDED_TO goes directly to the named delegate (recipient chosen by the actor, not a
+		// configured group), so use dispatchToUser. FORWARDED uses configured groups (requester
+		// and prior participants) via the standard dispatch path.
+		notifications.dispatchToUser(CommunicationEvent.EXPENSE_FORWARDED_TO, recipientUserId, vars,
+				"Expense " + num + " forwarded to you for approval",
+				"Expense request " + num + " has been forwarded to you for approval.",
+				"/requests/" + request.getId(), request.getId());
+		notifications.dispatch(CommunicationEvent.EXPENSE_FORWARDED, vars,
+				"Expense " + num + " forwarded",
+				"Expense request " + num + " was forwarded to another approver.",
+				"/requests/" + request.getId(), request.getId());
 		WorkflowState state = instance.getCurrentStateId() == null ? null
 				: this.states.findById(instance.getCurrentStateId()).orElse(null);
 		return new ActionResponse(task.getId(), task.getStatus().name(),

@@ -161,3 +161,13 @@ edam:
     # One-time first-administrator setup. EMPTY MEANS SETUP IS CLOSED, which is the safe default:
     # a deployment that forgets to set this cannot be taken over anonymously.
     bootstrap-token: ${EDAM_INSTALLATION_TOKEN:}
+  # ---------------------------------------------------------------------------------------
+  # Mail / notifications (Phase 4D). The SMTP connection itself is runtime-configurable via
+  # the admin UI; these knobs control the background outbox sweeper only.
+  # ---------------------------------------------------------------------------------------
+  mail:
+    master-key: ${EDAM_MAIL_MASTER_KEY:}
+    outbox:
+      enabled: true
+      interval-ms: 15000
+      initial-delay-ms: 10000
