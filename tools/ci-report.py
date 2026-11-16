@@ -32,9 +32,20 @@ def _escape_property(value: str) -> str:
     return text
 
 
+_PRINTABLE_RE = re.compile(r"[^\t\n\r -~]")  # strip all non-printable / control chars
+
+
 def _escape_data(value: str) -> str:
-    """Escape workflow-command message data."""
-    return (str(value).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))
+    """Escape workflow-command message data.
+
+    In addition to the mandatory %/CR/LF escapes, strip every non-printable byte. A single
+    stray NUL or \003 in the message corrupts GitHub's workflow-command parser and causes
+    the TITLE of the annotation to be displayed as binary garbage -- which is exactly how
+    XLSX-byte assertions in surefire reports were pushing PSQLException/Caused-by evidence
+    off the visible annotation list.
+    """
+    text = _PRINTABLE_RE.sub(".", str(value))
+    return text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
 
 
 MAX_MESSAGE = 1400
@@ -90,12 +101,22 @@ def report_test_results() -> None:
                     # can be thousands of bytes of high-control characters. Cap those payloads
                     # aggressively so that real SQL/stack-trace failures are not pushed off the
                     # annotation budget.
-                    binary_indicator = any(ord(c) < 9 or (ord(c) > 13 and ord(c) < 32) for c in raw[:2000])
+                    # Binary payload detection: XLSX responses come back as zip-magic
+                    # sequences ("PK\003\004") either as raw bytes or XML-entity-encoded
+                    # ("PK&#3;&#4;"). Also catch large volumes of other control characters
+                    # or the xml: [Content_Types].xml marker that ZIP/XLSX always carries.
+                    sample = raw[:6000]
+                    binary_hits = sum(1 for c in sample if ord(c) < 9 or (ord(c) > 13 and ord(c) < 32))
+                    zip_magic = ("PK\u0003\u0004" in sample or "PK\u0005\u0006" in sample
+                                 or "PK&#3;&#4;" in sample or "PK&amp#3;&amp#4;" in sample
+                                 or "[Content_Types].xml" in sample or "xl/worksheets/sheet" in sample
+                                 or "_rels/.rels" in sample)
+                    binary_indicator = zip_magic or binary_hits > 40
                     if binary_indicator:
-                        # Skip emitting an annotation for binary payload comparisons (XLSX/ZIP).
-                        # These produce hundreds of lines of high-control characters that dominate
-                        # the annotation list and push the actual 500 / PSQL root cause off the
-                        # visible annotations. The test failure is already counted in the summary.
+                        # Emit a tiny one-line annotation instead of the dump so the failure
+                        # is still named, but the binary bytes don't flood the list.
+                        emit("error", f"FAIL {classname}.{name}",
+                             f"{message or 'binary payload assertion'} [binary response body elided]")
                         continue
                     else:
                         body = " ".join(raw.split())
@@ -152,9 +173,18 @@ def report_error_lines(log: str) -> None:
     failing-test evidence off the end of that list.
     """
     seen: set[str] = set()
-    for match in list(re.finditer(r"\[ERROR\][^\n]{0,400}", log))[:3]:
-        line = " ".join(match.group(0).split())
-        if line in seen:
+    for match in list(re.finditer(r"\[ERROR\][^\n]{0,400}", log))[:10]:
+        raw_line = match.group(0)
+        # Drop any line that carries binary (XLSX/ZIP) evidence -- Maven echoes the failing
+        # assertion to [ERROR] lines too, and those bytes would corrupt annotation parsing.
+        if any(tok in raw_line for tok in ("PK&#3;&#4;", "PK\u0003\u0004", "[Content_Types].xml",
+                                           "xl/worksheets/sheet", "_rels/.rels")):
+            continue
+        ctrl = sum(1 for c in raw_line[:2000] if ord(c) < 9 or (ord(c) > 13 and ord(c) < 32))
+        if ctrl > 20:
+            continue
+        line = " ".join(raw_line.split())
+        if line in seen or len(line) < 10:
             continue
         seen.add(line)
         emit("error", "build", line)
