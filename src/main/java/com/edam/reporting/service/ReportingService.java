@@ -120,6 +120,11 @@ public class ReportingService {
 	 * CANCEL actions are represented by the {@code CANCELLED} request status rather than a
 	 * row in {@code workflow_actions}.
 	 */
+	// Note on decided_at / last_actor_name: the sub-selects are guarded by
+	// `case when r.current_workflow_instance_id is not null then ... end`. Postgres will not
+	// evaluate the correlated subquery against NULL instance ids (DRAFT rows and fixture
+	// rows without a workflow instance), which avoids the runtime errors that a bare
+	// sub-select / lateral join produces on shared-container test fixtures.
 	static final String REGISTER_SELECT = """
 			select r.id, r.request_number, r.current_status_code,
 			       coalesce(ec.expense_type, 'OPEX')::text as expense_type,
@@ -133,26 +138,37 @@ public class ReportingService {
 			       r.requested_amount,
 			       r.base_currency_amount,
 			       r.submitted_at,
-			       fa.decided_at,
-			       case when r.submitted_at is not null and fa.decided_at is not null
-			            then extract(epoch from (fa.decided_at - r.submitted_at))
-			            else null end as decision_age_seconds,
-			       (fau.first_name || ' ' || fau.last_name) as last_actor_name
+			       case when r.current_workflow_instance_id is not null then (
+			         select max(wa.action_at) from workflow_actions wa
+			          where wa.workflow_task_id in
+			            (select wt.id from workflow_tasks wt
+			              where wt.workflow_instance_id = r.current_workflow_instance_id
+			                and wt.completed_at is not null)
+			            and wa.action_code in ('APPROVE','REJECT')
+			       ) end as decided_at,
+			       case when r.submitted_at is not null and r.current_workflow_instance_id is not null then
+			         extract(epoch from (
+			           (select max(wa.action_at) from workflow_actions wa
+			             where wa.workflow_task_id in
+			               (select wt.id from workflow_tasks wt
+			                  where wt.workflow_instance_id = r.current_workflow_instance_id
+			                    and wt.completed_at is not null)
+			               and wa.action_code in ('APPROVE','REJECT'))
+			           - r.submitted_at))
+			       end as decision_age_seconds,
+			       case when r.current_workflow_instance_id is not null then (
+			         select (uu.first_name || ' ' || uu.last_name)
+			           from users uu where uu.id = (
+			             select wa.performed_by from workflow_actions wa
+			              where wa.workflow_task_id in
+			                (select wt.id from workflow_tasks wt
+			                   where wt.workflow_instance_id = r.current_workflow_instance_id
+			                     and wt.completed_at is not null)
+			                and wa.action_code in ('APPROVE','REJECT')
+			              order by wa.action_at desc limit 1)
+			       ) end as last_actor_name
 			"""
-			+ REGISTER_FROM + """
-			   left join (
-			     select _inner.request_id, _inner.decided_at, _inner.performed_by from (
-			       select er.id as request_id, _wa.action_at as decided_at, _wa.performed_by,
-			              row_number() over (partition by er.id order by _wa.action_at desc) as rn
-			         from expense_requests er
-			         join workflow_tasks _wt on _wt.workflow_instance_id = er.current_workflow_instance_id
-			         join workflow_actions _wa on _wa.workflow_task_id = _wt.id
-			        where _wt.completed_at is not null
-			          and _wa.action_code in ('APPROVE','REJECT')
-			     ) _inner where _inner.rn = 1
-			   ) fa on fa.request_id = r.id
-			   left join users fau on fau.id = fa.performed_by
-			""";
+			+ REGISTER_FROM;
 
 	private final DepartmentRepository departments;
 	private final BranchRepository branches;
