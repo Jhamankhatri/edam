@@ -127,27 +127,33 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 
 	// ---- Request fixture ----
 	private ExpenseRequest draft(User requester, Department dept, ExpenseCategory cat, String amount) {
-		ExpenseRequest r = new ExpenseRequest();
-		r.setRequestNumber("TST-" + UUID.randomUUID().toString().substring(0, 8));
-		r.setTitle("Test request");
+		String rn = "TST-" + UUID.randomUUID().toString().substring(0, 8);
+		ExpenseRequest r = new ExpenseRequest(rn, requester.getId());
 		r.setJustification("Fixture");
-		r.setRequestedBy(requester.getId());
-		r.setDepartmentId(dept.getId());
-		r.setCurrencyId(this.baseCurrency.getId());
-		r.setRequestTypeId(this.requestType.getId());
-		r.setRequestedAmount(new BigDecimal(amount));
-		r.setBaseCurrencyAmount(new BigDecimal(amount));
-		r.setExpenseCategoryId(cat.getId());
-		r.setExpenseNatureId(RequestFixtures.nature(this.natures, "TN-" + UUID.randomUUID().toString().substring(0, 4)).getId());
-		r.setCurrentStatusCode(ExpenseRequest.Status.DRAFT);
+		r.setPlacement(dept.getId(), null);
+		r.setMoney(new BigDecimal(amount), this.baseCurrency.getId(), new BigDecimal(amount), null);
+		r.setClassification(this.requestType.getId(), cat.getId(), null,
+				RequestFixtures.nature(this.natures, "TN-" + UUID.randomUUID().toString().substring(0, 4)).getId());
 		return this.requests.save(r);
 	}
 
 	private ExpenseRequest submit(User requester, Department dept, ExpenseCategory cat, String amount,
 			ExpenseRequest.Status status, Instant submittedAt) {
 		ExpenseRequest r = draft(requester, dept, cat, amount);
-		r.setCurrentStatusCode(status);
-		r.setSubmittedAt(submittedAt);
+		// Fixture helper: reflectively set status and submittedAt so we don't need a full
+		// workflow instance. Reporting reads these columns directly; no lifecycle transition
+		// semantics are exercised in reporting aggregation tests.
+		try {
+			java.lang.reflect.Field sF = ExpenseRequest.class.getDeclaredField("currentStatusCode");
+			sF.setAccessible(true);
+			sF.set(r, status);
+			java.lang.reflect.Field tF = ExpenseRequest.class.getDeclaredField("submittedAt");
+			tF.setAccessible(true);
+			tF.set(r, submittedAt);
+		}
+		catch (ReflectiveOperationException rox) {
+			throw new RuntimeException(rox);
+		}
 		return this.requests.save(r);
 	}
 
