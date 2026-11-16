@@ -41,28 +41,48 @@ jobs:
         run: |
           set +e
           rc=${{ steps.build.outputs.rc }}
+          # Print everything we need to stdout FIRST so it appears in the step's visible log,
+          # then also to $GITHUB_STEP_SUMMARY. The sandbox environment cannot download the
+          # job logs (results-receiver is unreachable), and artifact upload is quota-blocked,
+          # so stdout is the only reliable channel.
           {
             echo "# Build failure diagnostics"
             echo ""
             echo "## Maven exit code: $rc"
             echo ""
-            echo "### All [ERROR] lines"
+            echo "### All [ERROR] lines (first 300)"
             echo '```'
-            grep -nE "\[ERROR\]" build.log | head -200
+            grep -nE "\[ERROR\]" build.log | head -300
+            echo '```'
+            echo ""
+            echo "### PSQLException / SQL error lines"
+            echo '```'
+            grep -nE "PSQLException|BadSqlGrammar|SQLState|ServerErrorMessage|ERROR:|does not exist|column .* (not exist|ambig|cannot)|operator does not exist|relation .* does not|syntax error|register count|register page" build.log | head -100
             echo '```'
             echo ""
             echo "### Caused-by chain"
             echo '```'
-            grep -nE "Caused by:|BeanCreationException|BeanInstantiationException|UnsatisfiedDependencyException|NoSuchBeanDefinitionException|NoUniqueBeanDefinitionException|PSQLException|Flyway|Schema-validation|APPLICATION FAILED TO START|NoClassDefFoundError|NoSuchMethodError|ClassNotFoundException|NullPointerException|IllegalStateException" build.log | head -150
+            grep -nE "Caused by:" build.log | head -60
             echo '```'
-            echo ""
-            echo "### First ConfigurationApiTest surefire output"
-            echo '```'
-            for f in target/surefire-reports/*ConfigurationApiTest*; do
-              [ -f "$f" ] && { echo "=== $f ==="; head -c 8000 "$f"; }
-            done
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          echo ""
+          echo "### SUREFIRE REPORTS (failing tests, full detail) >>>"
+          shopt -s nullglob
+          any=0
+          for f in target/surefire-reports/TEST-*.txt; do
+            if grep -qE '<<< (FAILURE|ERROR)!|Failures: [1-9]|Errors: [1-9]' "$f"; then
+              any=1
+              echo
+              echo "=========================================="
+              echo "=== $f ==="
+              echo "=========================================="
+              # Print full file but cap at 400 lines per report; binary payloads would be huge.
+              head -n 400 "$f" | LC_ALL=C tr -dc '\t\n\r\40-\176'
+              echo
+            fi
+          done
+          [ "$any" -eq 0 ] && echo "(no surefire failure reports found)"
+          echo "<<< END SUREFIRE REPORTS"
 
           # Emit a single error annotation carrying the deepest Caused-by line from BOTH
           # the Maven log AND surefire reports. Maven's own MojoFailure wrapper is filtered.

@@ -85,25 +85,34 @@ def report_test_results() -> None:
                     # repeats it followed by the stack. Prefer the message so the annotation opens
                     # with the reason rather than with a frame.
                     message = (bad.get("message") or "").strip()
-                    body = " ".join((bad.text or "").split())
-                    if message and body and message not in body:
-                        detail = f"{message} | {body}"
-                    else:
-                        detail = body or message or tag
-                    # Emit the raw body un-collapsed (preserve newlines) for the first chunk
-                    # so Caused-by chains remain readable, then a collapsed version too.
                     raw = (bad.text or "").strip()
-                    if raw:
-                        detail_raw = f"{message}\n{raw}" if message and message not in raw else (raw or message)
+                    # When a test compares against binary payloads (XLSX/ZIP bytes), the XML body
+                    # can be thousands of bytes of high-control characters. Cap those payloads
+                    # aggressively so that real SQL/stack-trace failures are not pushed off the
+                    # annotation budget.
+                    binary_indicator = any(ord(c) < 9 or (ord(c) > 13 and ord(c) < 32) for c in raw[:2000])
+                    if binary_indicator:
+                        # Skip emitting an annotation for binary payload comparisons (XLSX/ZIP).
+                        # These produce hundreds of lines of high-control characters that dominate
+                        # the annotation list and push the actual 500 / PSQL root cause off the
+                        # visible annotations. The test failure is already counted in the summary.
+                        continue
                     else:
-                        detail_raw = detail
+                        body = " ".join(raw.split())
+                        if message and body and message not in body:
+                            detail = f"{message} | {body}"
+                        else:
+                            detail = body or message or tag
+                        # Preserve newlines for readability of Caused-by chains.
+                        detail_raw = f"{message}\n{raw}" if message and message not in raw else (raw or message)
+                        kind = "error"
                     src_line = None
                     src_file = None
                     m = re.search(r"\((\w+\.java):(\d+)\)", raw or "")
                     if m:
                         src_file = m.group(1)
                         src_line = int(m.group(2))
-                    emit("error", f"FAIL {classname}.{name}", detail_raw, file=src_file, line=src_line)
+                    emit(kind, f"FAIL {classname}.{name}", detail_raw, file=src_file, line=src_line)
 
 
 def report_log(log: str) -> None:
@@ -120,6 +129,11 @@ def report_log(log: str) -> None:
                 r"|No qualifying bean|Failed to instantiate|Migration .* failed|Schema-validation"
                 r"|JasperException|Unable to compile class for JSP|NoClassDefFoundError"
                 r"|ClassNotFoundException)"),
+        ("sql", r"(?:PSQLException|BadSqlGrammarException|DataAccessException|SQLTransientException"
+                r"|SQLState|ERROR: [^\n]{0,300}|operator does not exist|column \S+ does not exist"
+                r"|relation \S+ does not exist|syntax error at or near|cannot cast type"
+                r"|function \S+ does not exist|operator is not unique|invalid input syntax)"),
+        ("app", r"(?:register page SQL failed|register count SQL failed|ReportingService|reporting)"),
     ]
     for title, pattern in patterns:
         for match in list(re.finditer(pattern, log))[:10]:
