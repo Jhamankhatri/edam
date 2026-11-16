@@ -773,12 +773,12 @@ public class ReportingService {
 		long age = rs.getLong("decision_age_seconds");
 		Long ageBoxed = rs.wasNull() ? null : age;
 		return new Object[] {
-				rs.getObject("id"),
+				java.util.UUID.fromString(rs.getString("id")),
 				rs.getString("request_number"),
 				rs.getString("current_status_code"),
 				rs.getString("expense_type"),
 				rs.getString("requester_name"),
-				rs.getObject("requested_by"),
+				java.util.UUID.fromString(rs.getString("requested_by")),
 				rs.getString("department_name"),
 				rs.getString("branch_name"),
 				rs.getString("category_name"),
