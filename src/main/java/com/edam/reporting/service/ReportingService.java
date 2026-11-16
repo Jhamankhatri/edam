@@ -140,7 +140,7 @@ public class ReportingService {
 			       r.base_currency_amount,
 			       r.submitted_at,
 			       null::timestamptz      as decided_at,
-			       null::bigint           as decision_age_seconds,
+			       0::bigint              as decision_age_seconds,
 			       null::varchar          as last_actor_name
 			  from expense_requests r
 			""";
