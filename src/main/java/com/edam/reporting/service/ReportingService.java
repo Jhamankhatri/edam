@@ -106,7 +106,7 @@ public class ReportingService {
 	 */
 	private static final String REGISTER_FROM = """
 			   from expense_requests r
-			   left join users u on u.id = r.requested_by
+			   join users u on u.id = r.requested_by
 			   left join departments d on d.id = r.department_id
 			   left join branches b on b.id = r.branch_id
 			   left join expense_categories ec on ec.id = r.expense_category_id
@@ -133,42 +133,26 @@ public class ReportingService {
 			       r.requested_amount,
 			       r.base_currency_amount,
 			       r.submitted_at,
-			       (select max(wa.action_at) from workflow_actions wa
-			          where wa.workflow_task_id in
-			            (select wt.id from workflow_tasks wt
-			               where wt.workflow_instance_id = r.current_workflow_instance_id
-			                 and wt.completed_at is not null)
-			          and wa.action_code in ('APPROVE','REJECT')
-			       ) as decided_at,
-			       case when r.submitted_at is not null and (
-			         select max(wa.action_at) from workflow_actions wa
-			          where wa.workflow_task_id in
-			            (select wt.id from workflow_tasks wt
-			               where wt.workflow_instance_id = r.current_workflow_instance_id
-			                 and wt.completed_at is not null)
-			            and wa.action_code in ('APPROVE','REJECT')
-			       ) is not null then
-			         extract(epoch from (
-			           (select max(wa.action_at) from workflow_actions wa
-			             where wa.workflow_task_id in
-			               (select wt.id from workflow_tasks wt
-			                  where wt.workflow_instance_id = r.current_workflow_instance_id
-			                    and wt.completed_at is not null)
-			               and wa.action_code in ('APPROVE','REJECT'))
-			           - r.submitted_at))
-			       else null end as decision_age_seconds,
-			       (select (uu.first_name || ' ' || uu.last_name)
-			          from users uu where uu.id = (
-			            select wa.performed_by from workflow_actions wa
-			             where wa.workflow_task_id in
-			               (select wt.id from workflow_tasks wt
-			                  where wt.workflow_instance_id = r.current_workflow_instance_id
-			                    and wt.completed_at is not null)
-			               and wa.action_code in ('APPROVE','REJECT')
-			             order by wa.action_at desc limit 1)
-			       ) as last_actor_name
+			       fa.decided_at,
+			       case when r.submitted_at is not null and fa.decided_at is not null
+			            then extract(epoch from (fa.decided_at - r.submitted_at))
+			            else null end as decision_age_seconds,
+			       (fau.first_name || ' ' || fau.last_name) as last_actor_name
 			"""
-			+ REGISTER_FROM;
+			+ REGISTER_FROM + """
+			   left join lateral (
+			     select wa.action_at as decided_at, wa.performed_by as performed_by
+			       from workflow_actions wa
+			      where wa.workflow_task_id in
+			            (select wt.id from workflow_tasks wt
+			              where wt.workflow_instance_id = r.current_workflow_instance_id
+			                and wt.completed_at is not null)
+			        and wa.action_code in ('APPROVE','REJECT')
+			      order by wa.action_at desc
+			      limit 1
+			   ) fa on true
+			   left join users fau on fau.id = fa.performed_by
+			""";
 
 	private final DepartmentRepository departments;
 	private final BranchRepository branches;
@@ -319,8 +303,13 @@ public class ReportingService {
 				},
 				(rs, n) -> mapRow(rs));
 
+		// Count rows with the same FROM/JOIN/WHERE as the register select but without pulling
+		// all the display columns and correlated subqueries (which would be wasted work and also
+		// produce ambiguous column references when wrapped in a sub-select).
 		long total = this.jdbc.query(
-				"select count(*) from (" + REGISTER_SELECT + whereClause(scope, filter, false) + ") x",
+				"select count(*) "
+				+ REGISTER_FROM
+				+ whereClause(scope, filter, false),
 				ps -> bindWhere(ps, scope, filter, false, 1),
 				rs -> { rs.next(); return rs.getLong(1); });
 
