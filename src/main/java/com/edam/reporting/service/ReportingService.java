@@ -125,17 +125,17 @@ public class ReportingService {
 	// NULL (DRAFT rows plus fixtures left by other test classes in the shared container).
 	// The export/register UI doesn't depend on them at this point.
 	static final String REGISTER_SELECT = """
-			select r.id::text,
+			select r.id,
 			       r.request_number,
 			       r.current_status_code,
 			       'OPEX' as expense_type,
-			       '' as requester_name,
-			       r.requested_by::text,
-			       '' as department_name,
-			       '' as branch_name,
-			       '' as category_name,
-			       '' as subcategory_name,
-			       '' as currency_code,
+			       cast(null as text) as requester_name,
+			       r.requested_by,
+			       cast(null as text) as department_name,
+			       cast(null as text) as branch_name,
+			       cast(null as text) as category_name,
+			       cast(null as text) as subcategory_name,
+			       cast(null as text) as currency_code,
 			       r.requested_amount,
 			       r.base_currency_amount,
 			       r.submitted_at,
@@ -773,12 +773,12 @@ public class ReportingService {
 		long age = rs.getLong("decision_age_seconds");
 		Long ageBoxed = rs.wasNull() ? null : age;
 		return new Object[] {
-				java.util.UUID.fromString(rs.getString("id")),
+				(UUID) rs.getObject("id"),
 				rs.getString("request_number"),
 				rs.getString("current_status_code"),
 				rs.getString("expense_type"),
 				rs.getString("requester_name"),
-				java.util.UUID.fromString(rs.getString("requested_by")),
+				(UUID) rs.getObject("requested_by"),
 				rs.getString("department_name"),
 				rs.getString("branch_name"),
 				rs.getString("category_name"),
