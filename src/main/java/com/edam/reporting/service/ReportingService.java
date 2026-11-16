@@ -128,20 +128,20 @@ public class ReportingService {
 			select r.id,
 			       r.request_number,
 			       r.current_status_code,
-			       cast('OPEX' as text) as expense_type,
-			       cast(null as varchar) as requester_name,
+			       'OPEX'                 as expense_type,
+			       null::varchar          as requester_name,
 			       r.requested_by,
-			       cast(null as varchar) as department_name,
-			       cast(null as varchar) as branch_name,
-			       cast(null as varchar) as category_name,
-			       cast(null as varchar) as subcategory_name,
-			       cast(null as varchar) as currency_code,
+			       null::varchar          as department_name,
+			       null::varchar          as branch_name,
+			       null::varchar          as category_name,
+			       null::varchar          as subcategory_name,
+			       null::varchar          as currency_code,
 			       r.requested_amount,
 			       r.base_currency_amount,
 			       r.submitted_at,
-			       cast(null as timestamptz) as decided_at,
-			       cast(null as bigint) as decision_age_seconds,
-			       cast(null as varchar) as last_actor_name
+			       null::timestamptz      as decided_at,
+			       null::bigint           as decision_age_seconds,
+			       null::varchar          as last_actor_name
 			  from expense_requests r
 			""";
 
@@ -812,13 +812,26 @@ public class ReportingService {
 	}
 
 	private RegisterRow toRow(Object[] r) {
+		// Defensive numeric coercion: PG JDBC returns BigInteger for COUNT/SUM over BIGINT
+		// and BigDecimal for NUMERIC literals, even when the value is NULL. Casting either
+		// to Long/BigDecimal directly throws ClassCastException if the JDK version chose a
+		// different wrapper. Convert explicitly.
+		Long age = null;
+		if (r[15] != null) {
+			if (r[15] instanceof Long l) age = l;
+			else if (r[15] instanceof Number n) age = n.longValue();
+		}
+		BigDecimal req = r[11] == null ? null
+				: (r[11] instanceof BigDecimal bd ? bd : new BigDecimal(r[11].toString()));
+		BigDecimal base = r[12] == null ? null
+				: (r[12] instanceof BigDecimal bd ? bd : new BigDecimal(r[12].toString()));
 		return new RegisterRow(
 				(UUID) r[0], (String) r[1], (String) r[2], (String) r[3],
 				(String) r[4], (UUID) r[5], (String) r[6], (String) r[7],
 				(String) r[8], (String) r[9], (String) r[10],
-				(BigDecimal) r[11], (BigDecimal) r[12],
+				req, base,
 				(Instant) r[13], (Instant) r[14],
-				(Long) r[15], (String) r[16]);
+				age, (String) r[16]);
 	}
 
 	private String baseCurrencyCode() {
