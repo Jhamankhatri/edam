@@ -178,17 +178,20 @@ public class SmtpConfigurationService {
 		history.save(h);
 
 		// Update last_test_* on the active/saved configuration.
+		final String diagFinal = diagnostic;
+		final boolean successFinal = success;
+		final Instant nowFinal = now;
 		if (configId != null) {
 			repository.findById(configId).ifPresent(persisted -> {
-				persisted.setLastTestAt(now);
-				persisted.setLastTestSuccess(success);
-				persisted.setLastTestMessage(success ? "sent" : truncate(diagnostic, 500));
+				persisted.setLastTestAt(nowFinal);
+				persisted.setLastTestSuccess(successFinal);
+				persisted.setLastTestMessage(successFinal ? "sent" : truncate(diagFinal, 500));
 				repository.save(persisted);
 			});
 		}
 
 		if (!success) {
-			throw new BusinessException("edam.mail.send_failed: " + truncate(diagnostic, 200));
+			throw new BusinessException("edam.mail.send_failed: " + truncate(diagFinal, 200));
 		}
 		return true;
 	}
