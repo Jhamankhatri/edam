@@ -61,17 +61,17 @@ jobs:
             echo ""
             echo "### All [ERROR] lines (first 300)"
             echo '```'
-            grep -nE "\[ERROR\]" build.log | head -300
+            grep -nE "\[ERROR\]" build.clean.log | head -300
             echo '```'
             echo ""
             echo "### PSQLException / SQL error lines"
             echo '```'
-            grep -nE "PSQLException|BadSqlGrammar|SQLState|ServerErrorMessage|ERROR:|does not exist|column .* (not exist|ambig|cannot)|operator does not exist|relation .* does not|syntax error|register count|register page" build.log | head -100
+            grep -nE "PSQLException|BadSqlGrammar|SQLState|ServerErrorMessage|ERROR:|does not exist|column .* (not exist|ambig|cannot)|operator does not exist|relation .* does not|syntax error|register count|register page" build.clean.log | head -100
             echo '```'
             echo ""
             echo "### Caused-by chain"
             echo '```'
-            grep -nE "Caused by:" build.log | head -60
+            grep -nE "Caused by:" build.clean.log | head -60
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
           echo ""

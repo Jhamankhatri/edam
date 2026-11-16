@@ -134,6 +134,15 @@ def report_test_results() -> None:
                         src_file = m.group(1)
                         src_line = int(m.group(2))
                     emit(kind, f"FAIL {classname}.{name}", detail_raw, file=src_file, line=src_line)
+                    # If the failure body contains a Caused-by chain, surface the deepest
+                    # PSQLException/SQL error as its own root-cause annotation so it isn't
+                    # lost behind the assertion wrapper.
+                    if raw:
+                        causes = re.findall(r"Caused by:\s*([^\n]+)", raw)
+                        for c in reversed(causes):
+                            if re.search(r"SQL|PSQL|JDBC|DataAccess|BadSqlGrammar|PostgreSQL", c):
+                                emit("error", f"ROOT_CAUSE {classname}.{name}", c.strip())
+                                break
 
 
 def report_log(log: str) -> None:
@@ -242,12 +251,13 @@ def main() -> int:
         emit("warning", "ci-report", f"{path} not found")
         return 0
     # Order matters: GitHub keeps only the first ~10-20 annotations of a run, so the most
-    # specific evidence goes first. A failing test case is worth more than a summary line,
-    # and the raw [ERROR] dump is the last resort because it is the noisiest.
-    report_test_results()
-    report_summaries()
-    report_log(log)
-    report_error_lines(log)
+    # specific evidence goes FIRST. A PSQLException / SQL error line IS the root cause of
+    # the 500s; failing-test assertions ("expected 200 but was 500") are the symptom and
+    # come second. Binary-payload annotations are skipped entirely.
+    report_log(log)          # PSQL/Caused-by/ctx/deps/plugin — root-cause first
+    report_test_results()    # FAIL Class.method  — per-test assertions
+    report_summaries()       # TEST TOTAL / TEST Foo
+    report_error_lines(log)  # remaining [ERROR] lines
     return 0
 
 
