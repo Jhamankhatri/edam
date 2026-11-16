@@ -660,9 +660,10 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 	// 10. Excel behavior
 	// ------------------------------------------------------------------------------------
 	@Test
-	@DisplayName("Excel export returns 200 with xlsx content type and ZIP magic")
+	@DisplayName("Excel export returns 200 with xlsx content type, ZIP magic, and monetary precision preserved as text")
 	void excelContentType() throws Exception {
-		submit(this.requesterA, this.deptA, this.opex, "123456789012345.1234", ExpenseRequest.Status.APPROVED, Instant.now());
+		String amt = "123456789012345.1234";
+		submit(this.requesterA, this.deptA, this.opex, amt, ExpenseRequest.Status.APPROVED, Instant.now());
 		var result = this.mockMvc.perform(post(REPORTING + "/expense-requests/export")
 				.with(csrf()).with(user(installationAdmin()))
 				.contentType(MediaType.APPLICATION_JSON)
@@ -671,12 +672,23 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 		byte[] body = result.getResponse().getContentAsByteArray();
 		assertThat(body).startsWith(new byte[]{0x50, 0x4B, 0x03, 0x04});
 		assertThat(result.getResponse().getContentType()).contains("spreadsheetml");
-		// Monetary values are written as plain decimal text — workbook XML must contain the
-		// integer portion of the monetary amount. SXSSF with a 100-row window flushes rows to
-		// temp gzipped XML parts, so digits may be split across string chunks; searching for
-		// a 10-digit run of the unique integer portion is robust.
-		String xlsx = new String(body, StandardCharsets.ISO_8859_1);
-		assertThat(xlsx).containsPattern("1234567890");
+		// Open the XLSX back with POI and verify the requested_amount cell is a STRING cell
+		// containing the exact plain-decimal representation (not a NUMERIC cell — that would
+		// lose NUMERIC(19,4) precision to IEEE double).
+		try (java.io.ByteArrayInputStream bis = new java.io.ByteArrayInputStream(body);
+		     org.apache.poi.xssf.usermodel.XSSFWorkbook wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook(bis)) {
+			org.apache.poi.ss.usermodel.Sheet sh = wb.getSheetAt(0);
+			boolean found = false;
+			for (org.apache.poi.ss.usermodel.Row row : sh) {
+				for (org.apache.poi.ss.usermodel.Cell cell : row) {
+					if (cell.getCellType() == org.apache.poi.ss.usermodel.CellType.STRING
+							&& amt.equals(cell.getStringCellValue())) {
+						found = true;
+					}
+				}
+			}
+			assertThat(found).as("monetary cell '" + amt + "' found as a STRING cell preserving exact precision").isTrue();
+		}
 	}
 
 	// ------------------------------------------------------------------------------------
