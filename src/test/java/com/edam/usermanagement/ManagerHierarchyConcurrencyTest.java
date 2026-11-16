@@ -120,10 +120,14 @@ class ManagerHierarchyConcurrencyTest extends AbstractPostgreSqlIntegrationTest 
 	}
 
 	@Test
-	@DisplayName("valid linear chain alice→bob→carol is accepted (trigger walks correctly)")
+	@DisplayName("valid linear chain bob→alice, carol→bob is accepted (trigger walks correctly)")
 	void validChainAcceptedByTrigger() {
-		this.jdbc.update("UPDATE users SET manager_id = ? WHERE id = ?", this.carol.getId(), this.bob.getId());
-		this.jdbc.update("UPDATE users SET manager_id = ? WHERE id = ?", this.bob.getId(), this.alice.getId());
+		// Set carol → bob first (bob has no manager yet, trivial), then bob → alice.
+		// The order matters: when we set bob→alice the AFTER trigger walks alice (no manager),
+		// which terminates cleanly. If we reversed the statements we'd transiently point
+		// carol → bob → alice → NULL too; but being explicit avoids ambiguity.
+		this.jdbc.update("UPDATE users SET manager_id = ? WHERE id = ?", this.alice.getId(), this.bob.getId());
+		this.jdbc.update("UPDATE users SET manager_id = ? WHERE id = ?", this.bob.getId(), this.carol.getId());
 		assertThat(this.users.findById(this.bob.getId()).orElseThrow().getManagerId()).isEqualTo(this.alice.getId());
 		assertThat(this.users.findById(this.carol.getId()).orElseThrow().getManagerId()).isEqualTo(this.bob.getId());
 	}
