@@ -105,10 +105,12 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 	 * would defeat the serialisation.
 	 *
 	 * <p>Native SQL because advisory locks are PostgreSQL-specific and have no
-	 * JPA equivalent.
+	 * JPA equivalent. We use {@code PERFORM} inside a DO block (via
+	 * {@code pg_advisory_xact_lock} wrapped in a native UPDATE / SET statement)
+	 * so Hibernate/JDBC does not complain that the call returned a result set.
 	 */
 	@Modifying
-	@Query(value = "SELECT pg_advisory_xact_lock(8721284921372014107);", nativeQuery = true)
+	@Query(value = "DO $$ BEGIN PERFORM pg_advisory_xact_lock(8721284921372014107); END $$;", nativeQuery = true)
 	void acquireManagerHierarchyLock();
 
 }

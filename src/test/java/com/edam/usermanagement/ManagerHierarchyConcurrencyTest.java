@@ -90,10 +90,12 @@ class ManagerHierarchyConcurrencyTest extends AbstractPostgreSqlIntegrationTest 
 	// -----------------------------------------------------------------------------------------
 
 	@Test
-	@DisplayName("direct self-manager assignment is rejected by the database trigger")
+	@DisplayName("direct self-manager assignment is rejected by the database (check constraint + trigger)")
 	void selfManagerRejectedAtDatabaseLevel() {
+		// V5 installs ck_users_not_own_manager which fires BEFORE our AFTER trigger; the trigger
+		// also carries a self-loop guard for safety if the check is ever dropped.
 		assertThatThrownBy(() -> this.jdbc.update("UPDATE users SET manager_id = id WHERE id = ?",
-				this.alice.getId())).hasMessageContaining("cannot be their own manager");
+				this.alice.getId())).hasMessageContaining("ck_users_not_own_manager");
 	}
 
 	@Test
