@@ -138,6 +138,21 @@ def report_test_results() -> None:
                     # real exception is visible even when the outer message is just the
                     # assertion ("expected 200 but was 500"). Emit up to three distinct
                     # Caused-by lines so the full chain is captured.
+                    # The surefire failure body starts with the assertion message then
+                    # the full stack trace. Pull out the first service-frame throw line
+                    # (ExceptionType: message) which is the REAL root cause; Caused-by lines
+                    # follow the stack frames.
+                    exception_lines = []
+                    for line in raw.split("\n"):
+                        stripped = line.strip()
+                        # Exception lines end with a colon + message or just the type name,
+                        # never start with whitespace/"at ..."/"... more"/number.
+                        if (re.match(r"^[a-zA-Z][\w.$]*(?:Exception|Error|Failure|InternalError)", stripped)
+                                and ": " in stripped or re.match(r"^[a-zA-Z][\w.$]+Exception$", stripped)):
+                            if "java.lang.AssertionError" not in stripped:  # the assertion wrapper
+                                exception_lines.append(stripped)
+                    for i, line in enumerate(exception_lines[:3]):
+                        emit("error", f"ROOT_CAUSE {classname}.{name} ({i+1})", line)
                     if raw:
                         causes = re.findall(r"Caused by:\s*([^\n]+)", raw)
                         seen = set()
@@ -146,12 +161,7 @@ def report_test_results() -> None:
                             if line in seen:
                                 continue
                             seen.add(line)
-                            # Strip maven/surefire wrappers from the chain head.
-                            if idx == 0 and re.search(r"MojoFailure|SurefireBooter|ApplicationContext", line):
-                                continue
-                            emit("error", f"ROOT_CAUSE {classname}.{name} ({idx+1})", line)
-                    # Also emit the very first reporting-framework frame so we know *where*
-                    # in the service the exception was thrown (e.g. toRow / mapRow / query).
+                            emit("error", f"CAUSED_BY {classname}.{name} ({idx+1})", line)
                     if raw:
                         first_frame = re.search(r"at com\.edam\.[^)]+\)", raw)
                         if first_frame:

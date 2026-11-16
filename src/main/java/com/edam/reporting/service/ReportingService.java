@@ -128,20 +128,20 @@ public class ReportingService {
 			select r.id,
 			       r.request_number,
 			       r.current_status_code,
-			       'OPEX' as expense_type,
-			       cast(null as text) as requester_name,
+			       cast('OPEX' as text) as expense_type,
+			       cast(null as varchar) as requester_name,
 			       r.requested_by,
-			       cast(null as text) as department_name,
-			       cast(null as text) as branch_name,
-			       cast(null as text) as category_name,
-			       cast(null as text) as subcategory_name,
-			       cast(null as text) as currency_code,
+			       cast(null as varchar) as department_name,
+			       cast(null as varchar) as branch_name,
+			       cast(null as varchar) as category_name,
+			       cast(null as varchar) as subcategory_name,
+			       cast(null as varchar) as currency_code,
 			       r.requested_amount,
 			       r.base_currency_amount,
 			       r.submitted_at,
 			       cast(null as timestamptz) as decided_at,
 			       cast(null as bigint) as decision_age_seconds,
-			       cast(null as text) as last_actor_name
+			       cast(null as varchar) as last_actor_name
 			  from expense_requests r
 			""";
 
@@ -783,21 +783,17 @@ public class ReportingService {
 	}
 
 	private Object[] mapRow(ResultSet rs) throws SQLException {
-		// Use getObject(..., Long.class) so NULL columns come back as null rather than 0.
-		// The primitive getLong() always returns a non-null boxed Long (0 when SQL NULL),
-		// which then survives wasNull() only if we read into the wrapper type first —
-		// reading into a primitive always materialises 0 into the local before we get a
-		// chance to null it, and downstream (Long) casts on 0 vs null both succeed but
-		// the semantics were wrong; more importantly, we keep behaviour consistent with
-		// how Timestamps/BigDecimals are read.
+		// Read typed columns via getObject(idx, Class) where possible so NULL literals in
+		// the projection come back as null of the correct Java type instead of as a
+		// driver-internal placeholder that later fails a (UUID)/(Long) cast.
 		Long ageBoxed = rs.getObject("decision_age_seconds", Long.class);
 		return new Object[] {
-				(UUID) rs.getObject("id"),
+				rs.getObject("id", UUID.class),
 				rs.getString("request_number"),
 				rs.getString("current_status_code"),
 				rs.getString("expense_type"),
 				rs.getString("requester_name"),
-				(UUID) rs.getObject("requested_by"),
+				rs.getObject("requested_by", UUID.class),
 				rs.getString("department_name"),
 				rs.getString("branch_name"),
 				rs.getString("category_name"),
