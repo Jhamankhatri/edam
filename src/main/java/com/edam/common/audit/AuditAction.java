@@ -47,6 +47,8 @@ public enum AuditAction {
 	/** A sign-in attempt failed. */
 	LOGIN_FAILURE,
 	/** Authorization was denied for an authenticated caller. */
-	ACCESS_DENIED
+	ACCESS_DENIED,
+	/** An account lock was cleared by an administrator. */
+	UNLOCK
 
 }

@@ -3,8 +3,11 @@ package com.edam.usermanagement.service;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import com.edam.common.api.ErrorCode;
@@ -214,6 +217,12 @@ public class UserManagementService {
 				&& this.users.existsByEmployeeCodeIgnoreCase(request.employeeCode())) {
 			throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE, "That employee code is already in use.");
 		}
+		// Serialize manager_id mutations cluster-wide to prevent the A→B / B→A write-skew race.
+		// The database AFTER-trigger on users re-checks the chain as a second line of defence and
+		// catches cycles formed within a single transaction.
+		if (request.managerId() != null) {
+			this.users.acquireManagerHierarchyLock();
+		}
 		validateOrganizationReferences(request.departmentId(), request.branchId(), request.managerId(), null);
 
 		User user = new User();
@@ -263,6 +272,11 @@ public class UserManagementService {
 				&& !request.employeeCode().equalsIgnoreCase(user.getEmployeeCode())
 				&& this.users.existsByEmployeeCodeIgnoreCase(request.employeeCode())) {
 			throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE, "That employee code is already in use.");
+		}
+		// Serialize all manager hierarchy mutations to prevent write-skew cycles across transactions;
+		// see create() for the rationale.
+		if (request.managerId() != null || user.getManagerId() != null) {
+			this.users.acquireManagerHierarchyLock();
 		}
 		validateOrganizationReferences(request.departmentId(), request.branchId(), request.managerId(), id);
 
@@ -444,6 +458,43 @@ public class UserManagementService {
 	 * <p>The administrator never sees the new password and never sets it: they can only cause a secure
 	 * link to be issued. This is the difference between "reset" and "take over the account".
 	 */
+	/**
+	 * Return the effective permission codes a user holds across all active, non-expired role
+	 * assignments. Used by the admin UI to surface "what can this user actually do", and is
+	 * read-only — permission enforcement continues to go through {@link EdamPrincipal} at
+	 * request time.
+	 */
+	@Transactional(readOnly = true)
+	public Set<String> effectivePermissions(UUID userId, EdamPrincipal caller) {
+		User user = require(userId);
+		requireAuthorityOver(user, caller);
+		Set<String> perms = new LinkedHashSet<>();
+		Instant now = Instant.now();
+		for (UserRole grant : this.userRoles.findByUserId(userId)) {
+			if (grant.getExpiresAt() != null && grant.getExpiresAt().isBefore(now)) continue;
+			this.roles.findById(grant.getRoleId()).filter(Role::isActive).ifPresent(role ->
+					perms.addAll(role.permissionCodes()));
+		}
+		return Set.copyOf(perms);
+	}
+
+	/**
+	 * Unlock a locked-out user immediately (clear failed-login counter and lockout window).
+	 * Does NOT reset their password; use {@link #triggerPasswordReset} for that.
+	 */
+	@Transactional
+	public UserResponse unlock(UUID userId, EdamPrincipal caller) {
+		User user = require(userId);
+		if (caller != null && userId.equals(caller.userId())) {
+			throw new BusinessException(ErrorCode.VALIDATION_FAILED, "You cannot unlock your own account.");
+		}
+		requireAuthorityOver(user, caller);
+		user.clearFailedLogins();
+		User saved = this.users.save(user);
+		this.audit.record(AuditAction.UNLOCK, "User", userId);
+		return toResponse(saved);
+	}
+
 	@Transactional
 	public boolean triggerPasswordReset(UUID userId, EdamPrincipal caller) {
 		User user = require(userId);
@@ -488,6 +539,23 @@ public class UserManagementService {
 				throw new BusinessException(ErrorCode.VALIDATION_FAILED, "A user cannot be their own manager.");
 			}
 			this.users.findById(managerId).orElseThrow(() -> new ResourceNotFoundException("User", managerId));
+			// Walk the manager chain to reject cycles longer than self-loop (e.g. A→B→C→A). Reporting
+			// loops make escalation unboundable and are always a configuration error.
+			UUID cursor = managerId;
+			java.util.Set<UUID> seen = new java.util.HashSet<>();
+			seen.add(selfId);
+			while (cursor != null) {
+				if (!seen.add(cursor)) {
+					throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+							"That manager assignment would create a cycle in the reporting chain.");
+				}
+				UUID next = this.users.findById(cursor).map(User::getManagerId).orElse(null);
+				if (next != null && next.equals(selfId)) {
+					throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+							"That manager assignment would create a cycle in the reporting chain.");
+				}
+				cursor = next;
+			}
 		}
 	}
 

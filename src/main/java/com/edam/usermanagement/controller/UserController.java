@@ -199,6 +199,26 @@ public class UserController {
 		return ApiResponse.success(CorrelationId.current(), request.getRequestURI());
 	}
 
+	@PostMapping("/{id}/unlock")
+	@EdamPermission(Permissions.USER_MANAGE)
+	@Operation(summary = "Clear a lockout on a user account",
+			description = "Resets failedLoginCount and lockedUntil so the user may authenticate again. "
+					+ "Has no effect on an account that is not locked.")
+	public ApiResponse<UserResponse> unlock(@PathVariable UUID id,
+			@AuthenticationPrincipal EdamPrincipal caller, HttpServletRequest request) {
+		return ok(this.service.unlock(id, caller), request);
+	}
+
+	@GetMapping("/{id}/effective-permissions")
+	@EdamPermission(Permissions.USER_VIEW)
+	@Operation(summary = "Effective permission codes a user currently holds",
+			description = "Union of permissions from all active, non-expired roles assigned to the user. "
+					+ "Deactivated users return an empty set. Intended for admin diagnostics and audit.")
+	public ApiResponse<java.util.Set<String>> effectivePermissions(@PathVariable UUID id,
+			@AuthenticationPrincipal EdamPrincipal caller, HttpServletRequest request) {
+		return ok(this.service.effectivePermissions(id, caller), request);
+	}
+
 	private static <T> ApiResponse<T> ok(T data, HttpServletRequest request) {
 		return ApiResponse.success(data, CorrelationId.current(), request.getRequestURI());
 	}

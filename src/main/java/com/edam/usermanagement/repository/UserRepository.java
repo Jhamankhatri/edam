@@ -9,6 +9,7 @@ import com.edam.usermanagement.model.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -93,5 +94,23 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 			@Param("active") Boolean active, @Param("installationWide") boolean installationWide,
 			@Param("departmentIds") List<UUID> departmentIds, @Param("branchIds") List<UUID> branchIds,
 			@Param("callerId") UUID callerId, Pageable pageable);
+
+	/**
+	 * Acquire a transaction-scoped exclusive advisory lock that serialises all
+	 * manager_id mutations cluster-wide. The lock is identified by a single fixed
+	 * key so every concurrent assignment waits in line; this eliminates the
+	 * write-skew race where two transactions each validate against the pre-image
+	 * and commit a cycle (A→B and B→A). The lock is released automatically at
+	 * transaction commit/rollback; we do not unlock it explicitly because that
+	 * would defeat the serialisation.
+	 *
+	 * <p>Native SQL because advisory locks are PostgreSQL-specific and have no
+	 * JPA equivalent. We use {@code PERFORM} inside a DO block (via
+	 * {@code pg_advisory_xact_lock} wrapped in a native UPDATE / SET statement)
+	 * so Hibernate/JDBC does not complain that the call returned a result set.
+	 */
+	@Modifying
+	@Query(value = "DO $$ BEGIN PERFORM pg_advisory_xact_lock(8721284921372014107); END $$;", nativeQuery = true)
+	void acquireManagerHierarchyLock();
 
 }

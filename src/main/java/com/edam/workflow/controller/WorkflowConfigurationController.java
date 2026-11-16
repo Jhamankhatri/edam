@@ -15,6 +15,7 @@ import com.edam.workflow.dto.WorkflowDtos.RetireRequest;
 import com.edam.workflow.dto.WorkflowDtos.SaveDefinitionRequest;
 import com.edam.workflow.dto.WorkflowDtos.SaveDraftRequest;
 import com.edam.workflow.dto.WorkflowDtos.ValidationResponse;
+import com.edam.workflow.dto.WorkflowDtos.VersionCompareResponse;
 import com.edam.workflow.dto.WorkflowDtos.VersionResponse;
 import com.edam.workflow.service.WorkflowConfigurationService;
 
@@ -145,6 +146,27 @@ public class WorkflowConfigurationController {
 	public ApiResponse<VersionResponse> clonePublished(@PathVariable UUID definitionId,
 			HttpServletRequest request) {
 		return ok(this.service.clonePublishedIntoDraft(definitionId), request);
+	}
+
+	@PostMapping("/{definitionId}/draft/from-version/{sourceVersionId}")
+	@EdamPermission(Permissions.WORKFLOW_MANAGE)
+	@Operation(summary = "Roll back: start a new draft from any prior revision",
+			description = "Creates (or replaces) the definition's editable draft with a copy of the source "
+					+ "revision — published or retired — so that publishing it restores the prior behaviour. "
+					+ "The source revision is never mutated; in-flight requests keep their pinned version.")
+	public ApiResponse<VersionResponse> rollbackIntoDraft(@PathVariable UUID definitionId,
+			@PathVariable UUID sourceVersionId, HttpServletRequest request) {
+		return ok(this.service.rollbackIntoDraft(definitionId, sourceVersionId), request);
+	}
+
+	@GetMapping("/versions/compare")
+	@EdamPermission(Permissions.WORKFLOW_VIEW)
+	@Operation(summary = "Structural diff between two revisions",
+			description = "Reports added, removed and modified steps, states and transitions by code so an "
+					+ "administrator can review exactly what a new version would change before publishing it.")
+	public ApiResponse<VersionCompareResponse> compare(@RequestParam UUID from, @RequestParam UUID to,
+			HttpServletRequest request) {
+		return ok(this.service.compare(from, to), request);
 	}
 
 	// ---------------------------------------------------------------------------------------------

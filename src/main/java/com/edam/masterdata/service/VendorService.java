@@ -127,6 +127,33 @@ public class VendorService {
 		return toResponse(saved);
 	}
 
+	@Transactional
+	public TaxAuthorityResponse updateTaxAuthority(UUID id, SaveTaxAuthorityRequest request) {
+		TaxAuthority authority = this.taxAuthorities.findById(id)
+				.orElseThrow(() -> new ResourceNotFoundException("TaxAuthority", id));
+		String code = normaliseCode(request.code());
+		if (!code.equalsIgnoreCase(authority.getCode()) && this.taxAuthorities.existsByCodeIgnoreCase(code)) {
+			throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE,
+					"A tax authority with code " + code + " exists.");
+		}
+		authority.setCode(code);
+		authority.setName(request.name().trim());
+		authority.setDescription(request.description());
+		TaxAuthority saved = this.taxAuthorities.save(authority);
+		this.audit.record(AuditAction.UPDATE, "TaxAuthority", saved.getId());
+		return toResponse(saved);
+	}
+
+	@Transactional
+	public TaxAuthorityResponse setTaxAuthorityActive(UUID id, boolean active) {
+		TaxAuthority authority = this.taxAuthorities.findById(id)
+				.orElseThrow(() -> new ResourceNotFoundException("TaxAuthority", id));
+		authority.setActive(active);
+		TaxAuthority saved = this.taxAuthorities.save(authority);
+		this.audit.record(active ? AuditAction.ACTIVATE : AuditAction.DEACTIVATE, "TaxAuthority", id);
+		return toResponse(saved);
+	}
+
 	// ------------------------------------------------------------------
 	// Helpers
 	// ------------------------------------------------------------------

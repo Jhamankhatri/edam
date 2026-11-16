@@ -27,6 +27,8 @@ import com.edam.workflow.dto.WorkflowDtos.StepRequest;
 import com.edam.workflow.dto.WorkflowDtos.TransitionRequest;
 import com.edam.workflow.dto.WorkflowDtos.ValidationIssue;
 import com.edam.workflow.dto.WorkflowDtos.ValidationResponse;
+import com.edam.workflow.dto.WorkflowDtos.VersionCompareResponse;
+import com.edam.workflow.dto.WorkflowDtos.VersionDiffEntry;
 import com.edam.workflow.dto.WorkflowDtos.VersionResponse;
 import com.edam.workflow.model.WorkflowDefinition;
 import com.edam.workflow.model.WorkflowState;
@@ -227,6 +229,36 @@ public class WorkflowConfigurationService {
 		WorkflowVersion published = this.versions.findPublished(definitionId)
 			.orElseThrow(() -> new BusinessException(ErrorCode.PRECONDITION_FAILED,
 					"This definition has no published revision to clone."));
+		return cloneIntoDraft(definitionId, published);
+	}
+
+	/**
+	 * Creates (or replaces) the editable draft from any existing revision of the same definition.
+	 *
+	 * <p>This is the rollback-as-new-version path: an administrator can rehydrate a retired revision's
+	 * graph into a new draft, review it, and publish it as the next version. The retired revision itself
+	 * is never mutated — it still governs any in-flight requests that pinned it — so this is an audit-safe
+	 * way to revert behaviour.
+	 */
+	@Transactional
+	public VersionResponse rollbackIntoDraft(UUID definitionId, UUID sourceVersionId) {
+		WorkflowVersion source = requireVersion(sourceVersionId);
+		if (!source.getWorkflowDefinitionId().equals(definitionId)) {
+			throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+					"The source revision does not belong to this workflow definition.");
+		}
+		if (source.getStatus() == WorkflowVersion.Status.DRAFT) {
+			throw new BusinessException(ErrorCode.PRECONDITION_FAILED,
+					"Rollback source must be a published or retired revision, not a draft.");
+		}
+		VersionResponse draft = cloneIntoDraft(definitionId, source);
+		this.audit.record(AuditAction.ROLLBACK, "WorkflowVersion", draft.id());
+		log.info("workflow.rollback_into_draft definitionId={} sourceVersion={} newDraft={}",
+				definitionId, source.getVersionNumber(), draft.versionNumber());
+		return draft;
+	}
+
+	private VersionResponse cloneIntoDraft(UUID definitionId, WorkflowVersion source) {
 		WorkflowVersion draft = this.versions.findByWorkflowDefinitionIdOrderByVersionNumberDesc(definitionId).stream()
 			.filter(WorkflowVersion::isEditable)
 			.findFirst()
@@ -236,18 +268,18 @@ public class WorkflowConfigurationService {
 				created.setVersionNumber(this.versions.maxVersionNumber(definitionId) + 1);
 				return this.versions.save(created);
 			});
-		// Clear whatever the draft held, then re-add the published graph.
+		// Clear whatever the draft held, then re-add the source graph.
 		draft.getSteps().clear();
 		draft.getStates().clear();
 		draft.getTransitions().clear();
 		this.versions.saveAndFlush(draft);
 
-		Map<UUID, String> stateCodesById = published.getStates().stream()
+		Map<UUID, String> stateCodesById = source.getStates().stream()
 			.collect(Collectors.toMap(WorkflowState::getId, WorkflowState::getStateCode));
-		List<StateRequest> statesToAdd = published.getStates().stream()
+		List<StateRequest> statesToAdd = source.getStates().stream()
 			.map(state -> new StateRequest(state.getStateCode(), state.getStateName(), state.getStateType()))
 			.toList();
-		List<StepRequest> stepsToAdd = published.getSteps().stream()
+		List<StepRequest> stepsToAdd = source.getSteps().stream()
 			.map(step -> new StepRequest(step.getStepCode(), step.getStepName(), step.getStepOrder(),
 					step.getApprovalMode(), step.getMinimumApprovals(),
 					step.getApprovers().stream()
@@ -255,7 +287,7 @@ public class WorkflowConfigurationService {
 								approver.getUserId(), approver.getCommitteeLevelId()))
 						.toList()))
 			.toList();
-		List<TransitionRequest> transitionsToAdd = published.getTransitions().stream()
+		List<TransitionRequest> transitionsToAdd = source.getTransitions().stream()
 			.map(transition -> new TransitionRequest(stateCodesById.get(transition.getFromStateId()),
 					transition.getToStateId() == null ? null : stateCodesById.get(transition.getToStateId()),
 					transition.getActionCode(), transition.getConditionRuleId()))
@@ -277,6 +309,137 @@ public class WorkflowConfigurationService {
 		return this.versions.findByWorkflowDefinitionIdOrderByVersionNumberDesc(definitionId).stream()
 			.map(VersionResponse::from)
 			.toList();
+	}
+
+	/**
+	 * Structural diff between two revisions of the <em>same</em> definition.
+	 *
+	 * <p>The comparison is by step code, state code and action code so that re-orderings and approver-list
+	 * edits surface as MODIFIED rather than as a delete plus add. No state is mutated; this is read-only.
+	 */
+	@Transactional(readOnly = true)
+	public VersionCompareResponse compare(UUID fromVersionId, UUID toVersionId) {
+		WorkflowVersion from = requireVersion(fromVersionId);
+		WorkflowVersion to = requireVersion(toVersionId);
+		if (!from.getWorkflowDefinitionId().equals(to.getWorkflowDefinitionId())) {
+			throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+					"Versions to compare must belong to the same workflow definition.");
+		}
+		List<VersionDiffEntry> entries = new ArrayList<>();
+
+		// States: by code
+		Map<String, WorkflowState> fromStates = from.getStates().stream()
+			.collect(Collectors.toMap(WorkflowState::getStateCode, Function.identity()));
+		Map<String, WorkflowState> toStates = to.getStates().stream()
+			.collect(Collectors.toMap(WorkflowState::getStateCode, Function.identity()));
+		for (String code : fromStates.keySet()) {
+			if (!toStates.containsKey(code)) {
+				entries.add(new VersionDiffEntry("STATE", "REMOVED", code,
+						"State removed in revision " + to.getVersionNumber()));
+			} else {
+				WorkflowState fs = fromStates.get(code);
+				WorkflowState ts = toStates.get(code);
+				if (fs.getStateType() != ts.getStateType() || fs.isInitial() != ts.isInitial()
+						|| fs.isTerminal() != ts.isTerminal()
+						|| !java.util.Objects.equals(fs.getStateName(), ts.getStateName())) {
+					entries.add(new VersionDiffEntry("STATE", "MODIFIED", code,
+							"State type/initial/terminal/name differs between revisions"));
+				}
+			}
+		}
+		for (String code : toStates.keySet()) {
+			if (!fromStates.containsKey(code)) {
+				entries.add(new VersionDiffEntry("STATE", "ADDED", code,
+						"State added in revision " + to.getVersionNumber()));
+			}
+		}
+
+		// Steps: by code
+		Map<String, WorkflowStep> fromSteps = from.getSteps().stream()
+			.collect(Collectors.toMap(WorkflowStep::getStepCode, Function.identity()));
+		Map<String, WorkflowStep> toSteps = to.getSteps().stream()
+			.collect(Collectors.toMap(WorkflowStep::getStepCode, Function.identity()));
+		for (String code : fromSteps.keySet()) {
+			if (!toSteps.containsKey(code)) {
+				entries.add(new VersionDiffEntry("STEP", "REMOVED", code,
+						"Step removed in revision " + to.getVersionNumber()));
+			} else {
+				WorkflowStep fs = fromSteps.get(code);
+				WorkflowStep ts = toSteps.get(code);
+				if (fs.getStepOrder() != ts.getStepOrder() || fs.getApprovalMode() != ts.getApprovalMode()
+						|| fs.getMinimumApprovals() != ts.getMinimumApprovals()
+						|| fs.isMandatory() != ts.isMandatory()
+						|| !java.util.Objects.equals(fs.getStepName(), ts.getStepName())
+						|| approversDiffer(fs, ts)) {
+					entries.add(new VersionDiffEntry("STEP", "MODIFIED", code,
+							"Step order, mode, quorum, name or approvers differ between revisions"));
+				}
+			}
+		}
+		for (String code : toSteps.keySet()) {
+			if (!fromSteps.containsKey(code)) {
+				entries.add(new VersionDiffEntry("STEP", "ADDED", code,
+						"Step added in revision " + to.getVersionNumber()));
+			}
+		}
+
+		// Transitions: by (fromStateCode, actionCode)
+		Map<UUID, String> fromStateCodes = from.getStates().stream()
+			.collect(Collectors.toMap(WorkflowState::getId, WorkflowState::getStateCode));
+		Map<UUID, String> toStateCodes = to.getStates().stream()
+			.collect(Collectors.toMap(WorkflowState::getId, WorkflowState::getStateCode));
+		Map<String, WorkflowTransition> fromT = transitionMap(from, fromStateCodes);
+		Map<String, WorkflowTransition> toT = transitionMap(to, toStateCodes);
+		for (Map.Entry<String, WorkflowTransition> e : fromT.entrySet()) {
+			WorkflowTransition tt = toT.get(e.getKey());
+			if (tt == null) {
+				entries.add(new VersionDiffEntry("TRANSITION", "REMOVED", e.getKey(),
+						"Transition removed in revision " + to.getVersionNumber()));
+			} else {
+				String fromTo = describeTarget(e.getValue().getToStateId(), fromStateCodes);
+				String toTo = describeTarget(tt.getToStateId(), toStateCodes);
+				if (!fromTo.equals(toTo)
+						|| !java.util.Objects.equals(e.getValue().getConditionRuleId(), tt.getConditionRuleId())) {
+					entries.add(new VersionDiffEntry("TRANSITION", "MODIFIED", e.getKey(),
+							"Transition target or condition differs between revisions"));
+				}
+			}
+		}
+		for (Map.Entry<String, WorkflowTransition> e : toT.entrySet()) {
+			if (!fromT.containsKey(e.getKey())) {
+				entries.add(new VersionDiffEntry("TRANSITION", "ADDED", e.getKey(),
+						"Transition added in revision " + to.getVersionNumber()));
+			}
+		}
+
+		return new VersionCompareResponse(from.getId(), from.getVersionNumber(), to.getId(),
+				to.getVersionNumber(), entries);
+	}
+
+	private static boolean approversDiffer(WorkflowStep a, WorkflowStep b) {
+		java.util.Set<String> sa = a.getApprovers().stream()
+			.map(ap -> ap.getApproverType().name() + "|" + ap.getRoleId() + "|" + ap.getUserId() + "|"
+					+ ap.getCommitteeLevelId())
+			.collect(Collectors.toSet());
+		java.util.Set<String> sb = b.getApprovers().stream()
+			.map(ap -> ap.getApproverType().name() + "|" + ap.getRoleId() + "|" + ap.getUserId() + "|"
+					+ ap.getCommitteeLevelId())
+			.collect(Collectors.toSet());
+		return !sa.equals(sb);
+	}
+
+	private static Map<String, WorkflowTransition> transitionMap(WorkflowVersion v, Map<UUID, String> idToCode) {
+		Map<String, WorkflowTransition> map = new java.util.LinkedHashMap<>();
+		for (WorkflowTransition t : v.getTransitions()) {
+			String key = idToCode.getOrDefault(t.getFromStateId(), "?") + "::" + t.getActionCode().name();
+			map.put(key, t);
+		}
+		return map;
+	}
+
+	private static String describeTarget(UUID toStateId, Map<UUID, String> idToCode) {
+		if (toStateId == null) return "<terminal>";
+		return idToCode.getOrDefault(toStateId, "?");
 	}
 
 	// ---------------------------------------------------------------------------------------------

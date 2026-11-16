@@ -10,6 +10,7 @@ import com.edam.common.api.PageResponse;
 import com.edam.common.logging.CorrelationId;
 import com.edam.common.security.EdamPermission;
 import com.edam.common.security.Permissions;
+import com.edam.masterdata.dto.MasterDataDtos.CloseExchangeRateRequest;
 import com.edam.masterdata.dto.MasterDataDtos.CurrencyResponse;
 import com.edam.masterdata.dto.MasterDataDtos.ExchangeRateResponse;
 import com.edam.masterdata.dto.MasterDataDtos.SaveCurrencyRequest;
@@ -124,6 +125,16 @@ public class MasterDataController {
 		return created(this.currencies.createRate(body), request);
 	}
 
+	@PostMapping("/exchange-rates/{id}/close")
+	@EdamPermission(Permissions.CURRENCY_MANAGE)
+	@Operation(summary = "Close an open-ended exchange-rate period",
+			description = "Sets effectiveTo (defaulting to now) so the rate stops applying. The rate value is "
+					+ "not edited; conversions that happened under it still resolve to this row.")
+	public ApiResponse<ExchangeRateResponse> closeRate(@PathVariable UUID id,
+			@RequestBody(required = false) CloseExchangeRateRequest body, HttpServletRequest request) {
+		return ok(this.currencies.closeRate(id, body == null ? null : body.endAt()), request);
+	}
+
 	// ------------------------------------------------------------------
 	// Vendors
 	// ------------------------------------------------------------------
@@ -185,6 +196,22 @@ public class MasterDataController {
 	public ResponseEntity<ApiResponse<TaxAuthorityResponse>> createTaxAuthority(
 			@Valid @RequestBody SaveTaxAuthorityRequest body, HttpServletRequest request) {
 		return created(this.vendors.createTaxAuthority(body), request);
+	}
+
+	@PutMapping("/tax-authorities/{id}")
+	@EdamPermission(Permissions.TAX_AUTHORITY_MANAGE)
+	@Operation(summary = "Update a tax authority")
+	public ApiResponse<TaxAuthorityResponse> updateTaxAuthority(@PathVariable UUID id,
+			@Valid @RequestBody SaveTaxAuthorityRequest body, HttpServletRequest request) {
+		return ok(this.vendors.updateTaxAuthority(id, body), request);
+	}
+
+	@PostMapping("/tax-authorities/{id}/activation")
+	@EdamPermission(Permissions.TAX_AUTHORITY_MANAGE)
+	@Operation(summary = "Activate or deactivate a tax authority")
+	public ApiResponse<TaxAuthorityResponse> setTaxAuthorityActive(@PathVariable UUID id,
+			@RequestParam boolean active, HttpServletRequest request) {
+		return ok(this.vendors.setTaxAuthorityActive(id, active), request);
 	}
 
 	private static <T> ApiResponse<T> ok(T data, HttpServletRequest request) {

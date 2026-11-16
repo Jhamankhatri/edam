@@ -1,0 +1,30 @@
+-- Phase 4E — Administration & Product Configuration Management
+--
+-- Phase 4E is a code-only phase on top of the configuration surfaces delivered in
+-- Phases 4A–4D. After review of the existing schema, every new capability (user
+-- unlock, effective-permissions view, tax-authority update/activation, exchange-
+-- rate close, delegation overlap guard, workflow rollback-as-new-version and
+-- version comparison) is enforced at the service or entity layer against tables
+-- and columns that already exist from earlier migrations:
+--
+--   * users.manager_id (V5) + ck_users_not_own_manager cover reporting assignments;
+--     UserManagementService walks the chain to reject transitive cycles.
+--   * users.failed_login_count / users.locked_until (V5) support unlock via
+--     User.clearFailedLogins() which already existed.
+--   * tax_authorities (V7) already has the columns required for update/activation.
+--   * exchange_rates.effective_to (V7) is already nullable and bounded by
+--     ck_exchange_rates_period (effective_to IS NULL OR effective_to > effective_from);
+--     the JPA entity is relaxed to allow endPeriod(Instant) and the service
+--     enforces the only-supported mutation.
+--   * expense_delegation_rules (V7) is already guarded by
+--     ex_expense_delegation_rules_no_overlap; Phase 4E adds a readable pre-check.
+--   * workflow_versions / workflow_steps / workflow_states / workflow_transitions (V8)
+--     already support drafts and publication; rollback reuses the existing clone
+--     path into a new draft.
+--   * audit_event.action is VARCHAR(40) (V3) so the new UNLOCK AuditAction needs
+--     no DDL.
+--
+-- Therefore this migration is intentionally a no-op. The Phase 4E changelist is
+-- captured in code and in PHASE4E_REPORT.md at the repository root.
+
+SELECT 1;

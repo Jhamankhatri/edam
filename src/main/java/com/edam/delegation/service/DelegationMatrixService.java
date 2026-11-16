@@ -114,6 +114,29 @@ public class DelegationMatrixService {
 			throw new BusinessException(ErrorCode.VALIDATION_FAILED, "The end of the period must follow its start.");
 		}
 
+		// Refuse an identically-specific rule that overlaps in time, currency and amount floor: the
+		// resolver cannot break that tie (see DelegationService#resolve) and submission would fail.
+		// Wider/narrower bands and category-vs-subcategory overrides are explicitly allowed because
+		// the precedence rule resolves them deterministically.
+		for (DelegationRule existing : this.rules.list(category.getId(), true)) {
+			if (existing.getNatureId() == null || !existing.getNatureId().equals(nature.getId())) continue;
+			if (existing.getCurrencyId() == null || !existing.getCurrencyId().equals(currency.getId())) continue;
+			boolean sameRequestType = java.util.Objects.equals(existing.getRequestTypeId(), resolveRequestType(request.requestTypeId()));
+			if (!sameRequestType) continue;
+			boolean sameSubSpecificity = java.util.Objects.equals(existing.getSubcategoryId(), subcategoryId);
+			boolean sameFloor = existing.getMinimumAmount().compareTo(minimum) == 0;
+			if (!sameSubSpecificity || !sameFloor) continue;
+			Instant probeEnd = (to == null) ? Instant.parse("9999-12-31T00:00:00Z") : to;
+			Instant existingEnd = (existing.getEffectiveTo() == null) ? Instant.parse("9999-12-31T00:00:00Z") : existing.getEffectiveTo();
+			boolean overlapsInTime = from.isBefore(existingEnd) && existing.getEffectiveFrom().isBefore(probeEnd);
+			if (overlapsInTime && existing.isActive()) {
+				throw new BusinessException(ErrorCode.BUSINESS_RULE_VIOLATION,
+						"An active delegation rule with the same specificity, amount floor and currency already "
+								+ "covers part of that period (" + existing.getId()
+								+ "). The resolver cannot choose between them; adjust the floor or period first.");
+			}
+		}
+
 		DelegationRule rule = new DelegationRule();
 		rule.setCategoryId(category.getId());
 		rule.setSubcategoryId(subcategoryId);
