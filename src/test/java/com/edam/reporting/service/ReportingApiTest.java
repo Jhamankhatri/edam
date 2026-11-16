@@ -30,6 +30,7 @@ import com.edam.expenserequest.repository.ExpenseRequestRepository;
 import com.edam.masterdata.model.Currency;
 import com.edam.masterdata.repository.CurrencyRepository;
 import com.edam.organization.model.Department;
+import com.edam.organization.model.OrganizationProfile;
 import com.edam.organization.repository.DepartmentRepository;
 import com.edam.organization.repository.OrganizationProfileRepository;
 import com.edam.organization.repository.OrganizationUnitRepository;
