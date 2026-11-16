@@ -838,7 +838,6 @@ public class ReportingService {
 	private static String toStringSafe(Object v) {
 		return v == null ? null : v.toString();
 	}
-	}
 
 	private static Long toLong(Object v) {
 		if (v == null) return null;
