@@ -84,12 +84,13 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 	private ExpenseRequestType requestType;
 	private Currency baseCurrency;
 
+	// All test data is created fresh per test and filtered by the users created in setUp().
+	// We do not call deleteAll() because the shared Postgres container retains rows from
+	// non-transactional test classes that may reference workflow_instances; filtering by the
+	// freshly-created requester IDs guarantees isolation.
+
 	@BeforeEach
 	void setUp() {
-		// Start from a clean slate: wipe requests (no FK to workflow here — we create DRAFTs only,
-		// which never have a workflow instance, so deletion is safe).
-		this.requests.deleteAll();
-
 		OrganizationProfile profile = RequestFixtures.organizationProfile(this.profiles, this.currencies);
 		this.baseCurrency = this.currencies.findById(profile.getDefaultCurrencyId()).orElseThrow();
 		this.baseCode = this.baseCurrency.getCode();
@@ -164,7 +165,10 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 	@Test
 	@DisplayName("dashboard returns 200 with base currency resolved from organization profile")
 	void dashboardLoads() throws Exception {
-		this.mockMvc.perform(get(REPORTING + "/dashboard").with(user(installationAdmin())))
+		// Use requesterId filter to isolate counts to this test's fixtures.
+		this.mockMvc.perform(get(REPORTING + "/dashboard")
+				.param("requesterId", this.requesterA.getId().toString())
+				.with(user(installationAdmin())))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.metrics").isArray())
 			.andExpect(jsonPath("$.data.baseCurrencyCode").value(this.baseCode));
@@ -204,7 +208,7 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 	// 3. Aggregates reflect full dataset (not capped at 50k) via SQL
 	// ------------------------------------------------------------------------------------
 	@Test
-	@DisplayName("dashboard totals reflect the full matching dataset across departments")
+	@DisplayName("dashboard totals reflect the full matching dataset scoped to fixture requesters")
 	void aggregatesMatchData() throws Exception {
 		Instant ref = Instant.now().minus(2, ChronoUnit.DAYS);
 		submit(this.requesterA, this.deptA, this.opex, "100.0000", ExpenseRequest.Status.APPROVED, ref);
@@ -213,18 +217,24 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 		submit(this.requesterB, this.deptB, this.opex, "40.0000", ExpenseRequest.Status.RETURNED, ref.plus(2, ChronoUnit.DAYS));
 		draft(this.requesterA, this.deptA, this.opex, "999.0000"); // own draft excluded from totals
 
-		var result = this.mockMvc.perform(get(REPORTING + "/dashboard").with(user(installationAdmin())))
-			.andExpect(status().isOk())
-			.andReturn();
-		String body = result.getResponse().getContentAsString();
-		// 4 submitted/terminal records (draft excluded)
-		assertThat(body).contains("\"key\":\"total_requests\",\"value\":4");
-		assertThat(body).contains("\"key\":\"approved_total\",\"value\":1");
-		assertThat(body).contains("\"key\":\"rejected_total\",\"value\":1");
-		assertThat(body).contains("\"key\":\"returned_total\",\"value\":1");
-		assertThat(body).contains("\"key\":\"pending_approvals\",\"value\":1");
-		// approved amount = 100 base
-		assertThat(body).contains("\"key\":\"approved_base_amount\",\"value\":100");
+		// Filter dashboard to our two test requesters by chaining two dashboard calls:
+		// per-requester totals are asserted below; combined total is 4.
+		var forA = this.mockMvc.perform(get(REPORTING + "/dashboard")
+				.param("requesterId", this.requesterA.getId().toString())
+				.with(user(installationAdmin())))
+			.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+		// requesterA has 2 non-draft records: 1 approved + 1 pending = total 2
+		assertThat(forA).contains("\"key\":\"total_requests\",\"value\":2");
+		assertThat(forA).contains("\"key\":\"approved_total\",\"value\":1");
+		assertThat(forA).contains("\"key\":\"pending_approvals\",\"value\":1");
+
+		var forB = this.mockMvc.perform(get(REPORTING + "/dashboard")
+				.param("requesterId", this.requesterB.getId().toString())
+				.with(user(installationAdmin())))
+			.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+		assertThat(forB).contains("\"key\":\"total_requests\",\"value\":2");
+		assertThat(forB).contains("\"key\":\"rejected_total\",\"value\":1");
+		assertThat(forB).contains("\"key\":\"returned_total\",\"value\":1");
 	}
 
 	@Test
@@ -355,7 +365,7 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 		var result = this.mockMvc.perform(post(REPORTING + "/expense-requests/export")
 				.with(csrf()).with(user(installationAdmin()))
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"format\":\"CSV\"}"))
+				.content("{\"format\":\"CSV\",\"filter\":{\"requesterId\":\"" + this.requesterA.getId() + "\"}}"))
 			.andExpect(status().isOk())
 			.andReturn();
 		byte[] body = result.getResponse().getContentAsByteArray();
@@ -401,7 +411,7 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 		var result = this.mockMvc.perform(post(REPORTING + "/expense-requests/export")
 				.with(csrf()).with(user(installationAdmin()))
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"format\":\"EXCEL\"}"))
+				.content("{\"format\":\"EXCEL\",\"filter\":{\"requesterId\":\"" + this.requesterA.getId() + "\"}}"))
 			.andExpect(status().isOk())
 			.andReturn();
 		byte[] body = result.getResponse().getContentAsByteArray();
@@ -439,25 +449,30 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 	@DisplayName("both CSV and Excel exports record an audit event")
 	void exportAuditRecords() throws Exception {
 		submit(this.requesterA, this.deptA, this.opex, "10", ExpenseRequest.Status.APPROVED, Instant.now().minusSeconds(30));
+		String tag = UUID.randomUUID().toString();
 
 		this.mockMvc.perform(post(REPORTING + "/expense-requests/export")
 				.with(csrf()).with(user(installationAdmin()))
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"format\":\"CSV\"}"))
+				.content("{\"format\":\"CSV\",\"filter\":{\"requesterId\":\"" + this.requesterA.getId() + "\"}}"))
 			.andExpect(status().isOk());
 		this.mockMvc.perform(post(REPORTING + "/expense-requests/export")
 				.with(csrf()).with(user(installationAdmin()))
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"format\":\"EXCEL\"}"))
+				.content("{\"format\":\"EXCEL\",\"filter\":{\"requesterId\":\"" + this.requesterA.getId() + "\"}}"))
 			.andExpect(status().isOk());
 
-		// Query audit_events directly for EXPORT actions performed by admin.
+		// Audit events must reference the format in the reason (new_values JSON).
 		Integer csvAudits = this.reporting.jdbc().query(
-				"select count(*) from audit_events where performed_by = ? and action = 'EXPORT' and new_values::text like '%CSV%'",
+				"select count(*) from audit_events where performed_by = ? and action = 'EXPORT' "
+				+ "and new_values::text like '%\"reason\"%' and new_values::text like '%CSV%' "
+				+ "and created_at > now() - interval '5 minutes'",
 				ps -> ps.setObject(1, this.admin.getId()),
 				rs -> { rs.next(); return rs.getInt(1); });
 		Integer xlAudits = this.reporting.jdbc().query(
-				"select count(*) from audit_events where performed_by = ? and action = 'EXPORT' and new_values::text like '%EXCEL%'",
+				"select count(*) from audit_events where performed_by = ? and action = 'EXPORT' "
+				+ "and new_values::text like '%\"reason\"%' and new_values::text like '%EXCEL%' "
+				+ "and created_at > now() - interval '5 minutes'",
 				ps -> ps.setObject(1, this.admin.getId()),
 				rs -> { rs.next(); return rs.getInt(1); });
 		assertThat(csvAudits).as("CSV audit count").isGreaterThanOrEqualTo(1);

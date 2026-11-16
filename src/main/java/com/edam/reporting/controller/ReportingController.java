@@ -70,14 +70,20 @@ public class ReportingController {
 					+ "captured at submission; no FX re-conversion is performed.")
 	public ApiResponse<DashboardSummary> dashboard(
 			@RequestParam(required = false) UUID departmentId,
+			@RequestParam(required = false) UUID branchId,
 			@RequestParam(required = false) UUID categoryId,
+			@RequestParam(required = false) UUID subcategoryId,
+			@RequestParam(required = false) UUID requesterId,
+			@RequestParam(required = false) String expenseType,
+			@RequestParam(required = false) String currency,
 			@RequestParam(required = false) ExpenseRequest.Status status,
 			@RequestParam(required = false) Instant from,
 			@RequestParam(required = false) Instant to,
+			@RequestParam(required = false) String search,
 			@RequestParam(required = false) Integer lookbackDays,
 			@AuthenticationPrincipal EdamPrincipal caller, HttpServletRequest request) {
-		ReportFilter filter = new ReportFilter(departmentId, null, categoryId, null, null, null,
-				status, from, to, null, null);
+		ReportFilter filter = new ReportFilter(departmentId, branchId, categoryId, subcategoryId,
+				requesterId, expenseType, status, from, to, currency, search);
 		return ok(this.reporting.dashboard(caller, filter, lookbackDays), request);
 	}
 
