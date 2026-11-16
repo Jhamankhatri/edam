@@ -17,31 +17,36 @@
 --    for transitive cycles. A trigger is belt-and-braces against a future bulk
 --    update that bypasses the service, so a reporting loop cannot land in the
 --    database even by mistake. Cycles would make escalation unboundable.
+--
+--    V5 already installs ck_users_not_own_manager (self-loop guard); we keep
+--    that constraint and add a transitive-cycle walk.
 -- ----------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION fn_user_no_manager_cycle()
 RETURNS trigger AS $$
 DECLARE
-    cursor uuid;
-    seen   uuid[];
+    mgr   uuid;
+    seen  uuid[];
 BEGIN
     IF NEW.manager_id IS NULL THEN
         RETURN NEW;
     END IF;
+    -- Self-loop is already enforced by ck_users_not_own_manager; guard again here
+    -- in case that constraint is dropped in some deployment.
     IF NEW.manager_id = NEW.id THEN
         RAISE EXCEPTION 'A user cannot be their own manager (user_id=%)', NEW.id;
     END IF;
     seen := ARRAY[NEW.id];
-    cursor := NEW.manager_id;
-    WHILE cursor IS NOT NULL LOOP
-        IF cursor = ANY(seen) THEN
+    mgr := NEW.manager_id;
+    LOOP
+        IF mgr IS NULL THEN
+            EXIT;
+        END IF;
+        IF mgr = ANY(seen) THEN
             RAISE EXCEPTION 'Manager assignment would create a cycle in the reporting chain (user_id=%)', NEW.id;
         END IF;
-        seen := seen || cursor;
-        SELECT manager_id INTO cursor FROM users WHERE id = cursor;
-        IF cursor = NEW.id THEN
-            RAISE EXCEPTION 'Manager assignment would create a cycle in the reporting chain (user_id=%)', NEW.id;
-        END IF;
+        seen := seen || mgr;
+        SELECT manager_id INTO mgr FROM users WHERE id = mgr;
     END LOOP;
     RETURN NEW;
 END;
@@ -56,11 +61,9 @@ CREATE TRIGGER trg_user_no_manager_cycle
 -- ----------------------------------------------------------------------------
 -- 2. Exchange rate end-dating
 --
---    The effective_to column was previously marked updatable=false in JPA only
---    (closing a rate period was impossible via the API without rebuilding the
---    row). Phase 4E adds an explicit close endpoint; the column stays in the
---    table (no DDL change), but we add a guard that refuses to back-date a
---    closure to before the rate's start, matching the service-level rule.
+--    The effective_to column was previously set updatable=false in JPA only.
+--    Phase 4E adds an explicit close endpoint; we add a CHECK constraint that
+--    refuses to close a period before its start, matching the service rule.
 -- ----------------------------------------------------------------------------
 
 ALTER TABLE exchange_rates
@@ -70,10 +73,7 @@ ALTER TABLE exchange_rates
         CHECK (effective_to IS NULL OR effective_to > effective_from);
 
 -- ----------------------------------------------------------------------------
--- 3. Workflow audit: every non-draft version transition should note the actor.
---
---    No schema change required; the audit table already stores the action and
---    target id. A comment documents the ROLLBACK action Phase 4E introduces.
+-- 3. Audit documentation comment
 -- ----------------------------------------------------------------------------
 
 COMMENT ON TABLE audit_log IS
