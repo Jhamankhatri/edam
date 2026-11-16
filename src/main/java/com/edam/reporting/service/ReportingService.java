@@ -1,6 +1,7 @@
 package com.edam.reporting.service;
 
 import java.math.BigDecimal;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -8,10 +9,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,8 +19,8 @@ import java.util.UUID;
 
 import com.edam.common.audit.AuditAction;
 import com.edam.common.audit.AuditRecorder;
-import com.edam.common.exception.BusinessException;
 import com.edam.common.api.ErrorCode;
+import com.edam.common.exception.BusinessException;
 import com.edam.common.security.DataScope;
 import com.edam.common.security.EdamPrincipal;
 import com.edam.expenseconfiguration.model.ExpenseCategory;
@@ -43,7 +42,6 @@ import com.edam.reporting.dto.ReportingDtos.RegisterRow;
 import com.edam.reporting.dto.ReportingDtos.RegisterTotals;
 import com.edam.reporting.dto.ReportingDtos.TrendPoint;
 import com.edam.usermanagement.repository.UserRepository;
-import com.edam.workflow.model.WorkflowTask;
 import com.edam.workflow.repository.TasksRepository;
 
 import org.slf4j.Logger;
@@ -52,6 +50,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.PreparedStatementSetter;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -84,14 +84,21 @@ public class ReportingService {
 	/** Maximum number of rows an export is allowed to emit; enforced before streaming. */
 	public static final int EXPORT_ROW_LIMIT = 200_000;
 
-	/** Allow-listed sort columns for the register. */
-	private static final Set<String> ALLOWED_SORT_COLUMNS = Set.of(
-			"submitted_at", "request_number", "current_status_code",
-			"base_currency_amount", "requested_amount");
+	/** PostgreSQL JDBC fetch size used for streaming exports; keeps result-set memory bounded. */
+	static final int EXPORT_FETCH_SIZE = 512;
 
-	private static final String DEFAULT_SORT_COL = "submitted_at";
+	/** Allow-listed sort columns for the register. Each maps to a trusted SQL expression over the aliased base table {@code r}. */
+	private static final Map<String, String> ALLOWED_SORT_COLUMNS = Map.ofEntries(
+			Map.entry("submittedAt", "r.submitted_at"),
+			Map.entry("requestNumber", "r.request_number"),
+			Map.entry("currentStatusCode", "r.current_status_code"),
+			Map.entry("status", "r.current_status_code"),
+			Map.entry("baseCurrencyAmount", "r.base_currency_amount"),
+			Map.entry("requestedAmount", "r.requested_amount"));
 
-	/** Columns the CSV/Excel register export is allowed to emit (whitelist). */
+	private static final String DEFAULT_SORT_COL = "r.submitted_at";
+
+	/** Columns the CSV/Excel register export emits (whitelist). Names match the SQL column aliases used in REGISTER_SELECT. */
 	public static final List<String> REGISTER_COLUMNS = List.of(
 			"request_number", "current_status_code", "expense_type", "requester_name", "department_name",
 			"branch_name", "category_name", "subcategory_name", "currency_code",
@@ -99,50 +106,77 @@ public class ReportingService {
 			"decision_age_seconds", "last_actor_name");
 
 	/**
-	 * FROM/JOIN fragment reused by every dashboard aggregate, count, and trend query so that
-	 * the same columns and aliases are always available. The REGISTER_SELECT projection
-	 * adds display columns on top of these joins.
+	 * FROM/JOIN fragment for dashboard aggregate queries (joins only what is referenced
+	 * by the filter predicates and group-bys).
 	 */
-	private static final String REGISTER_FROM = """
+	private static final String DASHBOARD_FROM = """
 			   from expense_requests r
-			   left join users u on u.id = r.requested_by
-			   left join departments d on d.id = r.department_id
-			   left join branches b on b.id = r.branch_id
 			   left join expense_categories ec on ec.id = r.expense_category_id
-			   left join expense_subcategories esc on esc.id = r.expense_subcategory_id
 			   left join currencies c on c.id = r.currency_id
 			""";
 
-	/** Note on {@code decided_at}/{@code last_actor_name}: we filter {@code workflow_actions}
-	 * to the terminal action codes {@code ('APPROVE','REJECT')} only. REVERT/FORWARD/ESCALATE
-	 * are intermediate routing actions and must not be mistaken for the final decision.
-	 * CANCEL actions are represented by the {@code CANCELLED} request status rather than a
-	 * row in {@code workflow_actions}.
+	/**
+	 * FROM/JOIN fragment used by the register count query. Must expose every alias referenced
+	 * by whereClause(dashboard=false) — at the moment that's {@code r}, {@code ec} (expenseType
+	 * filter) and {@code c} (currency filter). Keep this in sync with REGISTER_SELECT.
 	 */
-	// Register projection: plain columns from the main request table with LEFT JOINed display
-	// fields. Final-action columns are NULL here — resolving them for every row requires a
-	// correlated/lateral lookup that fails at runtime when current_workflow_instance_id is
-	// NULL (DRAFT rows plus fixtures left by other test classes in the shared container).
-	// The export/register UI doesn't depend on them at this point.
+	private static final String REGISTER_COUNT_FROM = """
+			   from expense_requests r
+			   left join expense_categories ec on ec.id = r.expense_category_id
+			   left join currencies c on c.id = r.currency_id
+			""";
+
+	/**
+	 * Register projection: 1:1 with expense_requests rows. All LEFT JOINs guarantee no row
+	 * multiplication: users/departments/branches/categories/subcategories/currencies are all
+	 * many-to-one from r, and the decision lateral returns at most one row per request.
+	 *
+	 * <p>Decision resolution: we LEFT JOIN LATERAL to the most recent APPROVE or REJECT
+	 * workflow_action on the request's current workflow instance. REVERT / FORWARD / ESCALATE
+	 * are intermediate routing actions and never count as the final decision. CANCELLED
+	 * requests carry no terminal workflow action, so decided_at/last_actor remain NULL for
+	 * them (status itself communicates the outcome). decision_age_seconds is computed in SQL
+	 * as EXTRACT(EPOCH FROM (decided_at - submitted_at)) when both timestamps exist, else NULL;
+	 * it is normalised to 0 in the mapper for the primitive field.
+	 */
 	static final String REGISTER_SELECT = """
 			select r.id,
 			       r.request_number,
 			       r.current_status_code,
-			       'OPEX'                 as expense_type,
-			       null::varchar          as requester_name,
+			       coalesce(ec.expense_type, 'OPEX')::text as expense_type,
+			       (coalesce(u.first_name,'') || case when u.first_name is not null and u.last_name is not null then ' ' else '' end || coalesce(u.last_name,'')) as requester_name,
 			       r.requested_by,
-			       null::varchar          as department_name,
-			       null::varchar          as branch_name,
-			       null::varchar          as category_name,
-			       null::varchar          as subcategory_name,
-			       null::varchar          as currency_code,
+			       d.department_name,
+			       b.branch_name,
+			       ec.category_name,
+			       esc.subcategory_name,
+			       c.currency_code,
 			       r.requested_amount,
 			       r.base_currency_amount,
 			       r.submitted_at,
-			       null::timestamptz      as decided_at,
-			       0::bigint              as decision_age_seconds,
-			       null::varchar          as last_actor_name
+			       dec.action_at as decided_at,
+			       case when dec.action_at is not null and r.submitted_at is not null
+			            then extract(epoch from (dec.action_at - r.submitted_at))::bigint
+			            else null end as decision_age_seconds,
+			       (coalesce(ua.first_name,'') || case when ua.first_name is not null and ua.last_name is not null then ' ' else '' end || coalesce(ua.last_name,'')) as last_actor_name
 			  from expense_requests r
+			  left join users u on u.id = r.requested_by
+			  left join departments d on d.id = r.department_id
+			  left join branches b on b.id = r.branch_id
+			  left join expense_categories ec on ec.id = r.expense_category_id
+			  left join expense_subcategories esc on esc.id = r.expense_subcategory_id
+			  left join currencies c on c.id = r.currency_id
+			  left join lateral (
+			      select wa.action_at, wa.performed_by
+			        from workflow_instances wi
+			        join workflow_tasks     wt  on wt.workflow_instance_id = wi.id
+			        join workflow_actions   wa  on wa.workflow_task_id   = wt.id
+			       where wi.id = r.current_workflow_instance_id
+			         and wa.action_code in ('APPROVE','REJECT')
+			       order by wa.action_at desc, wa.id desc
+			       limit 1
+			  ) dec on true
+			  left join users ua on ua.id = dec.performed_by
 			""";
 
 	private final DepartmentRepository departments;
@@ -190,7 +224,7 @@ public class ReportingService {
 
 		String baseCode = baseCurrencyCode();
 
-		// Core metrics via one aggregate query
+		// Core metrics via one aggregate query (dashboard=true => DRAFTs excluded).
 		MetricAggregate agg = this.jdbc.query(
 				"select count(*) as total_count,\n"
 				+ "       coalesce(sum(r.base_currency_amount), 0) as total_base,\n"
@@ -201,7 +235,7 @@ public class ReportingService {
 				+ "       count(*) filter (where r.current_status_code = 'REJECTED') as rejected_count,\n"
 				+ "       count(*) filter (where r.current_status_code = 'RETURNED') as returned_count,\n"
 				+ "       count(*) filter (where r.current_status_code = 'CANCELLED') as cancelled_count\n"
-				+ REGISTER_FROM
+				+ DASHBOARD_FROM
 				+ whereClause(scope, filter, true),
 				ps -> bindWhere(ps, scope, filter, true, 1),
 				rs -> {
@@ -218,11 +252,11 @@ public class ReportingService {
 							rs.getLong("cancelled_count"));
 				});
 
-		// Pending my approval (inbox) is always scoped to the caller's own tasks, not the filter.
+		// Pending my approval (inbox) is always scoped to the caller's own tasks.
 		long pendingMyApproval = this.tasks.countByAssignedUserIdAndStatus(caller.userId(),
 				com.edam.workflow.model.WorkflowTask.TaskStatus.PENDING);
 
-		// "My requests" = submitted by me and not DRAFT, regardless of filter scope.
+		// "My requests" = submitted by me and not DRAFT.
 		long myRequests = this.jdbc.query(
 				"select count(*) from expense_requests r where r.requested_by = ? and r.current_status_code <> 'DRAFT'",
 				ps -> ps.setObject(1, caller.userId()),
@@ -240,34 +274,33 @@ public class ReportingService {
 				card("my_requests", "My requests", BigDecimal.valueOf(myRequests), null, "Requests you have submitted"),
 				card("total_base_amount", "Total amount", agg.totalBase, baseCode, "Base-currency total of matching requests"));
 
-		// Distributions
 		List<DistributionRow> statusDist = distribution(
 				"select r.current_status_code as k, count(*) as cnt "
-				+ REGISTER_FROM
+				+ DASHBOARD_FROM
 				+ whereClause(scope, filter, true) + " group by r.current_status_code",
 				scope, filter, true,
 				rs -> labelFor(ExpenseRequest.Status.valueOf(rs.getString("k"))));
 
 		List<DistributionRow> typeDist = distribution(
 				"select coalesce(ec.expense_type,'OPEX')::text as k, count(*) as cnt "
-				+ REGISTER_FROM
+				+ DASHBOARD_FROM
 				+ whereClause(scope, filter, true) + " group by 1",
 				scope, filter, true,
 				rs -> rs.getString("k"));
 
 		List<DistributionRow> deptDist = distributionWithAmount(
 				"select r.department_id as k, count(*) as cnt, coalesce(sum(r.base_currency_amount),0) as amt "
-				+ REGISTER_FROM
+				+ DASHBOARD_FROM
 				+ whereClause(scope, filter, true) + " group by r.department_id",
 				scope, filter, true,
-				rs -> departmentName((UUID) rs.getObject("k")), 10);
+				rs -> departmentName(toUuid(rs.getObject("k"))), 10);
 
 		List<DistributionRow> catDist = distributionWithAmount(
 				"select r.expense_category_id as k, count(*) as cnt, coalesce(sum(r.base_currency_amount),0) as amt "
-				+ REGISTER_FROM
+				+ DASHBOARD_FROM
 				+ whereClause(scope, filter, true) + " group by r.expense_category_id",
 				scope, filter, true,
-				rs -> categoryName((UUID) rs.getObject("k")), 10);
+				rs -> categoryName(toUuid(rs.getObject("k"))), 10);
 
 		List<TrendPoint> trend = buildTrendSql(scope, filter, trendFrom);
 
@@ -286,11 +319,10 @@ public class ReportingService {
 		Pageable safe = safePageable(pageable);
 
 		String where = whereClause(scope, filter, false);
-		// Run count first — it is the simplest query and its error message is easiest to read.
 		long total;
 		try {
 			total = this.jdbc.query(
-					"select count(*) from expense_requests r " + where,
+					"select count(*) " + REGISTER_COUNT_FROM + where,
 					ps -> bindWhere(ps, scope, filter, false, 1),
 					rs -> { rs.next(); return rs.getLong(1); });
 		} catch (RuntimeException rex) {
@@ -298,23 +330,27 @@ public class ReportingService {
 			throw rex;
 		}
 
-		String sql = REGISTER_SELECT + where + " order by r.submitted_at desc nulls last limit ? offset ?";
+		String orderBy = orderByClause(safe);
+		String sql = REGISTER_SELECT + where + orderBy + " limit ? offset ?";
 		List<Object[]> rows;
 		try {
 			rows = this.jdbc.query(sql,
-				ps -> {
-					int idx = bindWhere(ps, scope, filter, false, 1);
-					ps.setInt(idx++, safe.getPageSize());
-					ps.setLong(idx++, safe.getOffset());
-				},
-				(rs, n) -> mapRow(rs));
+					ps -> {
+						int idx = bindWhere(ps, scope, filter, false, 1);
+						ps.setInt(idx++, safe.getPageSize());
+						ps.setLong(idx++, safe.getOffset());
+					},
+					(rs, n) -> mapRow(rs));
 		} catch (RuntimeException rex) {
 			log.error("register page SQL failed: {}\nSQL: {}", rex.getMessage(), sql, rex);
 			throw rex;
 		}
 
 		List<RegisterRow> mapped = rows.stream().map(this::toRow).toList();
-		RegisterTotals totals = computeTotalsSql(scope, filter);
+		// Register totals use the SAME visibility as the paged register (dashboard=false), so
+		// total/totals.totalCount agree and own DRAFTs remain visible. Dashboard metrics
+		// keep their own DRAFT-excluding whereClause(...,true) path.
+		RegisterTotals totals = computeTotalsSql(scope, filter, false);
 		return new RegisterResponse(mapped, total, safe.getPageNumber(), safe.getPageSize(), totals, REGISTER_COLUMNS);
 	}
 
@@ -327,7 +363,7 @@ public class ReportingService {
 		Scope scope = resolveScope(caller);
 		validateFilter(filter);
 		return this.jdbc.query(
-				"select count(*) from expense_requests r "
+				"select count(*) " + REGISTER_COUNT_FROM
 				+ whereClause(scope, filter, false),
 				ps -> bindWhere(ps, scope, filter, false, 1),
 				rs -> { rs.next(); return rs.getLong(1); });
@@ -340,30 +376,31 @@ public class ReportingService {
 		Scope scope = resolveScope(caller);
 		validateFilter(filter);
 		recordExportAudit(caller, formatTag, filter);
-		// Write BOM + header
 		writer.write('\uFEFF');
 		writeCsvRow(writer, REGISTER_COLUMNS);
-		this.jdbc.query(
-				REGISTER_SELECT + whereClause(scope, filter, false) + " order by r.submitted_at desc nulls last limit ?",
+		String sql = REGISTER_SELECT + whereClause(scope, filter, false)
+				+ orderByClause(defaultExportSort()) + " limit ?";
+		streamQuery(sql,
 				ps -> {
 					int idx = bindWhere(ps, scope, filter, false, 1);
 					ps.setInt(idx++, EXPORT_ROW_LIMIT);
+					// PostgreSQL cursor streaming requires a positive fetch size and a read-only
+					// transaction (which @Transactional(readOnly=true) provides: auto-commit is off).
+					ps.setFetchSize(EXPORT_FETCH_SIZE);
+					ps.setFetchDirection(ResultSet.FETCH_FORWARD);
 				},
-				(ResultSet rs) -> {
-					int row = 0;
-					try {
-						while (rs.next()) {
-							List<String> vals = new ArrayList<>(REGISTER_COLUMNS.size());
-							for (String col : REGISTER_COLUMNS) vals.add(rs.getString(col));
-							writeCsvRow(writer, vals);
-							row++;
-						}
+				rs -> {
+					List<String> vals = new ArrayList<>(REGISTER_COLUMNS.size());
+					for (String col : REGISTER_COLUMNS) {
+						vals.add(rs.getString(col));
 					}
-					catch (java.io.IOException iox) {
+					try {
+						writeCsvRow(writer, vals);
+					} catch (java.io.IOException iox) {
 						throw new RuntimeException(iox);
 					}
-					return null;
 				});
+		writer.flush();
 	}
 
 	/** Streams the register as XLSX via SXSSF to the given output stream; caller closes. */
@@ -373,11 +410,8 @@ public class ReportingService {
 		Scope scope = resolveScope(caller);
 		validateFilter(filter);
 		recordExportAudit(caller, "EXCEL", filter);
-		// SXSSF with a 100-row window flushes to temp files; keeps memory bounded.
 		try (org.apache.poi.xssf.streaming.SXSSFWorkbook wb = new org.apache.poi.xssf.streaming.SXSSFWorkbook(100)) {
 			org.apache.poi.ss.usermodel.Sheet sheet = wb.createSheet("Expense requests");
-			// Fixed reasonable widths instead of autoSizeColumn (which iterates all rows and
-			// breaks streaming bounds).
 			int[] widths = { 4000, 3000, 3000, 4500, 4000, 3500, 4500, 4500, 2500, 3500, 4000, 5000, 5000, 4000, 4500 };
 			for (int i = 0; i < widths.length; i++) sheet.setColumnWidth(i, widths[i]);
 
@@ -398,39 +432,53 @@ public class ReportingService {
 			}
 
 			int[] rowNum = { 1 };
-			this.jdbc.query(
-					REGISTER_SELECT + whereClause(scope, filter, false) + " order by r.submitted_at desc nulls last limit ?",
+			String sql = REGISTER_SELECT + whereClause(scope, filter, false)
+					+ orderByClause(defaultExportSort()) + " limit ?";
+			streamQuery(sql,
 					ps -> {
 						int idx = bindWhere(ps, scope, filter, false, 1);
 						ps.setInt(idx++, EXPORT_ROW_LIMIT);
+						ps.setFetchSize(EXPORT_FETCH_SIZE);
+						ps.setFetchDirection(ResultSet.FETCH_FORWARD);
 					},
-					(ResultSet rs) -> {
-						try {
-							while (rs.next()) {
-								org.apache.poi.ss.usermodel.Row row = sheet.createRow(rowNum[0]++);
-								for (int c = 0; c < REGISTER_COLUMNS.size(); c++) {
-									String col = REGISTER_COLUMNS.get(c);
-									org.apache.poi.ss.usermodel.Cell cell = row.createCell(c);
-									setExcelCell(cell, col, rs);
-								}
-							}
+					rs -> {
+						org.apache.poi.ss.usermodel.Row row = sheet.createRow(rowNum[0]++);
+						for (int c = 0; c < REGISTER_COLUMNS.size(); c++) {
+							org.apache.poi.ss.usermodel.Cell cell = row.createCell(c);
+							setExcelCell(cell, REGISTER_COLUMNS.get(c), rs);
 						}
-						catch (SQLException sx) {
-							throw new RuntimeException(sx);
-						}
-						return null;
 					});
 			wb.write(out);
-			// Dispose of SXSSF temp files deterministically.
 			wb.dispose();
 		}
+	}
+
+	/**
+	 * Internal helper: run a SQL query with a forward-only, server-side cursor (via fetch size)
+	 * and invoke {@code rowHandler} once per row. Uses Spring's RowCallbackHandler which
+	 * processes rows as they arrive and never accumulates them into a List. The
+	 * {@code @Transactional(readOnly=true)} on the public entry points keeps the connection
+	 * open and auto-commit off for the whole stream, which is required for PostgreSQL to
+	 * honour {@code setFetchSize}.
+	 */
+	private void streamQuery(String sql, PreparedStatementSetter pss, RowConsumer rowHandler) {
+		this.jdbc.query(sql, pss, (RowCallbackHandler) rs -> {
+			// RowCallbackHandler.processRow is invoked once per row by Spring while the
+			// ResultSet is still open, so we can serialize rows straight to the writer / SXSSF
+			// sheet without buffering the whole set in heap.
+			rowHandler.accept(rs);
+		});
+	}
+
+	@FunctionalInterface
+	private interface RowConsumer {
+		void accept(ResultSet rs) throws SQLException;
 	}
 
 	private void setExcelCell(org.apache.poi.ss.usermodel.Cell cell, String col, ResultSet rs)
 			throws SQLException {
 		switch (col) {
-			// Monetary: write as text to preserve NUMERIC(19,4) precision exactly. Excel displays
-			// the text value without binary-floating rounding; users who need math can convert in-place.
+			// Monetary: write as text to preserve NUMERIC(19,4) precision exactly.
 			case "requested_amount", "base_currency_amount" -> {
 				BigDecimal v = rs.getBigDecimal(col);
 				if (v != null) cell.setCellValue(v.toPlainString());
@@ -438,6 +486,7 @@ public class ReportingService {
 			case "decision_age_seconds" -> {
 				long v = rs.getLong(col);
 				if (!rs.wasNull()) cell.setCellValue(v);
+				else cell.setCellValue(0);
 			}
 			case "submitted_at", "decided_at" -> {
 				Timestamp ts = rs.getTimestamp(col);
@@ -468,24 +517,21 @@ public class ReportingService {
 
 	/**
 	 * Returns a WHERE clause that enforces scope AND the caller's filter, already starting
-	 * with {@code " where ..."}. Set {@code dashboard=true} when the query does NOT join
-	 * departments/branches/subcategories/currencies/users via the REGISTER_SELECT aliases
-	 * (i.e. aggregate queries). In that case the WHERE clause joins/aliases what it needs.
+	 * with {@code " where ..."}. Set {@code dashboard=true} for aggregate queries (metrics,
+	 * distributions, trend, register totals); that path excludes DRAFTs across the board
+	 * because drafts are a private workspace and must not appear in visible metrics. Set
+	 * {@code dashboard=false} for register/export page queries; own DRAFTs remain visible
+	 * via the scope predicate, but non-scoped users cannot see others' drafts.
 	 */
 	String whereClause(Scope scope, ReportingDtos.ReportFilter f, boolean dashboard) {
 		StringBuilder sql = new StringBuilder(" where 1=1");
-		// Dashboard aggregates and register TOTALS always exclude DRAFTs — drafts are a
-		// private workspace of their requester and are not counted in visible metrics. The
-		// paged register continues to show them (to the requester / scoped manager) via the
-		// scope predicate so that users can resume work on their drafts.
 		if (dashboard) {
 			sql.append(" and r.current_status_code <> 'DRAFT'");
 		}
-		// Scope predicates
+		// Scope predicates. Self-only (no dept/branch scopes) restricts strictly to own requests,
+		// including own DRAFTs. Depts/branch scopes add non-DRAFT visibility to scoped org units
+		// while own DRAFTs remain visible via the requested_by arm.
 		if (!scope.installationWide()) {
-			// Self-only with no department/branch scopes restricts to own requests (including drafts).
-			// When the user has additional department/branch scopes, their own drafts are still visible
-			// because requested_by covers them; non-DRAFTs in scoped depts/branches are visible too.
 			sql.append(" and (r.requested_by = ?");
 			if (!scope.departmentIds().isEmpty() || !scope.branchIds().isEmpty()) {
 				sql.append(" or (r.current_status_code <> 'DRAFT' and (");
@@ -501,7 +547,6 @@ public class ReportingService {
 			}
 			sql.append(")");
 		}
-		// Filters
 		if (f != null) {
 			if (f.status() != null) sql.append(" and r.current_status_code = ?");
 			if (f.departmentId() != null) sql.append(" and r.department_id = ?");
@@ -509,23 +554,10 @@ public class ReportingService {
 			if (f.categoryId() != null) sql.append(" and r.expense_category_id = ?");
 			if (f.subcategoryId() != null) sql.append(" and r.expense_subcategory_id = ?");
 			if (f.requesterId() != null) sql.append(" and r.requested_by = ?");
-			if (dashboard) {
-				if (f.expenseType() != null && !f.expenseType().isBlank())
-					// Categories flagged BOTH appear under both OPEX and CAPEX views.
-					sql.append(" and coalesce(ec.expense_type,'OPEX')::text in (?, 'BOTH')");
-				if (f.currency() != null && !f.currency().isBlank())
-					sql.append(" and c.currency_code = ?");
-			} else {
-				// Register queries do not join ec/c (to keep the projection minimal and avoid
-				// breaking on shared-container fixtures with NULL FKs); these filters are applied
-				// via exists-subqueries against the lookup tables.
-				if (f.expenseType() != null && !f.expenseType().isBlank())
-					sql.append(" and exists (select 1 from expense_categories _ec where _ec.id = r.expense_category_id and coalesce(_ec.expense_type,'OPEX')::text in (?, 'BOTH'))");
-				if (f.currency() != null && !f.currency().isBlank())
-					sql.append(" and exists (select 1 from currencies _c where _c.id = r.currency_id and _c.currency_code = ?)");
-			}
-			// Inclusive date boundaries (matches typical register semantics; start-of-day / end-of-day
-			// handling is the caller's responsibility as Instants).
+			if (f.expenseType() != null && !f.expenseType().isBlank())
+				sql.append(" and coalesce(ec.expense_type,'OPEX')::text in (?, 'BOTH')");
+			if (f.currency() != null && !f.currency().isBlank())
+				sql.append(" and c.currency_code = ?");
 			if (f.from() != null) sql.append(" and r.submitted_at >= ?");
 			if (f.to() != null) sql.append(" and r.submitted_at <= ?");
 			if (f.search() != null && !f.search().isBlank()) {
@@ -540,7 +572,7 @@ public class ReportingService {
 		return String.join(",", java.util.Collections.nCopies(n, "?"));
 	}
 
-	int bindWhere(java.sql.PreparedStatement ps, Scope scope, ReportingDtos.ReportFilter f,
+	int bindWhere(PreparedStatement ps, Scope scope, ReportingDtos.ReportFilter f,
 			boolean dashboard, int start) throws SQLException {
 		int i = start;
 		if (!scope.installationWide()) {
@@ -572,31 +604,35 @@ public class ReportingService {
 		return i;
 	}
 
-	private String orderByClause(Pageable p) {
+	/**
+	 * Build a trusted ORDER BY clause from the validated pageable. Unsupported sort properties
+	 * fall back to the default sort ({@code submitted_at DESC}). {@code r.id DESC} is appended
+	 * as a deterministic tiebreaker so pagination never skips or duplicates rows when the
+	 * primary sort key has duplicates.
+	 */
+	String orderByClause(Pageable p) {
 		StringBuilder sb = new StringBuilder(" order by ");
-		boolean first = true;
+		boolean any = false;
 		for (Sort.Order o : p.getSort()) {
-			String col = o.getProperty();
-			// Register select only exposes r.* columns (projection is minimal); always qualify.
-			String sqlCol = switch (col) {
-				case "submittedAt" -> "submitted_at";
-				case "requestNumber" -> "request_number";
-				case "currentStatusCode", "status" -> "current_status_code";
-				case "baseCurrencyAmount" -> "base_currency_amount";
-				case "requestedAmount" -> "requested_amount";
-				default -> null;
-			};
-			if (sqlCol == null || !ALLOWED_SORT_COLUMNS.contains(sqlCol)) {
-				sqlCol = DEFAULT_SORT_COL;
-			}
-			if (!first) sb.append(", ");
-			sb.append("r.").append(sqlCol);
-			if (o.isDescending()) sb.append(" desc");
-			else sb.append(" asc");
+			String expr = ALLOWED_SORT_COLUMNS.get(o.getProperty());
+			if (expr == null) continue;
+			if (any) sb.append(", ");
+			sb.append(expr);
+			sb.append(o.isDescending() ? " desc" : " asc");
 			sb.append(" nulls last");
-			first = false;
+			any = true;
 		}
+		if (!any) {
+			sb.append(DEFAULT_SORT_COL).append(" desc nulls last");
+		}
+		// Deterministic tiebreaker: when the primary sort has ties (e.g. same submitted_at),
+		// order by id to guarantee stable pagination windows.
+		sb.append(", r.id desc");
 		return sb.toString();
+	}
+
+	private Pageable defaultExportSort() {
+		return PageRequest.of(0, EXPORT_ROW_LIMIT, Sort.by(Sort.Direction.DESC, "submittedAt"));
 	}
 
 	// ------------------------------------------------------------------------------------
@@ -617,19 +653,19 @@ public class ReportingService {
 					case ALL, ORGANIZATION_UNIT -> {}
 				}
 			}
-			// SELF without any department/branch scope: enforce strict self-only (no dept/branch leak).
-			// SELF combined with dept/branch scopes: the SQL OR still matches own drafts + scoped non-drafts,
-			// which is the correct interpretation.
-			if (selfOnly && departmentIds.isEmpty() && branchIds.isEmpty()) {
-				// Predicate already narrows to r.requested_by = callerId because no or-branch is added.
-			}
 		}
 		return new Scope(caller.userId(), installationWide, selfOnly, List.copyOf(departmentIds), List.copyOf(branchIds));
 	}
 
-	private RegisterTotals computeTotalsSql(Scope scope, ReportingDtos.ReportFilter filter) {
-		return this.jdbc.query(
-				"select count(*) as total_count,\n"
+	/**
+	 * Register totals. When {@code dashboard=true} (used for the dashboard aggregate metric
+	 * cards), DRAFTs are excluded; when {@code dashboard=false} (used for the register
+	 * response totals), totals reflect the SAME set as the paged register — own DRAFTs
+	 * included, others' drafts excluded by the scope predicate.
+	 */
+	private RegisterTotals computeTotalsSql(Scope scope, ReportingDtos.ReportFilter filter, boolean dashboard) {
+		String from = dashboard ? DASHBOARD_FROM : REGISTER_COUNT_FROM;
+		String sql = "select count(*) as total_count,\n"
 				+ "       coalesce(sum(r.base_currency_amount),0) as total_amt,\n"
 				+ "       count(*) filter (where r.current_status_code in ('SUBMITTED','IN_PROGRESS')) as pending,\n"
 				+ "       coalesce(sum(r.base_currency_amount) filter (where r.current_status_code in ('SUBMITTED','IN_PROGRESS')),0) as pending_amt,\n"
@@ -638,9 +674,10 @@ public class ReportingService {
 				+ "       count(*) filter (where r.current_status_code='REJECTED') as rejected,\n"
 				+ "       count(*) filter (where r.current_status_code='RETURNED') as returned,\n"
 				+ "       count(*) filter (where r.current_status_code='CANCELLED') as cancelled\n"
-				+ REGISTER_FROM
-				+ whereClause(scope, filter, true),
-				ps -> bindWhere(ps, scope, filter, true, 1),
+				+ from
+				+ whereClause(scope, filter, dashboard);
+		return this.jdbc.query(sql,
+				ps -> bindWhere(ps, scope, filter, dashboard, 1),
 				rs -> {
 					rs.next();
 					return new RegisterTotals(
@@ -693,8 +730,6 @@ public class ReportingService {
 	}
 
 	private List<TrendPoint> buildTrendSql(Scope scope, ReportingDtos.ReportFilter filter, Instant trendFrom) {
-		// Daily buckets: count submitted requests per UTC day over the lookback window.
-		// We query buckets in SQL with date_trunc('day', submitted_at) at UTC to avoid loading rows.
 		LocalDate startDay = LocalDate.ofInstant(trendFrom, ZoneOffset.UTC);
 		LocalDate today = LocalDate.ofInstant(Instant.now(), ZoneOffset.UTC);
 		Map<LocalDate, Long> buckets = new LinkedHashMap<>();
@@ -702,7 +737,7 @@ public class ReportingService {
 
 		this.jdbc.query(
 				"select date_trunc('day', r.submitted_at at time zone 'UTC') as day, count(*) as cnt "
-				+ REGISTER_FROM
+				+ DASHBOARD_FROM
 				+ whereClause(scope, mergeTrendFilter(filter, trendFrom), true)
 				+ " group by 1",
 				ps -> bindWhere(ps, scope, mergeTrendFilter(filter, trendFrom), true, 1),
@@ -723,7 +758,6 @@ public class ReportingService {
 	}
 
 	private ReportingDtos.ReportFilter mergeTrendFilter(ReportingDtos.ReportFilter base, Instant trendFrom) {
-		// For trend, force `from = trendFrom` and keep the caller's `to` if any.
 		return new ReportingDtos.ReportFilter(
 				base == null ? null : base.departmentId(),
 				base == null ? null : base.branchId(),
@@ -765,41 +799,27 @@ public class ReportingService {
 	}
 
 	private Pageable safePageable(Pageable p) {
-		if (p == null) return PageRequest.of(0, 50, Sort.by(Sort.Direction.DESC, DEFAULT_SORT_COL));
+		if (p == null) return PageRequest.of(0, 50, Sort.by(Sort.Direction.DESC, "submittedAt"));
 		int size = Math.min(Math.max(p.getPageSize(), 1), 500);
-		// Validate sort columns; fall back to default if not allowlisted.
+		// Validate sort columns; drop unsupported properties silently so we never concatenate
+		// raw client input into SQL. orderByClause() adds the default + deterministic tiebreaker.
 		List<Sort.Order> orders = new ArrayList<>();
 		if (p.getSort().isSorted()) {
 			for (Sort.Order o : p.getSort()) {
-				String prop = o.getProperty();
-				String sqlCol = switch (prop) {
-					case "submittedAt" -> "submitted_at";
-					case "requestNumber" -> "request_number";
-					case "currentStatusCode", "status" -> "current_status_code";
-					case "baseCurrencyAmount" -> "base_currency_amount";
-					case "requestedAmount" -> "requested_amount";
-					default -> null;
-				};
-				if (sqlCol != null && ALLOWED_SORT_COLUMNS.contains(sqlCol)) {
+				if (ALLOWED_SORT_COLUMNS.containsKey(o.getProperty())) {
 					orders.add(o);
 				}
 			}
 		}
-		Sort sort = orders.isEmpty() ? Sort.by(Sort.Direction.DESC, DEFAULT_SORT_COL) : Sort.by(orders);
+		Sort sort = orders.isEmpty() ? Sort.by(Sort.Direction.DESC, "submittedAt") : Sort.by(orders);
 		return PageRequest.of(p.getPageNumber(), size, sort);
 	}
 
 	private Object[] mapRow(ResultSet rs) throws SQLException {
-		// Avoid ResultSet.getObject(col, Class) for numeric columns: the PG JDBC driver
-		// returns BigInteger/BigDecimal from SUM/COUNT projections and for NULL numeric
-		// literals cast to BIGINT, which then fails a (Long) cast downstream. Use the
-		// typed getter + wasNull() idiom, which always returns the expected primitive/
-		// wrapper.
+		// Use typed getters + wasNull() to avoid BigInteger→Long ClassCastExceptions across
+		// PG driver versions. UUIDs are read via getString for the same reason.
 		long agePrim = rs.getLong("decision_age_seconds");
 		Long ageBoxed = rs.wasNull() ? null : agePrim;
-		// Read UUID columns via getString + UUID.fromString: getObject(idx, UUID.class)
-		// can return PGobject with type "uuid" instead of java.util.UUID depending on the
-		// driver version / connection properties, which then fails toRow's (UUID) cast.
 		UUID id = toUuid(rs.getString("id"));
 		UUID requestedBy = toUuid(rs.getString("requested_by"));
 		return new Object[] {
@@ -824,14 +844,9 @@ public class ReportingService {
 	}
 
 	private RegisterRow toRow(Object[] r) {
-		// Defensive numeric coercion: PG JDBC returns BigInteger for COUNT/SUM over BIGINT
-		// and BigDecimal for NUMERIC literals, even when the value is NULL. Casting either
-		// to Long/BigDecimal directly throws ClassCastException if the JDK version chose a
-		// different wrapper. Convert explicitly.
-		// Defensive coercion for every column. Avoid ALL direct casts: JDBC returns
-		// unexpected wrapper types for NULL literals and SUM/COUNT projections (BigInteger
-		// for BIGINT, PGobject for enums, byte[]/Clob for TEXT), and each of those fails
-		// a direct (String)/(BigDecimal)/(UUID) cast.
+		// Defensive coercion for every column: JDBC returns BigInteger for BIGINT COUNT/SUM
+		// projections and PGobject for enums/uuids depending on driver version. Convert
+		// explicitly instead of relying on direct casts.
 		return new RegisterRow(
 				toUuid(r[0]),
 				toStringSafe(r[1]), toStringSafe(r[2]), toStringSafe(r[3]),
@@ -847,7 +862,7 @@ public class ReportingService {
 	}
 
 	private static Long toLong(Object v) {
-		if (v == null) return null;
+		if (v == null) return 0L;       // primitive field: 0 when unknown
 		if (v instanceof Long l) return l;
 		if (v instanceof Number n) return n.longValue();
 		return Long.parseLong(v.toString());
@@ -873,8 +888,8 @@ public class ReportingService {
 	private static UUID toUuid(Object v) {
 		if (v == null) return null;
 		if (v instanceof UUID u) return u;
-		if (v instanceof String s) return UUID.fromString(s);
-		throw new ClassCastException("Cannot convert " + v.getClass().getName() + " to UUID: " + v);
+		if (v instanceof String s && !s.isEmpty()) return UUID.fromString(s);
+		return null;
 	}
 
 	private String baseCurrencyCode() {
@@ -920,7 +935,6 @@ public class ReportingService {
 	static String csvCell(String value) {
 		if (value == null) return "";
 		String v = value;
-		// Find first non-whitespace character to detect formula injection triggers.
 		int idx = 0;
 		while (idx < v.length()) {
 			char ch = v.charAt(idx);
@@ -933,8 +947,6 @@ public class ReportingService {
 		boolean needsQuote = v.indexOf(',') >= 0 || v.indexOf('"') >= 0
 				|| v.indexOf('\n') >= 0 || v.indexOf('\r') >= 0;
 		String escaped = needsQuote ? "\"" + v.replace("\"", "\"\"") + "\"" : v;
-		// The apostrophe must be the very first byte of the field so Excel/Sheets/LibreOffice
-		// never sees the leading special character — place it outside any quoting.
 		return formulaTrigger ? "'" + escaped : escaped;
 	}
 
