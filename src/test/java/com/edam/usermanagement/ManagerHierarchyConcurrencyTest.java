@@ -109,17 +109,12 @@ class ManagerHierarchyConcurrencyTest extends AbstractPostgreSqlIntegrationTest 
 	@DisplayName("a transitive cycle introduced by raw SQL is rejected by the AFTER trigger")
 	void transitiveCycleRejectedByTrigger() {
 		// Build alice → bob → carol via raw SQL (two statements in one tx so AFTER sees chain).
-		assertThatThrownBy(() -> this.jdbc.update(connection -> {
-			try (var s = connection.createStatement()) {
-				s.executeUpdate("UPDATE users SET manager_id = '" + this.bob.getId()
-						+ "' WHERE id = '" + this.alice.getId() + "'");
-				s.executeUpdate("UPDATE users SET manager_id = '" + this.carol.getId()
-						+ "' WHERE id = '" + this.bob.getId() + "'");
-				// Cycle: carol → alice would make alice→bob→carol→alice
-				return s.executeUpdate("UPDATE users SET manager_id = '" + this.alice.getId()
-						+ "' WHERE id = '" + this.carol.getId() + "'");
-			}
-		})).hasMessageContaining("cycle");
+		// Build alice → bob → carol in a preceding tx, then attempt carol → alice which closes the loop.
+		this.jdbc.update("UPDATE users SET manager_id = ? WHERE id = ?", this.bob.getId(), this.alice.getId());
+		this.jdbc.update("UPDATE users SET manager_id = ? WHERE id = ?", this.carol.getId(), this.bob.getId());
+		assertThatThrownBy(() -> this.jdbc.update(
+				"UPDATE users SET manager_id = ? WHERE id = ?", this.alice.getId(), this.carol.getId()))
+			.hasMessageContaining("cycle");
 	}
 
 	@Test
