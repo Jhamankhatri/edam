@@ -117,23 +117,16 @@ def report_test_results() -> None:
                         # is still named, but the binary bytes don't flood the list.
                         emit("error", f"FAIL {classname}.{name}",
                              f"{message or 'binary payload assertion'} [binary response body elided]")
-                        continue
                     else:
-                        body = " ".join(raw.split())
-                        if message and body and message not in body:
-                            detail = f"{message} | {body}"
-                        else:
-                            detail = body or message or tag
-                        # Preserve newlines for readability of Caused-by chains.
-                        detail_raw = f"{message}\n{raw}" if message and message not in raw else (raw or message)
-                        kind = "error"
-                    src_line = None
-                    src_file = None
-                    m = re.search(r"\((\w+\.java):(\d+)\)", raw or "")
-                    if m:
-                        src_file = m.group(1)
-                        src_line = int(m.group(2))
-                    emit(kind, f"FAIL {classname}.{name}", detail_raw, file=src_file, line=src_line)
+                        # One short headline per failure so all failures remain visible
+                        # even when there are many of them.
+                        short = (message or tag)[:500]
+                        emit("error", f"FAIL {classname}.{name}", short)
+                        # Emit Caused-by lines so SQL exceptions are visible.
+                        if raw:
+                            causes = re.findall(r"Caused by:\s*([^\n]+)", raw)
+                            for idx, c in enumerate(causes[:2]):
+                                emit("error", f"CAUSED_BY {classname}.{name} ({idx+1})", c.strip()[:600])
                     # Surface the first Caused-by line(s) as ROOT_CAUSE annotations so the
                     # real exception is visible even when the outer message is just the
                     # assertion ("expected 200 but was 500"). Emit up to three distinct
