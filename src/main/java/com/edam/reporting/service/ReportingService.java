@@ -783,8 +783,14 @@ public class ReportingService {
 	}
 
 	private Object[] mapRow(ResultSet rs) throws SQLException {
-		long age = rs.getLong("decision_age_seconds");
-		Long ageBoxed = rs.wasNull() ? null : age;
+		// Use getObject(..., Long.class) so NULL columns come back as null rather than 0.
+		// The primitive getLong() always returns a non-null boxed Long (0 when SQL NULL),
+		// which then survives wasNull() only if we read into the wrapper type first —
+		// reading into a primitive always materialises 0 into the local before we get a
+		// chance to null it, and downstream (Long) casts on 0 vs null both succeed but
+		// the semantics were wrong; more importantly, we keep behaviour consistent with
+		// how Timestamps/BigDecimals are read.
+		Long ageBoxed = rs.getObject("decision_age_seconds", Long.class);
 		return new Object[] {
 				(UUID) rs.getObject("id"),
 				rs.getString("request_number"),

@@ -134,15 +134,28 @@ def report_test_results() -> None:
                         src_file = m.group(1)
                         src_line = int(m.group(2))
                     emit(kind, f"FAIL {classname}.{name}", detail_raw, file=src_file, line=src_line)
-                    # If the failure body contains a Caused-by chain, surface the deepest
-                    # PSQLException/SQL error as its own root-cause annotation so it isn't
-                    # lost behind the assertion wrapper.
+                    # Surface the first Caused-by line(s) as ROOT_CAUSE annotations so the
+                    # real exception is visible even when the outer message is just the
+                    # assertion ("expected 200 but was 500"). Emit up to three distinct
+                    # Caused-by lines so the full chain is captured.
                     if raw:
                         causes = re.findall(r"Caused by:\s*([^\n]+)", raw)
-                        for c in reversed(causes):
-                            if re.search(r"SQL|PSQL|JDBC|DataAccess|BadSqlGrammar|PostgreSQL", c):
-                                emit("error", f"ROOT_CAUSE {classname}.{name}", c.strip())
-                                break
+                        seen = set()
+                        for idx, c in enumerate(causes[:4]):
+                            line = c.strip()
+                            if line in seen:
+                                continue
+                            seen.add(line)
+                            # Strip maven/surefire wrappers from the chain head.
+                            if idx == 0 and re.search(r"MojoFailure|SurefireBooter|ApplicationContext", line):
+                                continue
+                            emit("error", f"ROOT_CAUSE {classname}.{name} ({idx+1})", line)
+                    # Also emit the very first reporting-framework frame so we know *where*
+                    # in the service the exception was thrown (e.g. toRow / mapRow / query).
+                    if raw:
+                        first_frame = re.search(r"at com\.edam\.[^)]+\)", raw)
+                        if first_frame:
+                            emit("notice", f"THREW_AT {classname}.{name}", first_frame.group(0))
 
 
 def report_log(log: str) -> None:
