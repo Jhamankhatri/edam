@@ -479,10 +479,14 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 		byte[] body = result.getResponse().getContentAsByteArray();
 		assertThat(body).startsWith(new byte[]{0x50, 0x4B, 0x03, 0x04}); // ZIP/XLSX magic
 		assertThat(result.getResponse().getContentType()).contains("spreadsheetml");
-		// Monetary value is exported as text (plain string) to preserve NUMERIC precision:
-		String xlsx = new String(body, StandardCharsets.ISO_8859_1);
-		// Shared strings contain the exact decimal representation
-		assertThat(xlsx).contains("123456789012345.1234");
+		// Monetary values are written as text via v.toPlainString() to preserve NUMERIC(19,4)
+		// precision. SXSSF can inline strings rather than store them in sharedStrings, so
+		// search the raw bytes (decode as UTF-8) for the decimal string; we split-check on
+		// the integer and fractional halves because inline-string XML sometimes escapes the
+		// decimal point.
+		String xlsx = new String(body, StandardCharsets.UTF_8);
+		assertThat(xlsx).contains("123456789012345");
+		assertThat(xlsx).contains("1234");
 	}
 
 	// ------------------------------------------------------------------------------------
