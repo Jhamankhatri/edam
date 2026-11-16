@@ -870,7 +870,6 @@ public class ReportingService {
 		if (v instanceof String s) return UUID.fromString(s);
 		throw new ClassCastException("Cannot convert " + v.getClass().getName() + " to UUID: " + v);
 	}
-	}
 
 	private String baseCurrencyCode() {
 		return this.profiles.findFirstByActiveTrue()
