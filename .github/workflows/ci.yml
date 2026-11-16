@@ -146,6 +146,7 @@ jobs:
 
       - name: Upload diagnostic logs and reports (failure only)
         if: failure()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: ci-diagnostics
@@ -153,18 +154,20 @@ jobs:
             build.log
             target/surefire-reports/TEST-*.txt
             target/surefire-reports/TEST-*.xml
-          retention-days: 3
-          if-no-files-found: warn
+          retention-days: 1
+          if-no-files-found: ignore
           compression-level: 9
 
       - name: Upload WAR
         if: success()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: edam-war
           path: target/edam.war
           retention-days: 7
-          if-no-files-found: error
+          if-no-files-found: warn
+          overwrite: true
 
   # Renders the JSP views from the packaged executable WAR, which is the artifact that is
   # actually deployed. Spring Boot cannot render JSPs inside an embedded test container, so
