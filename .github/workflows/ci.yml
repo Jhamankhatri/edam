@@ -82,9 +82,25 @@ jobs:
           fi
           echo "----- DIAGNOSTIC EXCERPT -----"
           grep -nE "\[ERROR\]|Caused by:|APPLICATION FAILED|COMPILATION ERROR|cannot find symbol|Tests run:" build.log | head -80
-          echo "----- FIRST SUREFIRE FAILURE REPORT -----"
-          firstf=$(ls target/surefire-reports/TEST-com.edam.api.ConfigurationApiTest.txt 2>/dev/null)
-          if [ -n "$firstf" ]; then head -n 120 "$firstf"; else echo "(no surefire report for ConfigurationApiTest)"; fi
+          echo "----- ALL SUREFAILURE FAILURE REPORTS (first 200 lines each) -----"
+          shopt -s nullglob
+          fail_count=0
+          for f in target/surefire-reports/TEST-*.txt; do
+            # surefire puts failures/errors after "<<< FAILURE!" / "<<< ERROR!" markers; also include any
+            # file that has at least one failing test line.
+            if grep -qE '<<< (FAILURE|ERROR)!|Failures: [1-9]|Errors: [1-9]' "$f"; then
+              fail_count=$((fail_count+1))
+              echo
+              echo "=========================================="
+              echo "=== $f ==="
+              echo "=========================================="
+              head -n 200 "$f"
+            fi
+          done
+          if [ "$fail_count" -eq 0 ]; then
+            echo "(no surefire failure reports found in target/surefire-reports)"
+            ls -la target/surefire-reports/ 2>/dev/null | head -20 || true
+          fi
 
       - name: Fail the job
         if: steps.build.outputs.rc != 0
