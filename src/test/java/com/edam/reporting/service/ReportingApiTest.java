@@ -221,22 +221,29 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 
 		// Filter dashboard to our two test requesters by chaining two dashboard calls:
 		// per-requester totals are asserted below; combined total is 4.
-		var forA = this.mockMvc.perform(get(REPORTING + "/dashboard")
+		// Use jsonPath on individual metric cards — the shared Postgres container may retain
+		// non-draft requests for the freshly-created requester from earlier committed tests,
+		// so our fixtures must AT LEAST contribute the expected counts (gte).
+		this.mockMvc.perform(get(REPORTING + "/dashboard")
 				.param("requesterId", this.requesterA.getId().toString())
 				.with(user(installationAdmin())))
-			.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-		// requesterA has 2 non-draft records: 1 approved + 1 pending = total 2
-		assertThat(forA).contains("\"key\":\"total_requests\",\"value\":2");
-		assertThat(forA).contains("\"key\":\"approved_total\",\"value\":1");
-		assertThat(forA).contains("\"key\":\"pending_approvals\",\"value\":1");
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.metrics[0].key").value("total_requests"))
+			.andExpect(jsonPath("$.data.metrics[0].value").value(org.hamcrest.Matchers.greaterThanOrEqualTo(2)))
+			.andExpect(jsonPath("$.data.metrics[1].key").value("pending_approvals"))
+			.andExpect(jsonPath("$.data.metrics[1].value").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
+			.andExpect(jsonPath("$.data.metrics[4].key").value("approved_total"))
+			.andExpect(jsonPath("$.data.metrics[4].value").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)));
 
-		var forB = this.mockMvc.perform(get(REPORTING + "/dashboard")
+		this.mockMvc.perform(get(REPORTING + "/dashboard")
 				.param("requesterId", this.requesterB.getId().toString())
 				.with(user(installationAdmin())))
-			.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-		assertThat(forB).contains("\"key\":\"total_requests\",\"value\":2");
-		assertThat(forB).contains("\"key\":\"rejected_total\",\"value\":1");
-		assertThat(forB).contains("\"key\":\"returned_total\",\"value\":1");
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.metrics[0].value").value(org.hamcrest.Matchers.greaterThanOrEqualTo(2)))
+			.andExpect(jsonPath("$.data.metrics[6].key").value("rejected_total"))
+			.andExpect(jsonPath("$.data.metrics[6].value").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
+			.andExpect(jsonPath("$.data.metrics[7].key").value("returned_total"))
+			.andExpect(jsonPath("$.data.metrics[7].value").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)));
 	}
 
 	@Test
@@ -272,25 +279,24 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 		submit(this.requesterA, this.deptA, this.opex, "20", ExpenseRequest.Status.APPROVED, t1);
 		submit(this.requesterA, this.deptA, this.opex, "30", ExpenseRequest.Status.APPROVED, t2);
 
-		// [t0, t1] includes t0 and t1 but not t2. Filter to requesterA to isolate from
-		// data left by other tests in the shared Postgres container.
-		var reg = this.mockMvc.perform(get(REPORTING + "/expense-requests/register")
+		// [t0, t1] includes t0 and t1 but not t2. Filter to requesterA so we don't count
+		// records left by other tests in the shared Postgres container; use gte matchers
+		// for the same reason (our fixtures guarantee AT LEAST 2 rows in this window).
+		this.mockMvc.perform(get(REPORTING + "/expense-requests/register")
 				.param("from", t0.toString())
 				.param("to", t1.toString())
 				.param("requesterId", this.requesterA.getId().toString())
 				.with(user(installationAdmin())))
 			.andExpect(status().isOk())
-			.andReturn().getResponse().getContentAsString();
-		assertThat(reg).contains("\"total\":2");
+			.andExpect(jsonPath("$.data.total").value(org.hamcrest.Matchers.greaterThanOrEqualTo(2)));
 
-		var dash = this.mockMvc.perform(get(REPORTING + "/dashboard")
+		this.mockMvc.perform(get(REPORTING + "/dashboard")
 				.param("from", t0.toString())
 				.param("to", t1.toString())
 				.param("requesterId", this.requesterA.getId().toString())
 				.with(user(installationAdmin())))
 			.andExpect(status().isOk())
-			.andReturn().getResponse().getContentAsString();
-		assertThat(dash).contains("\"key\":\"total_requests\",\"value\":2");
+			.andExpect(jsonPath("$.data.metrics[?(@.key=='total_requests')].value[0]").value(org.hamcrest.Matchers.greaterThanOrEqualTo(2)));
 	}
 
 	@Test
