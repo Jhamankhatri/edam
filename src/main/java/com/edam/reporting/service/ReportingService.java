@@ -141,16 +141,15 @@ public class ReportingService {
 			"""
 			+ REGISTER_FROM + """
 			   left join lateral (
-			     select wa.action_at as decided_at, wa.performed_by as performed_by
-			       from workflow_actions wa
-			      where wa.workflow_task_id in
-			            (select wt.id from workflow_tasks wt
-			              where wt.workflow_instance_id = r.current_workflow_instance_id
-			                and wt.completed_at is not null)
-			        and wa.action_code in ('APPROVE','REJECT')
-			      order by wa.action_at desc
+			     select _wa.action_at as decided_at, _wa.performed_by as performed_by
+			       from workflow_tasks _wt
+			       join workflow_actions _wa on _wa.workflow_task_id = _wt.id
+			      where _wt.workflow_instance_id = r.current_workflow_instance_id
+			        and _wt.completed_at is not null
+			        and _wa.action_code in ('APPROVE','REJECT')
+			      order by _wa.action_at desc
 			      limit 1
-			   ) fa on true
+			   ) fa on r.current_workflow_instance_id is not null
 			   left join users fau on fau.id = fa.performed_by
 			""";
 

@@ -47,12 +47,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.test.annotation.Rollback;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@Transactional
+@Rollback
 @DisplayName("Reporting: dashboard, register, exports")
 class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 
@@ -129,13 +133,15 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 
 	// ---- Request fixture ----
 	private ExpenseRequest draft(User requester, Department dept, ExpenseCategory cat, String amount) {
-		String rn = "TST-" + UUID.randomUUID().toString().substring(0, 8);
+		// Unique "RPT-" prefix isolates reporting-test fixtures from request_numbers used by
+		// other test classes in the shared Postgres container.
+		String rn = "RPT-" + UUID.randomUUID();
 		ExpenseRequest r = new ExpenseRequest(rn, requester.getId());
 		r.setJustification("Fixture");
 		r.setPlacement(dept.getId(), null);
 		r.setMoney(new BigDecimal(amount), this.baseCurrency.getId(), new BigDecimal(amount), null);
 		r.setClassification(this.requestType.getId(), cat.getId(), null,
-				RequestFixtures.nature(this.natures, "TN-" + UUID.randomUUID().toString().substring(0, 4)).getId());
+				RequestFixtures.nature(this.natures, "RN-" + UUID.randomUUID().toString().substring(0, 6)).getId());
 		return this.requests.save(r);
 	}
 
