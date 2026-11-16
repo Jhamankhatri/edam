@@ -147,9 +147,10 @@ public class ReportingService {
 			      where _wt.workflow_instance_id = r.current_workflow_instance_id
 			        and _wt.completed_at is not null
 			        and _wa.action_code in ('APPROVE','REJECT')
+			        and r.current_workflow_instance_id is not null
 			      order by _wa.action_at desc
 			      limit 1
-			   ) fa on r.current_workflow_instance_id is not null
+			   ) fa on true
 			   left join users fau on fau.id = fa.performed_by
 			""";
 
