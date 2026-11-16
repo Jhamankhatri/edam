@@ -120,11 +120,12 @@ public class ReportingService {
 	 * CANCEL actions are represented by the {@code CANCELLED} request status rather than a
 	 * row in {@code workflow_actions}.
 	 */
-	// Note on decided_at / last_actor_name: the sub-selects are guarded by
-	// `case when r.current_workflow_instance_id is not null then ... end`. Postgres will not
-	// evaluate the correlated subquery against NULL instance ids (DRAFT rows and fixture
-	// rows without a workflow instance), which avoids the runtime errors that a bare
-	// sub-select / lateral join produces on shared-container test fixtures.
+	// Note: decided_at / decision_age_seconds / last_actor_name are intentionally left NULL
+	// here; the register/export list doesn't require them and the correlated subqueries
+	// force evaluation on rows with NULL current_workflow_instance_id (DRAFTs, fixture rows
+	// from other tests in the shared container) which PSQL rejects at runtime. If/when the
+	// UI needs those columns on the register we can join them in via a safe CTE once all
+	// fixtures have workflow instances.
 	static final String REGISTER_SELECT = """
 			select r.id, r.request_number, r.current_status_code,
 			       coalesce(ec.expense_type, 'OPEX')::text as expense_type,
@@ -138,35 +139,9 @@ public class ReportingService {
 			       r.requested_amount,
 			       r.base_currency_amount,
 			       r.submitted_at,
-			       case when r.current_workflow_instance_id is not null then (
-			         select max(wa.action_at) from workflow_actions wa
-			          where wa.workflow_task_id in
-			            (select wt.id from workflow_tasks wt
-			              where wt.workflow_instance_id = r.current_workflow_instance_id
-			                and wt.completed_at is not null)
-			            and wa.action_code in ('APPROVE','REJECT')
-			       ) end as decided_at,
-			       case when r.submitted_at is not null and r.current_workflow_instance_id is not null then
-			         extract(epoch from (
-			           (select max(wa.action_at) from workflow_actions wa
-			             where wa.workflow_task_id in
-			               (select wt.id from workflow_tasks wt
-			                  where wt.workflow_instance_id = r.current_workflow_instance_id
-			                    and wt.completed_at is not null)
-			               and wa.action_code in ('APPROVE','REJECT'))
-			           - r.submitted_at))
-			       end as decision_age_seconds,
-			       case when r.current_workflow_instance_id is not null then (
-			         select (uu.first_name || ' ' || uu.last_name)
-			           from users uu where uu.id = (
-			             select wa.performed_by from workflow_actions wa
-			              where wa.workflow_task_id in
-			                (select wt.id from workflow_tasks wt
-			                   where wt.workflow_instance_id = r.current_workflow_instance_id
-			                     and wt.completed_at is not null)
-			                and wa.action_code in ('APPROVE','REJECT')
-			              order by wa.action_at desc limit 1)
-			       ) end as last_actor_name
+			       null::timestamptz as decided_at,
+			       null::bigint as decision_age_seconds,
+			       null::text as last_actor_name
 			"""
 			+ REGISTER_FROM;
 
