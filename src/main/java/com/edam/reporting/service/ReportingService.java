@@ -140,17 +140,17 @@ public class ReportingService {
 			       (fau.first_name || ' ' || fau.last_name) as last_actor_name
 			"""
 			+ REGISTER_FROM + """
-			   left join lateral (
-			     select _wa.action_at as decided_at, _wa.performed_by as performed_by
-			       from workflow_tasks _wt
-			       join workflow_actions _wa on _wa.workflow_task_id = _wt.id
-			      where _wt.workflow_instance_id = r.current_workflow_instance_id
-			        and _wt.completed_at is not null
-			        and _wa.action_code in ('APPROVE','REJECT')
-			        and r.current_workflow_instance_id is not null
-			      order by _wa.action_at desc
-			      limit 1
-			   ) fa on true
+			   left join (
+			     select _inner.request_id, _inner.decided_at, _inner.performed_by from (
+			       select er.id as request_id, _wa.action_at as decided_at, _wa.performed_by,
+			              row_number() over (partition by er.id order by _wa.action_at desc) as rn
+			         from expense_requests er
+			         join workflow_tasks _wt on _wt.workflow_instance_id = er.current_workflow_instance_id
+			         join workflow_actions _wa on _wa.workflow_task_id = _wt.id
+			        where _wt.completed_at is not null
+			          and _wa.action_code in ('APPROVE','REJECT')
+			     ) _inner where _inner.rn = 1
+			   ) fa on fa.request_id = r.id
 			   left join users fau on fau.id = fa.performed_by
 			""";
 
@@ -509,10 +509,8 @@ public class ReportingService {
 			if (f.from() != null) sql.append(" and r.submitted_at >= ?");
 			if (f.to() != null) sql.append(" and r.submitted_at <= ?");
 			if (f.search() != null && !f.search().isBlank()) {
-				// bindWhere escapes user-supplied % and _ with backslash; declare ESCAPE so they
-				// are treated as literals.
-				sql.append(" and (lower(r.request_number) like lower(?) escape '\\\\'")
-				   .append(" or lower(coalesce(r.justification,'')) like lower(?) escape '\\\\')");
+				sql.append(" and (lower(r.request_number) like lower(?)")
+				   .append(" or lower(coalesce(r.justification,'')) like lower(?))");
 			}
 		}
 		return sql.toString();
@@ -544,7 +542,7 @@ public class ReportingService {
 			if (f.from() != null) ps.setTimestamp(i++, Timestamp.from(f.from()));
 			if (f.to() != null) ps.setTimestamp(i++, Timestamp.from(f.to()));
 			if (f.search() != null && !f.search().isBlank()) {
-				String like = "%" + f.search().replace("%", "\\%").replace("_", "\\_") + "%";
+				String like = "%" + f.search() + "%";
 				ps.setString(i++, like);
 				ps.setString(i++, like);
 			}
