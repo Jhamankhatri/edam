@@ -13,6 +13,10 @@ public class BusinessException extends EdamException {
 		super(ErrorCode.BUSINESS_RULE_VIOLATION, safeMessage);
 	}
 
+	public BusinessException(String safeMessage, Throwable cause) {
+		super(ErrorCode.BUSINESS_RULE_VIOLATION, safeMessage, cause);
+	}
+
 	public BusinessException(ErrorCode errorCode, String safeMessage) {
 		super(errorCode, safeMessage);
 	}

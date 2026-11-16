@@ -85,21 +85,22 @@ public class RequestWorkflowService {
 	 * when the request already has an instance that is not awaiting resubmission
 	 */
 	@Transactional(propagation = Propagation.MANDATORY)
-	public WorkflowInstance startForSubmission(ExpenseRequest request, UUID actor) {
+	public WorkflowEngine.StartedInstance startForSubmission(ExpenseRequest request, UUID actor) {
 		WorkflowEngine.AssignmentContext context = new WorkflowEngine.AssignmentContext(request.getDepartmentId(),
 				request.getRequestedBy(), null);
 		Optional<WorkflowInstance> existing = this.instances.findByExpenseRequestId(request.getId());
 		if (existing.isPresent()) {
-			return resume(existing.get(), request, actor, context);
+			WorkflowInstance resumed = resume(existing.get(), request, actor, context);
+			List<WorkflowTask> opened = this.tasks.findByWorkflowInstanceIdAndStatus(resumed.getId(),
+					WorkflowTask.TaskStatus.PENDING);
+			return new WorkflowEngine.StartedInstance(resumed, opened);
 		}
 
-		// Fail closed before anything is written: a request type with no published workflow cannot be
-		// submitted at all, and saying so here means the request stays an editable draft.
 		WorkflowVersion published = this.configuration.requirePublishedForRequestType(request.getRequestTypeId());
 		WorkflowEngine.StartedInstance started = this.engine.start(published, request.getId(), actor, context);
 		log.info("request.workflow_started requestId={} instanceId={} version={} tasks={}", request.getId(),
 				started.instance().getId(), published.getVersionNumber(), started.openedTasks().size());
-		return started.instance();
+		return started;
 	}
 
 	/**

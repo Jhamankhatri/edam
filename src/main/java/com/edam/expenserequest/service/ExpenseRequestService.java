@@ -19,6 +19,7 @@ import com.edam.common.exception.BusinessException;
 import com.edam.common.exception.ResourceNotFoundException;
 import com.edam.common.security.DataScope;
 import com.edam.common.security.EdamPrincipal;
+import com.edam.communication.model.CommunicationEvent;
 import com.edam.expenserequest.dto.ExpenseRequestDtos.CreateRequest;
 import com.edam.expenserequest.dto.ExpenseRequestDtos.RequestResponse;
 import com.edam.expenserequest.dto.ExpenseRequestDtos.RequestSummary;
@@ -107,13 +108,16 @@ public class ExpenseRequestService {
 
 	private final com.edam.workflow.service.RequestWorkflowService workflow;
 
+	private final com.edam.communication.service.NotificationDispatcher notifications;
+
 	public ExpenseRequestService(ExpenseRequestRepository requests, RequestDocumentRepository documents,
 			ExpenseRequestTypeRepository requestTypes, ExpenseCategoryRepository categories,
 			ExpenseSubcategoryRepository subcategories, ExpenseNatureRepository natures,
 			OrganizationProfileRepository organizationProfile,
 			CurrencyService currencyService, ExchangeRateResolver exchangeRates, RequestNumberGenerator numbers,
 			RequestAssembler assembler, AuditRecorder audit, Clock clock,
-			com.edam.workflow.service.RequestWorkflowService workflow) {
+			com.edam.workflow.service.RequestWorkflowService workflow,
+			com.edam.communication.service.NotificationDispatcher notifications) {
 		this.requests = requests;
 		this.documents = documents;
 		this.requestTypes = requestTypes;
@@ -128,6 +132,7 @@ public class ExpenseRequestService {
 		this.audit = audit;
 		this.clock = clock;
 		this.workflow = workflow;
+		this.notifications = notifications;
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -257,14 +262,31 @@ public class ExpenseRequestService {
 		// The workflow starts inside this transaction. If it cannot — no published revision, no approver for
 		// the first step — the exception propagates and the whole submission rolls back, leaving the request
 		// an editable draft rather than a submitted request that nobody can see or act on.
-		com.edam.workflow.model.WorkflowInstance instance = this.workflow.startForSubmission(request,
+		com.edam.workflow.service.WorkflowEngine.StartedInstance started = this.workflow.startForSubmission(request,
 				caller.userId());
 
 		Instant now = Instant.now(this.clock);
-		request.markSubmitted(instance.getId(), now);
+		request.markSubmitted(started.instance().getId(), now);
 		this.audit.record(AuditAction.SUBMIT, "ExpenseRequest", id);
 		log.info("request.submitted id={} number={} workflowInstance={} version={}", id, request.getRequestNumber(),
-				instance.getId(), instance.getWorkflowVersionId());
+				started.instance().getId(), started.instance().getWorkflowVersionId());
+		String num = request.getRequestNumber();
+		String link = "/requests/" + id;
+		Map<String, String> vars = Map.of("requestId", num);
+		notifySafely(CommunicationEvent.EXPENSE_SUBMITTED, request.getRequestedBy(),
+				"Expense request " + num + " submitted",
+				"Your expense request " + num + " has been submitted for approval.",
+				link, id, vars);
+		if (started.openedTasks() != null) {
+			for (var t : started.openedTasks()) {
+				if (t.getAssignedUserId() != null) {
+					notifySafely(CommunicationEvent.APPROVAL_REQUIRED, t.getAssignedUserId(),
+							"Approval required: " + num,
+							"Expense request " + num + " is awaiting your approval.",
+							link, id, vars);
+				}
+			}
+		}
 		return RequestResponse.from(request, configuration.classification());
 	}
 
@@ -294,7 +316,22 @@ public class ExpenseRequestService {
 		this.workflow.cancelForWithdrawal(request, caller.userId(), reason.trim());
 		request.cancel(caller.userId(), reason.trim(), Instant.now(this.clock));
 		this.audit.record(AuditAction.CANCEL, "ExpenseRequest", id, reason.trim());
+		String num = request.getRequestNumber();
+		notifySafely(CommunicationEvent.EXPENSE_CANCELLED, request.getRequestedBy(),
+				"Expense request " + num + " cancelled",
+				"Expense request " + num + " has been cancelled. Reason: " + reason.trim(),
+				"/requests/" + id, id, Map.of("requestId", num));
 		return RequestResponse.from(request, classification(request));
+	}
+
+	private void notifySafely(CommunicationEvent event, UUID userId, String title, String body, String link,
+			UUID refId, Map<String, String> vars) {
+		if (userId == null || this.notifications == null) return;
+		try {
+			this.notifications.dispatch(event, userId, vars == null ? Map.of() : vars, title, body, link, refId);
+		} catch (Exception ex) {
+			log.warn("notification.dispatch_failed event={} user={} reason={}", event, userId, ex.getMessage());
+		}
 	}
 
 	// ---------------------------------------------------------------------------------------------

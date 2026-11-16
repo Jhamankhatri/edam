@@ -18,6 +18,7 @@ import com.edam.common.exception.BusinessException;
 import com.edam.common.exception.ResourceNotFoundException;
 import com.edam.common.logging.CorrelationId;
 import com.edam.common.security.EdamPrincipal;
+import com.edam.communication.model.CommunicationEvent;
 import com.edam.expenserequest.dto.ExpenseRequestDtos.RequestResponse;
 import com.edam.expenserequest.model.ExpenseRequest;
 import com.edam.expenserequest.repository.ExpenseRequestRepository;
@@ -109,11 +110,14 @@ public class ApprovalService {
 
 	private final com.edam.rolemanagement.repository.RoleRepository roles;
 
+	private final com.edam.communication.service.NotificationDispatcher notifications;
+
 	public ApprovalService(TasksRepository tasks, InstancesRepository instances, VersionsRepository versions,
 			StatesRepository states, StepsRepository steps, TransitionsRepository transitions,
 			ActionsRepository actions, ExpenseRequestRepository requests, ExpenseRequestService requestService,
 			UserRepository users, com.edam.rolemanagement.repository.RoleRepository roles, WorkflowEngine engine,
-			AuditRecorder audit) {
+			AuditRecorder audit,
+			com.edam.communication.service.NotificationDispatcher notifications) {
 		this.tasks = tasks;
 		this.instances = instances;
 		this.versions = versions;
@@ -127,6 +131,7 @@ public class ApprovalService {
 		this.engine = engine;
 		this.roles = roles;
 		this.audit = audit;
+		this.notifications = notifications;
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -404,7 +409,65 @@ public class ApprovalService {
 		this.audit.recordChange(auditActionFor(action), "WorkflowTask", taskId, before, after);
 		log.info("approval.{} taskId={} instanceId={} requestId={} actor={} completed={}", action, taskId,
 				instance.getId(), request.getId(), caller.userId(), outcome.workflowCompleted());
+		fireActionNotifications(action, request, caller.userId(), remarks, outcome);
 		return response(task, outcome, request);
+	}
+
+	private void fireActionNotifications(WorkflowTransition.ActionCode action, ExpenseRequest request,
+			UUID actorId, String remarks, WorkflowEngine.ActionOutcome outcome) {
+		String num = request.getRequestNumber();
+		UUID reqId = request.getId();
+		String link = "/requests/" + reqId;
+		UUID requester = request.getRequestedBy();
+		Map<String, String> vars = java.util.Map.of("requestId", num, "remarks", remarks == null ? "" : remarks.trim());
+		try {
+			switch (action) {
+				case APPROVE -> {
+					if (outcome.workflowCompleted()) {
+						notifySafely(CommunicationEvent.EXPENSE_APPROVED, requester,
+								"Expense " + num + " approved",
+								"Your expense request " + num + " has been fully approved.", link, reqId, vars);
+					}
+				}
+				case REJECT -> {
+					notifySafely(CommunicationEvent.EXPENSE_REJECTED, requester,
+							"Expense " + num + " rejected",
+							"Your expense request " + num + " was rejected."
+								+ (remarks == null ? "" : " Reason: " + remarks.trim()),
+							link, reqId, vars);
+				}
+				case REVERT -> {
+					notifySafely(CommunicationEvent.EXPENSE_RETURNED, requester,
+							"Expense " + num + " returned for correction",
+							"Your expense request " + num + " was returned for correction."
+								+ (remarks == null ? "" : " Reason: " + remarks.trim()),
+							link, reqId, vars);
+				}
+			}
+			// Notify any newly-assigned approvers (next step) and also the first approver on submit.
+			if (outcome.openedTasks() != null) {
+				for (WorkflowTask opened : outcome.openedTasks()) {
+					if (opened.getAssignedUserId() != null) {
+						notifySafely(CommunicationEvent.APPROVAL_REQUIRED, opened.getAssignedUserId(),
+								"Approval required: " + num,
+								"Expense request " + num + " is awaiting your approval.",
+								link, reqId, vars);
+					}
+				}
+			}
+		} catch (Exception ex) {
+			log.warn("notification.dispatch_failed action={} request={} reason={}", action, reqId, ex.getMessage());
+		}
+	}
+
+	private void notifySafely(CommunicationEvent event, UUID userId, String title, String body,
+			String link, UUID refId, Map<String, String> vars) {
+		if (userId == null || this.notifications == null) return;
+		try {
+			this.notifications.dispatch(event, userId, vars == null ? Map.of() : vars, title, body, link, refId);
+		} catch (Exception ex) {
+			log.warn("notification.dispatch_failed event={} user={} reason={}", event, userId, ex.getMessage());
+		}
 	}
 
 	/**
@@ -454,6 +517,17 @@ public class ApprovalService {
 		after.put("openedTaskIds", opened.stream().map(WorkflowTask::getId).toList());
 		this.audit.recordChange(AuditAction.FORWARD, "WorkflowTask", taskId, before, after);
 		log.info("approval.forward taskId={} to={} actor={}", taskId, recipientUserId, caller.userId());
+		String num = request.getRequestNumber();
+		notifySafely(CommunicationEvent.EXPENSE_FORWARDED, recipientUserId,
+				"Expense " + num + " forwarded to you for approval",
+				"Expense request " + num + " has been forwarded to you for approval.",
+				"/requests/" + request.getId(), request.getId(),
+				java.util.Map.of("requestId", num));
+		notifySafely(CommunicationEvent.EXPENSE_FORWARDED, request.getRequestedBy(),
+				"Expense " + num + " forwarded",
+				"Your expense request " + num + " was forwarded to another approver.",
+				"/requests/" + request.getId(), request.getId(),
+				java.util.Map.of("requestId", num));
 		WorkflowState state = instance.getCurrentStateId() == null ? null
 				: this.states.findById(instance.getCurrentStateId()).orElse(null);
 		return new ActionResponse(task.getId(), task.getStatus().name(),
