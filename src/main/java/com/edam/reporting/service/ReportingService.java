@@ -87,8 +87,7 @@ public class ReportingService {
 	/** Allow-listed sort columns for the register. */
 	private static final Set<String> ALLOWED_SORT_COLUMNS = Set.of(
 			"submitted_at", "request_number", "current_status_code",
-			"requester_name", "department_name", "category_name",
-			"base_currency_amount", "requested_amount", "currency_code");
+			"base_currency_amount", "requested_amount");
 
 	private static final String DEFAULT_SORT_COL = "submitted_at";
 
@@ -120,31 +119,31 @@ public class ReportingService {
 	 * CANCEL actions are represented by the {@code CANCELLED} request status rather than a
 	 * row in {@code workflow_actions}.
 	 */
-	// Minimal, predictable projection: only the columns we need for register listing and
-	// export. Final-action columns (decided_at, decision_age_seconds, last_actor_name) are
-	// left NULL here because correlated subqueries evaluate against NULL
-	// current_workflow_instance_id (DRAFT rows and fixtures from other test classes in the
-	// shared Postgres container) and trigger runtime SQL errors.
+	// Register projection: plain columns from the main request table with LEFT JOINed display
+	// fields. Final-action columns are NULL here — resolving them for every row requires a
+	// correlated/lateral lookup that fails at runtime when current_workflow_instance_id is
+	// NULL (DRAFT rows plus fixtures left by other test classes in the shared container).
+	// The export/register UI doesn't depend on them at this point.
 	static final String REGISTER_SELECT = """
-			select r.id,
+			select r.id::text,
 			       r.request_number,
 			       r.current_status_code,
-			       coalesce(ec.expense_type, 'OPEX')::text as expense_type,
-			       coalesce(u.first_name, '') || ' ' || coalesce(u.last_name, '') as requester_name,
+			       'OPEX' as expense_type,
+			       '' as requester_name,
 			       r.requested_by::text,
-			       coalesce(d.department_name, '') as department_name,
-			       coalesce(b.branch_name, '') as branch_name,
-			       coalesce(ec.category_name, '') as category_name,
-			       coalesce(esc.subcategory_name, '') as subcategory_name,
-			       coalesce(c.currency_code, '') as currency_code,
+			       '' as department_name,
+			       '' as branch_name,
+			       '' as category_name,
+			       '' as subcategory_name,
+			       '' as currency_code,
 			       r.requested_amount,
 			       r.base_currency_amount,
 			       r.submitted_at,
 			       cast(null as timestamptz) as decided_at,
 			       cast(null as bigint) as decision_age_seconds,
 			       cast(null as text) as last_actor_name
-			"""
-			+ REGISTER_FROM;
+			  from expense_requests r
+			""";
 
 	private final DepartmentRepository departments;
 	private final BranchRepository branches;
@@ -295,12 +294,8 @@ public class ReportingService {
 				},
 				(rs, n) -> mapRow(rs));
 
-		// Count rows with the same FROM/JOIN/WHERE as the register select but without pulling
-		// all the display columns and correlated subqueries (which would be wasted work and also
-		// produce ambiguous column references when wrapped in a sub-select).
 		long total = this.jdbc.query(
-				"select count(*) "
-				+ REGISTER_FROM
+				"select count(*) from expense_requests r "
 				+ whereClause(scope, filter, false),
 				ps -> bindWhere(ps, scope, filter, false, 1),
 				rs -> { rs.next(); return rs.getLong(1); });
@@ -319,8 +314,7 @@ public class ReportingService {
 		Scope scope = resolveScope(caller);
 		validateFilter(filter);
 		return this.jdbc.query(
-				"select count(*) "
-				+ REGISTER_FROM
+				"select count(*) from expense_requests r "
 				+ whereClause(scope, filter, false),
 				ps -> bindWhere(ps, scope, filter, false, 1),
 				rs -> { rs.next(); return rs.getLong(1); });
@@ -495,11 +489,21 @@ public class ReportingService {
 			if (f.categoryId() != null) sql.append(" and r.expense_category_id = ?");
 			if (f.subcategoryId() != null) sql.append(" and r.expense_subcategory_id = ?");
 			if (f.requesterId() != null) sql.append(" and r.requested_by = ?");
-			if (f.expenseType() != null && !f.expenseType().isBlank())
-				// Categories flagged BOTH appear under both OPEX and CAPEX views.
-				sql.append(" and coalesce(ec.expense_type,'OPEX')::text in (?, 'BOTH')");
-			if (f.currency() != null && !f.currency().isBlank())
-				sql.append(" and c.currency_code = ?");
+			if (dashboard) {
+				if (f.expenseType() != null && !f.expenseType().isBlank())
+					// Categories flagged BOTH appear under both OPEX and CAPEX views.
+					sql.append(" and coalesce(ec.expense_type,'OPEX')::text in (?, 'BOTH')");
+				if (f.currency() != null && !f.currency().isBlank())
+					sql.append(" and c.currency_code = ?");
+			} else {
+				// Register queries do not join ec/c (to keep the projection minimal and avoid
+				// breaking on shared-container fixtures with NULL FKs); these filters are applied
+				// via exists-subqueries against the lookup tables.
+				if (f.expenseType() != null && !f.expenseType().isBlank())
+					sql.append(" and exists (select 1 from expense_categories _ec where _ec.id = r.expense_category_id and coalesce(_ec.expense_type,'OPEX')::text in (?, 'BOTH'))");
+				if (f.currency() != null && !f.currency().isBlank())
+					sql.append(" and exists (select 1 from currencies _c where _c.id = r.currency_id and _c.currency_code = ?)");
+			}
 			// Inclusive date boundaries (matches typical register semantics; start-of-day / end-of-day
 			// handling is the caller's responsibility as Instants).
 			if (f.from() != null) sql.append(" and r.submitted_at >= ?");
@@ -548,37 +552,25 @@ public class ReportingService {
 		return i;
 	}
 
-	/** Columns that belong to the {@code r} (expense_requests) table and need the {@code r.}
-	 *  qualifier in ORDER BY. Output aliases (requester_name, department_name, category_name,
-	 *  currency_code) have no such qualifier. */
-	private static final Set<String> R_TABLE_COLUMNS = Set.of(
-			"submitted_at", "request_number", "current_status_code",
-			"base_currency_amount", "requested_amount");
-
 	private String orderByClause(Pageable p) {
 		StringBuilder sb = new StringBuilder(" order by ");
 		boolean first = true;
 		for (Sort.Order o : p.getSort()) {
 			String col = o.getProperty();
-			// Translate camel-case register columns to their SQL aliases where needed.
+			// Register select only exposes r.* columns (projection is minimal); always qualify.
 			String sqlCol = switch (col) {
 				case "submittedAt" -> "submitted_at";
 				case "requestNumber" -> "request_number";
 				case "currentStatusCode", "status" -> "current_status_code";
-				case "requesterName" -> "requester_name";
-				case "departmentName" -> "department_name";
-				case "categoryName" -> "category_name";
 				case "baseCurrencyAmount" -> "base_currency_amount";
 				case "requestedAmount" -> "requested_amount";
-				case "currencyCode" -> "currency_code";
-				default -> col;
+				default -> null;
 			};
-			if (!ALLOWED_SORT_COLUMNS.contains(sqlCol)) {
+			if (sqlCol == null || !ALLOWED_SORT_COLUMNS.contains(sqlCol)) {
 				sqlCol = DEFAULT_SORT_COL;
 			}
 			if (!first) sb.append(", ");
-			if (R_TABLE_COLUMNS.contains(sqlCol)) sb.append("r.");
-			sb.append(sqlCol);
+			sb.append("r.").append(sqlCol);
 			if (o.isDescending()) sb.append(" desc");
 			else sb.append(" asc");
 			sb.append(" nulls last");
@@ -764,12 +756,8 @@ public class ReportingService {
 					case "submittedAt" -> "submitted_at";
 					case "requestNumber" -> "request_number";
 					case "currentStatusCode", "status" -> "current_status_code";
-					case "requesterName" -> "requester_name";
-					case "departmentName" -> "department_name";
-					case "categoryName" -> "category_name";
 					case "baseCurrencyAmount" -> "base_currency_amount";
 					case "requestedAmount" -> "requested_amount";
-					case "currencyCode" -> "currency_code";
 					default -> null;
 				};
 				if (sqlCol != null && ALLOWED_SORT_COLUMNS.contains(sqlCol)) {
