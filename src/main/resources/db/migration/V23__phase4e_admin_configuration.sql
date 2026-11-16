@@ -33,6 +33,6 @@ ALTER TABLE exchange_rates
 -- Audit documentation comment
 -- ----------------------------------------------------------------------------
 
-COMMENT ON TABLE audit_log IS
+COMMENT ON TABLE audit_event IS
     'Append-only audit trail. Action set includes UNLOCK (Phase 4E user-administration '
     'account unlock) and ROLLBACK (Phase 4E workflow rollback-as-new-version).';
