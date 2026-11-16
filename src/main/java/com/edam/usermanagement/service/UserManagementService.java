@@ -478,7 +478,7 @@ public class UserManagementService {
 			throw new BusinessException(ErrorCode.VALIDATION_FAILED, "You cannot unlock your own account.");
 		}
 		requireAuthorityOver(user, caller);
-		user.clearLockout();
+		user.clearFailedLogins();
 		User saved = this.users.save(user);
 		this.audit.record(AuditAction.UNLOCK, "User", userId);
 		return toResponse(saved);
