@@ -285,20 +285,32 @@ public class ReportingService {
 		validateFilter(filter);
 		Pageable safe = safePageable(pageable);
 
-		List<Object[]> rows = this.jdbc.query(
-				REGISTER_SELECT + whereClause(scope, filter, false) + orderByClause(safe) + " limit ? offset ?",
+		String sql = REGISTER_SELECT + whereClause(scope, filter, false) + orderByClause(safe) + " limit ? offset ?";
+		List<Object[]> rows;
+		try {
+			rows = this.jdbc.query(sql,
 				ps -> {
 					int idx = bindWhere(ps, scope, filter, false, 1);
 					ps.setInt(idx++, safe.getPageSize());
 					ps.setLong(idx++, safe.getOffset());
 				},
 				(rs, n) -> mapRow(rs));
+		} catch (RuntimeException rex) {
+			log.error("register page SQL failed: {}\nSQL: {}", rex.getMessage(), sql, rex);
+			throw rex;
+		}
 
-		long total = this.jdbc.query(
-				"select count(*) from expense_requests r "
-				+ whereClause(scope, filter, false),
-				ps -> bindWhere(ps, scope, filter, false, 1),
-				rs -> { rs.next(); return rs.getLong(1); });
+		long total;
+		try {
+			total = this.jdbc.query(
+					"select count(*) from expense_requests r "
+					+ whereClause(scope, filter, false),
+					ps -> bindWhere(ps, scope, filter, false, 1),
+					rs -> { rs.next(); return rs.getLong(1); });
+		} catch (RuntimeException rex) {
+			log.error("register count SQL failed: {}", rex.getMessage(), rex);
+			throw rex;
+		}
 
 		List<RegisterRow> mapped = rows.stream().map(this::toRow).toList();
 		RegisterTotals totals = computeTotalsSql(scope, filter);
