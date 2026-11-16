@@ -54,7 +54,6 @@ class CommunicationModuleIntegrationTest extends AbstractPostgreSqlIntegrationTe
 	@Autowired private UserRepository users;
 	@Autowired private SmtpTestHistoryRepository history;
 	@Autowired private SmtpConfigurationHolder holder;
-	@Autowired private TransactionTemplate tx;
 
 	@BeforeEach
 	void auth() {
@@ -80,6 +79,7 @@ class CommunicationModuleIntegrationTest extends AbstractPostgreSqlIntegrationTe
 	@AfterEach
 	void clear() {
 		SecurityContextHolder.clearContext();
+		holder.clear();
 	}
 
 	@Test
@@ -124,10 +124,10 @@ class CommunicationModuleIntegrationTest extends AbstractPostgreSqlIntegrationTe
 
 	@Test
 	void smtpTestAgainstInvalidHostPersistsFailureHistory() {
+		String secret = "s3cr3tP4ss!";
 		smtp.save(new SmtpConfigurationRequest(
-				"invalid.invalid", 587, "u", "p", "STARTTLS",
+				"invalid.invalid", 587, "testuser", secret, "STARTTLS",
 				"no-reply@example.com", "EDAM", null, 1000, 1000, true));
-		// An invalid host should throw, but history must be persisted with a sanitized diagnostic.
 		assertThatThrownBy(() -> smtp.sendTestEmail("recipient@example.com", null))
 				.isInstanceOf(BusinessException.class);
 		List<com.edam.communication.model.SmtpTestHistory> rows = history.findAll();
@@ -135,8 +135,8 @@ class CommunicationModuleIntegrationTest extends AbstractPostgreSqlIntegrationTe
 		com.edam.communication.model.SmtpTestHistory h = rows.get(rows.size() - 1);
 		assertThat(h.isSuccess()).isFalse();
 		assertThat(h.getRecipient()).isEqualTo("recipient@example.com");
-		// Diagnostic must not contain raw password
-		assertThat(h.getDiagnostic()).doesNotContain("p");
+		// Diagnostic must not contain raw password (sanitized).
+		assertThat(h.getDiagnostic()).doesNotContain(secret);
 	}
 
 	@Test

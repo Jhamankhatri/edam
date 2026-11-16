@@ -254,11 +254,18 @@ public class NotificationDispatcher {
 	}
 
 	private void saveRow(NotificationOutbox row) {
+		// Pre-check idempotency key to avoid inserting a duplicate row that would leave the
+		// EntityManager in a failed state. The unique index remains the final concurrency guard;
+		// any late-arriving race is caught below and treated as a safe no-op.
+		if (outbox.existsByIdempotencyKey(row.getIdempotencyKey())) {
+			log.info("notification.duplicate event={} user={} channel={} key={}",
+					row.getEventCode(), row.getUserId(), row.getChannel(), row.getIdempotencyKey());
+			return;
+		}
 		try {
 			outbox.save(row);
 		} catch (DataIntegrityViolationException dup) {
-			// Duplicate idempotency key from a retry/concurrent dispatch — safe no-op.
-			log.info("notification.duplicate event={} user={} channel={} key={}",
+			log.info("notification.duplicate_race event={} user={} channel={} key={}",
 					row.getEventCode(), row.getUserId(), row.getChannel(), row.getIdempotencyKey());
 		}
 	}

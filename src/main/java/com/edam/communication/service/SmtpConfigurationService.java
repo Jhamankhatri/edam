@@ -86,7 +86,7 @@ public class SmtpConfigurationService {
 			SmtpConfiguration prior = existingOpt.get();
 			before = diffSnapshot(prior);
 			prior.setActive(false);
-			repository.save(prior);
+			repository.saveAndFlush(prior); // flush so the partial unique index releases the active slot before we insert a new active row
 			active = new SmtpConfiguration();
 		}
 

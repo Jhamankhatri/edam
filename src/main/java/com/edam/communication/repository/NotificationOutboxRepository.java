@@ -71,6 +71,8 @@ public interface NotificationOutboxRepository extends JpaRepository<Notification
 			@Param("status") OutboxStatus status,
 			@Param("now") Instant now);
 
+	boolean existsByIdempotencyKey(String key);
+
 	long countByStatusIn(OutboxStatus... statuses);
 	long count();
 }
