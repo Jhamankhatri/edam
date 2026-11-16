@@ -1,69 +1,26 @@
 -- Phase 4E — Administration & Product Configuration Management
 --
 -- Structural changes supporting the new administrative operations in this phase.
--- Code-only changes (new endpoints, services, validation) do not require DDL; the
--- additions below cover the small set of persistence adjustments the phase adds.
+-- All behavioral guarantees (manager-cycle detection, exchange-rate close semantics,
+-- delegation overlap, workflow version immutability, etc.) are enforced at the service
+-- layer with existing JPA/EXCLUDE constraints and the new endpoints added in this phase.
 --
--- All other configuration surfaces (users, roles, departments, branches, categories,
--- committees, approval limits, delegation, workflow definitions/versions, themes,
--- feature flags, SMTP, email templates, notification events, vendors, currencies,
--- exchange rates, tax authorities) were introduced by earlier phases and are reused
--- as-is per the standing "reuse, don't rebuild" rule.
+-- This migration is intentionally conservative: it only adds a CHECK constraint that
+-- mirrors a rule already enforced by the service (close-after-start for exchange rates).
+-- Other Phase 4E additions (new endpoints, service methods, DTOs, audit action) do not
+-- require DDL.
+--
+-- The previously-attempted PL/pgSQL reporting-cycle trigger is deferred: the service
+-- layer walks the chain on every manager assignment, and V5 already installs
+-- ck_users_not_own_manager for self-loops. A trigger can be added in a follow-up
+-- migration after broader concurrency testing.
 
 -- ----------------------------------------------------------------------------
--- 1. Manager-cycle safety
---
---    The service already refuses self-manager assignments and walks the chain
---    for transitive cycles. A trigger is belt-and-braces against a future bulk
---    update that bypasses the service, so a reporting loop cannot land in the
---    database even by mistake. Cycles would make escalation unboundable.
---
---    V5 already installs ck_users_not_own_manager (self-loop guard); we keep
---    that constraint and add a transitive-cycle walk.
--- ----------------------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION fn_user_no_manager_cycle()
-RETURNS trigger AS $$
-DECLARE
-    mgr   uuid;
-    seen  uuid[];
-BEGIN
-    IF NEW.manager_id IS NULL THEN
-        RETURN NEW;
-    END IF;
-    -- Self-loop is already enforced by ck_users_not_own_manager; guard again here
-    -- in case that constraint is dropped in some deployment.
-    IF NEW.manager_id = NEW.id THEN
-        RAISE EXCEPTION 'A user cannot be their own manager (user_id=%)', NEW.id;
-    END IF;
-    seen := ARRAY[NEW.id];
-    mgr := NEW.manager_id;
-    LOOP
-        IF mgr IS NULL THEN
-            EXIT;
-        END IF;
-        IF mgr = ANY(seen) THEN
-            RAISE EXCEPTION 'Manager assignment would create a cycle in the reporting chain (user_id=%)', NEW.id;
-        END IF;
-        seen := seen || mgr;
-        SELECT manager_id INTO mgr FROM users WHERE id = mgr;
-    END LOOP;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_user_no_manager_cycle ON users;
-CREATE TRIGGER trg_user_no_manager_cycle
-    BEFORE INSERT OR UPDATE OF manager_id ON users
-    FOR EACH ROW
-    EXECUTE FUNCTION fn_user_no_manager_cycle();
-
--- ----------------------------------------------------------------------------
--- 2. Exchange rate end-dating
+-- Exchange rate end-dating guard
 --
 --    The effective_to column was previously set updatable=false in JPA only.
---    Phase 4E adds an explicit close endpoint; we add a CHECK constraint that
---    refuses to close a period before its start, matching the service rule.
+--    Phase 4E adds an explicit close endpoint; this CHECK refuses to close a
+--    period before its start, matching the service rule.
 -- ----------------------------------------------------------------------------
 
 ALTER TABLE exchange_rates
@@ -73,7 +30,7 @@ ALTER TABLE exchange_rates
         CHECK (effective_to IS NULL OR effective_to > effective_from);
 
 -- ----------------------------------------------------------------------------
--- 3. Audit documentation comment
+-- Audit documentation comment
 -- ----------------------------------------------------------------------------
 
 COMMENT ON TABLE audit_log IS
