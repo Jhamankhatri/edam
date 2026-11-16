@@ -36,7 +36,6 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -189,7 +188,6 @@ class CommunicationModuleIntegrationTest extends AbstractPostgreSqlIntegrationTe
 				"no-reply@example.com", "EDAM", null, null, null, true));
 		User recipient = users.findAll().stream().findFirst().orElseThrow();
 		UUID refId = UUID.randomUUID();
-		tx.setPropagationBehavior(TransactionTemplate.PROPAGATION_REQUIRED);
 		long before = outbox.count();
 		dispatcher.dispatchToUser(CommunicationEvent.EXPENSE_CANCELLED, recipient.getId(),
 				Map.of("requestId", "R", "reason", "cancel"), "Cancelled", "Body", null, refId);
