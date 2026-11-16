@@ -652,8 +652,11 @@ public class ReportingService {
 				});
 	}
 
+	@FunctionalInterface
+	private interface SqlLabeler { String apply(ResultSet rs) throws SQLException; }
+
 	private List<DistributionRow> distribution(String sql, Scope scope, ReportingDtos.ReportFilter f,
-			boolean dashboard, java.util.function.Function<ResultSet, String> labeler) {
+			boolean dashboard, SqlLabeler labeler) {
 		return this.jdbc.query(sql, ps -> bindWhere(ps, scope, f, dashboard, 1),
 				(rs) -> {
 					List<DistributionRow> out = new ArrayList<>();
@@ -669,7 +672,7 @@ public class ReportingService {
 	}
 
 	private List<DistributionRow> distributionWithAmount(String sql, Scope scope, ReportingDtos.ReportFilter f,
-			boolean dashboard, java.util.function.Function<ResultSet, String> labeler, int limit) {
+			boolean dashboard, SqlLabeler labeler, int limit) {
 		return this.jdbc.query(sql, ps -> bindWhere(ps, scope, f, dashboard, 1),
 				(rs) -> {
 					List<DistributionRow> out = new ArrayList<>();
