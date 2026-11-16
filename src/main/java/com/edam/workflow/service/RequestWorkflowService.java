@@ -13,6 +13,7 @@ import com.edam.workflow.model.WorkflowTask;
 import com.edam.workflow.model.WorkflowVersion;
 import com.edam.workflow.repository.InstancesRepository;
 import com.edam.workflow.repository.StatesRepository;
+import com.edam.workflow.repository.TasksRepository;
 import com.edam.workflow.repository.VersionsRepository;
 
 import org.slf4j.Logger;
@@ -58,13 +59,17 @@ public class RequestWorkflowService {
 
 	private final StatesRepository states;
 
+	private final TasksRepository tasks;
+
 	public RequestWorkflowService(WorkflowConfigurationService configuration, WorkflowEngine engine,
-			InstancesRepository instances, VersionsRepository versions, StatesRepository states) {
+			InstancesRepository instances, VersionsRepository versions, StatesRepository states,
+			TasksRepository tasks) {
 		this.configuration = configuration;
 		this.engine = engine;
 		this.instances = instances;
 		this.versions = versions;
 		this.states = states;
+		this.tasks = tasks;
 	}
 
 	/**
