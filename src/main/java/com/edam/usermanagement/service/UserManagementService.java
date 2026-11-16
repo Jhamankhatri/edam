@@ -217,6 +217,12 @@ public class UserManagementService {
 				&& this.users.existsByEmployeeCodeIgnoreCase(request.employeeCode())) {
 			throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE, "That employee code is already in use.");
 		}
+		// Serialize manager_id mutations cluster-wide to prevent the A→B / B→A write-skew race.
+		// The database AFTER-trigger on users re-checks the chain as a second line of defence and
+		// catches cycles formed within a single transaction.
+		if (request.managerId() != null) {
+			this.users.acquireManagerHierarchyLock();
+		}
 		validateOrganizationReferences(request.departmentId(), request.branchId(), request.managerId(), null);
 
 		User user = new User();
@@ -266,6 +272,11 @@ public class UserManagementService {
 				&& !request.employeeCode().equalsIgnoreCase(user.getEmployeeCode())
 				&& this.users.existsByEmployeeCodeIgnoreCase(request.employeeCode())) {
 			throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE, "That employee code is already in use.");
+		}
+		// Serialize all manager hierarchy mutations to prevent write-skew cycles across transactions;
+		// see create() for the rationale.
+		if (request.managerId() != null || user.getManagerId() != null) {
+			this.users.acquireManagerHierarchyLock();
 		}
 		validateOrganizationReferences(request.departmentId(), request.branchId(), request.managerId(), id);
 
