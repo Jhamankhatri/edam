@@ -438,6 +438,7 @@ public class AuditReadService {
 			case LOGIN_SUCCESS -> "Sign-in succeeded";
 			case LOGIN_FAILURE -> "Sign-in failed";
 			case ACCESS_DENIED -> "Access denied";
+			case UNLOCK -> "Account unlocked";
 		};
 	}
 

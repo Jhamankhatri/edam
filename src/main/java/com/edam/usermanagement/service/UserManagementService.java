@@ -456,11 +456,11 @@ public class UserManagementService {
 	public Set<String> effectivePermissions(UUID userId, EdamPrincipal caller) {
 		User user = require(userId);
 		requireAuthorityOver(user, caller);
-		Set<String> perms = new java.util.LinkedHashSet<>();
-		Instant now = Instant.now(this.clock);
+		Set<String> perms = new LinkedHashSet<>();
+		Instant now = Instant.now();
 		for (UserRole grant : this.userRoles.findByUserId(userId)) {
 			if (grant.getExpiresAt() != null && grant.getExpiresAt().isBefore(now)) continue;
-			this.roles.findById(grant.getRoleId()).filter(r -> r.isActive()).ifPresent(role ->
+			this.roles.findById(grant.getRoleId()).filter(Role::isActive).ifPresent(role ->
 					perms.addAll(role.permissionCodes()));
 		}
 		return Set.copyOf(perms);

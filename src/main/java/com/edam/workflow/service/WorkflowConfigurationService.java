@@ -384,9 +384,9 @@ public class WorkflowConfigurationService {
 		}
 
 		// Transitions: by (fromStateCode, actionCode)
-		Map<String, String> fromStateCodes = from.getStates().stream()
+		Map<UUID, String> fromStateCodes = from.getStates().stream()
 			.collect(Collectors.toMap(WorkflowState::getId, WorkflowState::getStateCode));
-		Map<String, String> toStateCodes = to.getStates().stream()
+		Map<UUID, String> toStateCodes = to.getStates().stream()
 			.collect(Collectors.toMap(WorkflowState::getId, WorkflowState::getStateCode));
 		Map<String, WorkflowTransition> fromT = transitionMap(from, fromStateCodes);
 		Map<String, WorkflowTransition> toT = transitionMap(to, toStateCodes);
@@ -437,7 +437,7 @@ public class WorkflowConfigurationService {
 		return map;
 	}
 
-	private static String describeTarget(UUID toStateId, Map<String, String> idToCode) {
+	private static String describeTarget(UUID toStateId, Map<UUID, String> idToCode) {
 		if (toStateId == null) return "<terminal>";
 		return idToCode.getOrDefault(toStateId, "?");
 	}
