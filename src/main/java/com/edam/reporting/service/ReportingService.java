@@ -106,7 +106,7 @@ public class ReportingService {
 	 */
 	private static final String REGISTER_FROM = """
 			   from expense_requests r
-			   join users u on u.id = r.requested_by
+			   left join users u on u.id = r.requested_by
 			   left join departments d on d.id = r.department_id
 			   left join branches b on b.id = r.branch_id
 			   left join expense_categories ec on ec.id = r.expense_category_id
