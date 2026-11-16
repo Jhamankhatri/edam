@@ -790,13 +790,18 @@ public class ReportingService {
 		// wrapper.
 		long agePrim = rs.getLong("decision_age_seconds");
 		Long ageBoxed = rs.wasNull() ? null : agePrim;
+		// Read UUID columns via getString + UUID.fromString: getObject(idx, UUID.class)
+		// can return PGobject with type "uuid" instead of java.util.UUID depending on the
+		// driver version / connection properties, which then fails toRow's (UUID) cast.
+		UUID id = toUuid(rs.getString("id"));
+		UUID requestedBy = toUuid(rs.getString("requested_by"));
 		return new Object[] {
-				rs.getObject("id", UUID.class),
+				id,
 				rs.getString("request_number"),
 				rs.getString("current_status_code"),
 				rs.getString("expense_type"),
 				rs.getString("requester_name"),
-				rs.getObject("requested_by", UUID.class),
+				requestedBy,
 				rs.getString("department_name"),
 				rs.getString("branch_name"),
 				rs.getString("category_name"),
@@ -804,8 +809,8 @@ public class ReportingService {
 				rs.getString("currency_code"),
 				rs.getBigDecimal("requested_amount"),
 				rs.getBigDecimal("base_currency_amount"),
-				rs.getTimestamp("submitted_at") == null ? null : rs.getTimestamp("submitted_at").toInstant(),
-				rs.getTimestamp("decided_at") == null ? null : rs.getTimestamp("decided_at").toInstant(),
+				toInstant(rs.getObject("submitted_at")),
+				toInstant(rs.getObject("decided_at")),
 				ageBoxed,
 				rs.getString("last_actor_name")
 		};
@@ -816,22 +821,55 @@ public class ReportingService {
 		// and BigDecimal for NUMERIC literals, even when the value is NULL. Casting either
 		// to Long/BigDecimal directly throws ClassCastException if the JDK version chose a
 		// different wrapper. Convert explicitly.
-		Long age = null;
-		if (r[15] != null) {
-			if (r[15] instanceof Long l) age = l;
-			else if (r[15] instanceof Number n) age = n.longValue();
-		}
-		BigDecimal req = r[11] == null ? null
-				: (r[11] instanceof BigDecimal bd ? bd : new BigDecimal(r[11].toString()));
-		BigDecimal base = r[12] == null ? null
-				: (r[12] instanceof BigDecimal bd ? bd : new BigDecimal(r[12].toString()));
+		// Defensive coercion for every column: JDBC drivers can return unexpected wrapper
+		// types for NULL literals and for SUM/COUNT projections (BigInteger for BIGINT,
+		// OffsetDateTime/LocalDateTime for TIMESTAMPTZ, PGobject for enums). Casting those
+		// directly raises ClassCastException at the (Long)/(Instant)/(UUID) cast sites.
+		Long age = toLong(r[15]);
+		BigDecimal req = toBigDecimal(r[11]);
+		BigDecimal base = toBigDecimal(r[12]);
+		Instant submitted = toInstant(r[13]);
+		Instant decided = toInstant(r[14]);
+		// id (r[0]) and requested_by (r[5]) are real UUID columns, but be safe.
+		UUID id = toUuid(r[0]);
+		UUID requestedBy = toUuid(r[5]);
 		return new RegisterRow(
-				(UUID) r[0], (String) r[1], (String) r[2], (String) r[3],
-				(String) r[4], (UUID) r[5], (String) r[6], (String) r[7],
+				id, (String) r[1], (String) r[2], (String) r[3],
+				(String) r[4], requestedBy, (String) r[6], (String) r[7],
 				(String) r[8], (String) r[9], (String) r[10],
-				req, base,
-				(Instant) r[13], (Instant) r[14],
-				age, (String) r[16]);
+				req, base, submitted, decided, age, (String) r[16]);
+	}
+
+	private static Long toLong(Object v) {
+		if (v == null) return null;
+		if (v instanceof Long l) return l;
+		if (v instanceof Number n) return n.longValue();
+		return Long.parseLong(v.toString());
+	}
+
+	private static BigDecimal toBigDecimal(Object v) {
+		if (v == null) return null;
+		if (v instanceof BigDecimal bd) return bd;
+		if (v instanceof Number n) return new BigDecimal(n.toString());
+		return new BigDecimal(v.toString());
+	}
+
+	private static Instant toInstant(Object v) {
+		if (v == null) return null;
+		if (v instanceof Instant i) return i;
+		if (v instanceof java.sql.Timestamp ts) return ts.toInstant();
+		if (v instanceof java.time.LocalDateTime ldt) return ldt.toInstant(ZoneOffset.UTC);
+		if (v instanceof java.time.OffsetDateTime odt) return odt.toInstant();
+		if (v instanceof java.time.ZonedDateTime zdt) return zdt.toInstant();
+		throw new ClassCastException("Cannot convert " + v.getClass().getName() + " to Instant: " + v);
+	}
+
+	private static UUID toUuid(Object v) {
+		if (v == null) return null;
+		if (v instanceof UUID u) return u;
+		if (v instanceof String s) return UUID.fromString(s);
+		throw new ClassCastException("Cannot convert " + v.getClass().getName() + " to UUID: " + v);
+	}
 	}
 
 	private String baseCurrencyCode() {
