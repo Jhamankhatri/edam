@@ -475,8 +475,12 @@ public class ReportingService {
 			if (!scope.departmentIds().isEmpty() || !scope.branchIds().isEmpty()) {
 				sql.append(" or (r.current_status_code <> 'DRAFT' and (");
 				List<String> or = new ArrayList<>();
-				if (!scope.departmentIds().isEmpty()) or.add("r.department_id = any(?)");
-				if (!scope.branchIds().isEmpty()) or.add("r.branch_id = any(?)");
+				if (!scope.departmentIds().isEmpty()) {
+					or.add("r.department_id in (" + placeholders(scope.departmentIds().size()) + ")");
+				}
+				if (!scope.branchIds().isEmpty()) {
+					or.add("r.branch_id in (" + placeholders(scope.branchIds().size()) + ")");
+				}
 				sql.append(String.join(" or ", or));
 				sql.append("))");
 			}
@@ -507,16 +511,18 @@ public class ReportingService {
 		return sql.toString();
 	}
 
+	private static String placeholders(int n) {
+		return String.join(",", java.util.Collections.nCopies(n, "?"));
+	}
+
 	int bindWhere(java.sql.PreparedStatement ps, Scope scope, ReportingDtos.ReportFilter f,
 			boolean dashboard, int start) throws SQLException {
 		int i = start;
 		if (!scope.installationWide()) {
 			ps.setObject(i++, scope.callerId());
 			if (!scope.departmentIds().isEmpty() || !scope.branchIds().isEmpty()) {
-				if (!scope.departmentIds().isEmpty()) ps.setArray(i++,
-						ps.getConnection().createArrayOf("uuid", scope.departmentIds().toArray()));
-				if (!scope.branchIds().isEmpty()) ps.setArray(i++,
-						ps.getConnection().createArrayOf("uuid", scope.branchIds().toArray()));
+				for (UUID id : scope.departmentIds()) ps.setObject(i++, id);
+				for (UUID id : scope.branchIds()) ps.setObject(i++, id);
 			}
 		}
 		if (f != null) {
