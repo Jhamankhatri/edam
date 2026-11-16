@@ -302,14 +302,15 @@ jobs:
         run: tail -c 6000 war.log || true
       - name: Upload smoke logs
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: war-smoke-logs
           path: |
             war.log
             war-contents.txt
-          retention-days: 3
-          if-no-files-found: warn
+          retention-days: 1
+          if-no-files-found: ignore
           compression-level: 9
 
   prod-profile-smoke:
@@ -369,10 +370,11 @@ jobs:
         run: tail -c 4000 prod.log || true
       - name: Upload prod logs
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: prod-smoke-logs
           path: prod.log
-          retention-days: 3
-          if-no-files-found: warn
+          retention-days: 1
+          if-no-files-found: ignore
           compression-level: 9
