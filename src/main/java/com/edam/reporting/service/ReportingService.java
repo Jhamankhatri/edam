@@ -34,7 +34,8 @@ import com.edam.organization.model.Department;
 import com.edam.organization.repository.BranchRepository;
 import com.edam.organization.repository.DepartmentRepository;
 import com.edam.organization.repository.OrganizationProfileRepository;
-import com.edam.reporting.dto.ReportingDtos;import com.edam.reporting.dto.ReportingDtos.DashboardSummary;
+import com.edam.reporting.dto.ReportingDtos;
+import com.edam.reporting.dto.ReportingDtos.DashboardSummary;
 import com.edam.reporting.dto.ReportingDtos.DistributionRow;
 import com.edam.reporting.dto.ReportingDtos.MetricCard;
 import com.edam.reporting.dto.ReportingDtos.RegisterResponse;
@@ -98,9 +99,22 @@ public class ReportingService {
 			"requested_amount", "base_currency_amount", "submitted_at", "decided_at",
 			"decision_age_seconds", "last_actor_name");
 
-	/** Aliases all queries expose; kept in one place to avoid drift.
-	 *
-	 * <p>Note on {@code decided_at}/{@code last_actor_name}: we filter {@code workflow_actions}
+	/**
+	 * FROM/JOIN fragment reused by every dashboard aggregate, count, and trend query so that
+	 * the same columns and aliases are always available. The REGISTER_SELECT projection
+	 * adds display columns on top of these joins.
+	 */
+	private static final String REGISTER_FROM = """
+			   from expense_requests r
+			   left join users u on u.id = r.requested_by
+			   left join departments d on d.id = r.department_id
+			   left join branches b on b.id = r.branch_id
+			   left join expense_categories ec on ec.id = r.expense_category_id
+			   left join expense_subcategories esc on esc.id = r.expense_subcategory_id
+			   left join currencies c on c.id = r.currency_id
+			""";
+
+	/** Note on {@code decided_at}/{@code last_actor_name}: we filter {@code workflow_actions}
 	 * to the terminal action codes {@code ('APPROVE','REJECT')} only. REVERT/FORWARD/ESCALATE
 	 * are intermediate routing actions and must not be mistaken for the final decision.
 	 * CANCEL actions are represented by the {@code CANCELLED} request status rather than a
@@ -153,14 +167,8 @@ public class ReportingService {
 			               and wa.action_code in ('APPROVE','REJECT')
 			             order by wa.action_at desc limit 1)
 			       ) as last_actor_name
-			  from expense_requests r
-			  join users u on u.id = r.requested_by
-			  left join departments d on d.id = r.department_id
-			  left join branches b on b.id = r.branch_id
-			  left join expense_categories ec on ec.id = r.expense_category_id
-			  left join expense_subcategories esc on esc.id = r.expense_subcategory_id
-			  left join currencies c on c.id = r.currency_id
-			""";
+			"""
+			+ REGISTER_FROM;
 
 	private final DepartmentRepository departments;
 	private final BranchRepository branches;
@@ -218,9 +226,7 @@ public class ReportingService {
 				+ "       count(*) filter (where r.current_status_code = 'REJECTED') as rejected_count,\n"
 				+ "       count(*) filter (where r.current_status_code = 'RETURNED') as returned_count,\n"
 				+ "       count(*) filter (where r.current_status_code = 'CANCELLED') as cancelled_count\n"
-				+ "  from expense_requests r\n"
-				+ "  left join expense_categories ec on ec.id = r.expense_category_id\n"
-				+ "  left join currencies c on c.id = r.currency_id\n"
+				+ REGISTER_FROM
 				+ whereClause(scope, filter, true),
 				ps -> bindWhere(ps, scope, filter, true, 1),
 				rs -> {
@@ -261,35 +267,29 @@ public class ReportingService {
 
 		// Distributions
 		List<DistributionRow> statusDist = distribution(
-				"select r.current_status_code as k, count(*) as cnt from expense_requests r "
-				+ "left join expense_categories ec on ec.id = r.expense_category_id "
-				+ "left join currencies c on c.id = r.currency_id "
+				"select r.current_status_code as k, count(*) as cnt "
+				+ REGISTER_FROM
 				+ whereClause(scope, filter, true) + " group by r.current_status_code",
 				scope, filter, true,
 				rs -> labelFor(ExpenseRequest.Status.valueOf(rs.getString("k"))));
 
 		List<DistributionRow> typeDist = distribution(
-				"select coalesce(ec.expense_type,'OPEX')::text as k, count(*) as cnt from expense_requests r "
-				+ "left join expense_categories ec on ec.id = r.expense_category_id "
-				+ "left join currencies c on c.id = r.currency_id "
+				"select coalesce(ec.expense_type,'OPEX')::text as k, count(*) as cnt "
+				+ REGISTER_FROM
 				+ whereClause(scope, filter, true) + " group by 1",
 				scope, filter, true,
 				rs -> rs.getString("k"));
 
 		List<DistributionRow> deptDist = distributionWithAmount(
 				"select r.department_id as k, count(*) as cnt, coalesce(sum(r.base_currency_amount),0) as amt "
-				+ "from expense_requests r "
-				+ "left join expense_categories ec on ec.id = r.expense_category_id "
-				+ "left join currencies c on c.id = r.currency_id "
+				+ REGISTER_FROM
 				+ whereClause(scope, filter, true) + " group by r.department_id",
 				scope, filter, true,
 				rs -> departmentName((UUID) rs.getObject("k")), 10);
 
 		List<DistributionRow> catDist = distributionWithAmount(
 				"select r.expense_category_id as k, count(*) as cnt, coalesce(sum(r.base_currency_amount),0) as amt "
-				+ "from expense_requests r "
-				+ "left join expense_categories ec on ec.id = r.expense_category_id "
-				+ "left join currencies c on c.id = r.currency_id "
+				+ REGISTER_FROM
 				+ whereClause(scope, filter, true) + " group by r.expense_category_id",
 				scope, filter, true,
 				rs -> categoryName((UUID) rs.getObject("k")), 10);
@@ -338,9 +338,8 @@ public class ReportingService {
 		Scope scope = resolveScope(caller);
 		validateFilter(filter);
 		return this.jdbc.query(
-				"select count(*) from expense_requests r "
-				+ "left join expense_categories ec on ec.id = r.expense_category_id "
-				+ "left join currencies c on c.id = r.currency_id "
+				"select count(*) "
+				+ REGISTER_FROM
 				+ whereClause(scope, filter, false),
 				ps -> bindWhere(ps, scope, filter, false, 1),
 				rs -> { rs.next(); return rs.getLong(1); });
@@ -521,6 +520,8 @@ public class ReportingService {
 			if (f.from() != null) sql.append(" and r.submitted_at >= ?");
 			if (f.to() != null) sql.append(" and r.submitted_at <= ?");
 			if (f.search() != null && !f.search().isBlank()) {
+				// bindWhere escapes user-supplied % and _ with backslash; declare ESCAPE so they
+				// are treated as literals.
 				sql.append(" and (lower(r.request_number) like lower(?) escape '\\\\'")
 				   .append(" or lower(coalesce(r.justification,'')) like lower(?) escape '\\\\')");
 			}
@@ -562,6 +563,13 @@ public class ReportingService {
 		return i;
 	}
 
+	/** Columns that belong to the {@code r} (expense_requests) table and need the {@code r.}
+	 *  qualifier in ORDER BY. Output aliases (requester_name, department_name, category_name,
+	 *  currency_code) have no such qualifier. */
+	private static final Set<String> R_TABLE_COLUMNS = Set.of(
+			"submitted_at", "request_number", "current_status_code",
+			"base_currency_amount", "requested_amount");
+
 	private String orderByClause(Pageable p) {
 		StringBuilder sb = new StringBuilder(" order by ");
 		boolean first = true;
@@ -584,7 +592,8 @@ public class ReportingService {
 				sqlCol = DEFAULT_SORT_COL;
 			}
 			if (!first) sb.append(", ");
-			sb.append("r.").append(sqlCol);
+			if (R_TABLE_COLUMNS.contains(sqlCol)) sb.append("r.");
+			sb.append(sqlCol);
 			if (o.isDescending()) sb.append(" desc");
 			else sb.append(" asc");
 			sb.append(" nulls last");
@@ -632,9 +641,7 @@ public class ReportingService {
 				+ "       count(*) filter (where r.current_status_code='REJECTED') as rejected,\n"
 				+ "       count(*) filter (where r.current_status_code='RETURNED') as returned,\n"
 				+ "       count(*) filter (where r.current_status_code='CANCELLED') as cancelled\n"
-				+ "  from expense_requests r\n"
-				+ "  left join expense_categories ec on ec.id = r.expense_category_id\n"
-				+ "  left join currencies c on c.id = r.currency_id\n"
+				+ REGISTER_FROM
 				+ whereClause(scope, filter, true),
 				ps -> bindWhere(ps, scope, filter, true, 1),
 				rs -> {
@@ -697,12 +704,10 @@ public class ReportingService {
 		for (LocalDate d = startDay; !d.isAfter(today); d = d.plusDays(1)) buckets.put(d, 0L);
 
 		this.jdbc.query(
-				"select date_trunc('day', r.submitted_at at time zone 'UTC') as day, count(*) as cnt\n"
-				+ "  from expense_requests r\n"
-				+ "  left join expense_categories ec on ec.id = r.expense_category_id\n"
-				+ "  left join currencies c on c.id = r.currency_id\n"
+				"select date_trunc('day', r.submitted_at at time zone 'UTC') as day, count(*) as cnt "
+				+ REGISTER_FROM
 				+ whereClause(scope, mergeTrendFilter(filter, trendFrom), true)
-				+ "  group by 1",
+				+ " group by 1",
 				ps -> bindWhere(ps, scope, mergeTrendFilter(filter, trendFrom), true, 1),
 				(rs) -> {
 					while (rs.next()) {
@@ -868,22 +873,22 @@ public class ReportingService {
 	static String csvCell(String value) {
 		if (value == null) return "";
 		String v = value;
+		// Find first non-whitespace character to detect formula injection triggers.
 		int idx = 0;
 		while (idx < v.length()) {
 			char ch = v.charAt(idx);
 			if (ch != ' ' && ch != '\t' && ch != '\r' && ch != '\n') break;
 			idx++;
 		}
-		if (idx < v.length()) {
-			char first = v.charAt(idx);
-			if (first == '=' || first == '+' || first == '-' || first == '@') {
-				v = "'" + v;
-			}
-		}
+		boolean formulaTrigger = idx < v.length()
+				&& (v.charAt(idx) == '=' || v.charAt(idx) == '+'
+				    || v.charAt(idx) == '-' || v.charAt(idx) == '@');
 		boolean needsQuote = v.indexOf(',') >= 0 || v.indexOf('"') >= 0
 				|| v.indexOf('\n') >= 0 || v.indexOf('\r') >= 0;
-		if (!needsQuote) return v;
-		return "\"" + v.replace("\"", "\"\"") + "\"";
+		String escaped = needsQuote ? "\"" + v.replace("\"", "\"\"") + "\"" : v;
+		// The apostrophe must be the very first byte of the field so Excel/Sheets/LibreOffice
+		// never sees the leading special character — place it outside any quoting.
+		return formulaTrigger ? "'" + escaped : escaped;
 	}
 
 	private static void writeCsvRow(java.io.Writer w, List<String> cells) throws java.io.IOException {

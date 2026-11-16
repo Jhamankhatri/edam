@@ -321,6 +321,7 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 		ExpenseRequest r = submit(this.requesterA, this.deptA, this.opex, "10", ExpenseRequest.Status.SUBMITTED, Instant.now());
 		this.mockMvc.perform(get(REPORTING + "/expense-requests/register")
 				.param("search", r.getRequestNumber())
+				.param("requesterId", this.requesterA.getId().toString())
 				.with(user(installationAdmin())))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.total").value(1));
@@ -384,10 +385,11 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 		assertThat(ReportingService.csvCell("+SUM(A1:A2)")).startsWith("'");
 		assertThat(ReportingService.csvCell("-2+2")).startsWith("'");
 		assertThat(ReportingService.csvCell("@SUM(A1)")).startsWith("'");
-		// Whitespace-prefixed triggers
+		// Whitespace-prefixed triggers: apostrophe must be the very first byte.
 		assertThat(ReportingService.csvCell("  =cmd")).startsWith("'");
 		assertThat(ReportingService.csvCell("\t+cmd")).startsWith("'");
-		assertThat(ReportingService.csvCell("\r\n-cmd")).startsWith("'");
+		String crlf = ReportingService.csvCell("\r\n-cmd");
+		assertThat(crlf).startsWith("'").as("crlf prefixed: " + crlf);
 		// Negative numbers (first non-ws char is '-') still get prefixed; caller is responsible for
 		// presenting numbers as numbers. CSV is a text format and this is the OWASP-safe default.
 		assertThat(ReportingService.csvCell("-123.45")).startsWith("'");
