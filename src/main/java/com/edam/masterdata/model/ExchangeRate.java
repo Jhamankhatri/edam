@@ -57,7 +57,7 @@ public class ExchangeRate {
 	@Column(name = "effective_from", nullable = false, updatable = false)
 	private Instant effectiveFrom;
 
-	@Column(name = "effective_to", updatable = false)
+	@Column(name = "effective_to")
 	private Instant effectiveTo;
 
 	@Column(name = "created_by", updatable = false)
@@ -114,6 +114,20 @@ public class ExchangeRate {
 
 	public Instant getEffectiveTo() {
 		return this.effectiveTo;
+	}
+
+	/**
+	 * Closes an open-ended rate period. Only {@code effectiveTo} is mutable, and only to a value after
+	 * {@code effectiveFrom}; all other columns remain immutable so history is not rewritten.
+	 */
+	public void endPeriod(Instant end) {
+		if (end == null) {
+			throw new IllegalArgumentException("The end of a rate period is required when closing it.");
+		}
+		if (!end.isAfter(this.effectiveFrom)) {
+			throw new IllegalArgumentException("The end of a rate period must follow its start.");
+		}
+		this.effectiveTo = end;
 	}
 
 	public UUID getCreatedBy() {

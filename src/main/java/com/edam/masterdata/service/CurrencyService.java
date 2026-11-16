@@ -181,6 +181,34 @@ public class CurrencyService {
 		return this.rates.findApplicable(fromCurrencyId, toCurrencyId, at).stream().findFirst().map(ExchangeRate::getRate);
 	}
 
+	/**
+	 * Closes an open-ended rate period at the given instant.
+	 *
+	 * <p>This is the only supported mutation of an existing rate row: it records the instant the rate
+	 * stopped being applicable without rewriting the rate value or start, so conversions performed before
+	 * the close still resolve against this row. The end may be back-dated only to an instant after the
+	 * rate's start; it may not precede the start or fall in the future beyond {@code Instant.now} because
+	 * an open-ended rate that silently ends tomorrow would break the conversion contract.
+	 */
+	@Transactional
+	public ExchangeRateResponse closeRate(UUID rateId, Instant end) {
+		ExchangeRate rate = this.rates.findById(rateId)
+			.orElseThrow(() -> new ResourceNotFoundException("ExchangeRate", rateId));
+		Instant resolved = (end == null) ? Instant.now(this.clock) : end;
+		if (resolved.isAfter(Instant.now(this.clock).plusSeconds(60))) {
+			throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+				"A rate period cannot be closed at a future instant; close it when the replacement begins.");
+		}
+		if (rate.getEffectiveTo() != null) {
+			throw new BusinessException(ErrorCode.BUSINESS_RULE_VIOLATION,
+				"This rate period is already closed.");
+		}
+		rate.endPeriod(resolved);
+		ExchangeRate saved = this.rates.save(rate);
+		this.audit.record(AuditAction.UPDATE, "ExchangeRate", saved.getId());
+		return toResponse(saved);
+	}
+
 	// ------------------------------------------------------------------
 	// Helpers
 	// ------------------------------------------------------------------

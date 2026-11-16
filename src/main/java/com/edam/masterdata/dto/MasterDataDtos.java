@@ -66,6 +66,11 @@ public final class MasterDataDtos {
 			@Schema(description = "End of the period; null means the rate is currently in force") Instant effectiveTo) {
 	}
 
+	@Schema(name = "CloseExchangeRateRequest")
+	public record CloseExchangeRateRequest(
+			@Schema(description = "Instant at which to close the rate period; defaults to now when omitted") Instant endAt) {
+	}
+
 	@Schema(name = "VendorResponse")
 	public record VendorResponse(UUID id, String code, String name, String taxNumber, String contactPerson,
 			String email, String phone, String address, boolean active) {

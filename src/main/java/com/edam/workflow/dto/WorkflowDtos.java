@@ -214,4 +214,27 @@ public final class WorkflowDtos {
 	/** Retires a published revision. */
 	public record RetireRequest(@Size(max = 500) String reason) {
 	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Version comparison and rollback
+	// ---------------------------------------------------------------------------------------------
+
+	/**
+	 * One line in a structural diff between two workflow revisions.
+	 *
+	 * <p>{@code kind} is one of {@code STEP}, {@code STATE}, {@code TRANSITION}, {@code STEP_APPROVER};
+	 * {@code change} is one of {@code ADDED}, {@code REMOVED}, {@code MODIFIED}; {@code subject} identifies
+	 * the item (step code, state code, or transition id); {@code detail} is a short human-readable summary.
+	 */
+	public record VersionDiffEntry(String kind, String change, String subject, String detail) {
+	}
+
+	/**
+	 * Structural comparison between two workflow revisions. The {@code from} revision is the baseline;
+	 * the {@code to} revision is the newer one. {@code onlyInFrom} / {@code onlyInTo} / {@code modified}
+	 * describe the deltas on steps, states, transitions, and approver designations.
+	 */
+	public record VersionCompareResponse(UUID fromVersionId, int fromVersionNumber, UUID toVersionId,
+			int toVersionNumber, List<VersionDiffEntry> entries) {
+	}
 }
