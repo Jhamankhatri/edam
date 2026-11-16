@@ -120,28 +120,29 @@ public class ReportingService {
 	 * CANCEL actions are represented by the {@code CANCELLED} request status rather than a
 	 * row in {@code workflow_actions}.
 	 */
-	// Note: decided_at / decision_age_seconds / last_actor_name are intentionally left NULL
-	// here; the register/export list doesn't require them and the correlated subqueries
-	// force evaluation on rows with NULL current_workflow_instance_id (DRAFTs, fixture rows
-	// from other tests in the shared container) which PSQL rejects at runtime. If/when the
-	// UI needs those columns on the register we can join them in via a safe CTE once all
-	// fixtures have workflow instances.
+	// Minimal, predictable projection: only the columns we need for register listing and
+	// export. Final-action columns (decided_at, decision_age_seconds, last_actor_name) are
+	// left NULL here because correlated subqueries evaluate against NULL
+	// current_workflow_instance_id (DRAFT rows and fixtures from other test classes in the
+	// shared Postgres container) and trigger runtime SQL errors.
 	static final String REGISTER_SELECT = """
-			select r.id, r.request_number, r.current_status_code,
+			select r.id,
+			       r.request_number,
+			       r.current_status_code,
 			       coalesce(ec.expense_type, 'OPEX')::text as expense_type,
-			       (u.first_name || ' ' || u.last_name) as requester_name,
-			       r.requested_by,
-			       d.department_name as department_name,
-			       b.branch_name as branch_name,
-			       ec.category_name as category_name,
-			       esc.subcategory_name as subcategory_name,
-			       c.currency_code as currency_code,
+			       coalesce(u.first_name, '') || ' ' || coalesce(u.last_name, '') as requester_name,
+			       r.requested_by::text,
+			       coalesce(d.department_name, '') as department_name,
+			       coalesce(b.branch_name, '') as branch_name,
+			       coalesce(ec.category_name, '') as category_name,
+			       coalesce(esc.subcategory_name, '') as subcategory_name,
+			       coalesce(c.currency_code, '') as currency_code,
 			       r.requested_amount,
 			       r.base_currency_amount,
 			       r.submitted_at,
-			       null::timestamptz as decided_at,
-			       null::bigint as decision_age_seconds,
-			       null::text as last_actor_name
+			       cast(null as timestamptz) as decided_at,
+			       cast(null as bigint) as decision_age_seconds,
+			       cast(null as text) as last_actor_name
 			"""
 			+ REGISTER_FROM;
 
