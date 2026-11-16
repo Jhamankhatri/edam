@@ -5,6 +5,8 @@ import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.HexFormat;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -15,6 +17,7 @@ import com.edam.communication.model.EmailTemplateVersion;
 import com.edam.communication.model.NotificationEventConfig;
 import com.edam.communication.model.NotificationOutbox;
 import com.edam.communication.model.OutboxStatus;
+import com.edam.communication.model.RecipientGroup;
 import com.edam.communication.repository.EmailTemplateRepository;
 import com.edam.communication.repository.EmailTemplateVersionRepository;
 import com.edam.communication.repository.NotificationEventConfigRepository;
@@ -26,16 +29,31 @@ import com.edam.usermanagement.repository.UserRepository;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Publishes a {@link CommunicationEvent} by looking up routing config, rendering the selected
- * template (when email is enabled), and enqueuing rows into {@code notification_outbox}.
+ * template, resolving recipients from the configured {@link RecipientGroup}s, and enqueuing
+ * rows into {@code comm_notification_outbox}.
  *
- * <p>Must be called inside the same transaction as the business operation: outbox rows commit
- * together with the request/approval state, so a crash can never lose a notification. Actual
- * mail/notification handoff is asynchronous via {@link OutboxProcessor}.
+ * <h2>Transaction semantics</h2>
+ * <ul>
+ *   <li><b>Enqueue runs in the caller's transaction.</b> This is the canonical transactional-outbox
+ *       pattern: the outbox row and the business state change commit atomically, so a crash after
+ *       commit never loses a notification and a rolled-back business operation never leaves an
+ *       orphan notification.</li>
+ *   <li><b>Duplicate idempotency keys are safe no-ops.</b> The unique index on
+ *       {@code idempotency_key} is the final concurrency safeguard; we catch the resulting
+ *       {@link DataIntegrityViolationException} per row and log it rather than failing the
+ *       business operation.</li>
+ *   <li><b>Other DB errors propagate.</b> They will (correctly) roll back the business transaction
+ *       rather than committing business state without its matching outbox row.</li>
+ *   <li><b>SMTP/network failures do not touch this path.</b> Actual mail delivery is performed
+ *       asynchronously in {@link OutboxProcessor} with its own per-row transaction boundary.</li>
+ * </ul>
  */
 @Service
 public class NotificationDispatcher {
@@ -49,12 +67,16 @@ public class NotificationDispatcher {
 	private final UserRepository users;
 	private final TemplateRenderer renderer;
 	private final SmtpConfigurationHolder smtp;
+	private final NotificationRecipientResolver resolver;
+	private final NotificationPreferenceService prefService;
 	private final Clock clock;
 
 	public NotificationDispatcher(NotificationEventConfigRepository eventConfigs,
 			EmailTemplateRepository templates, EmailTemplateVersionRepository versions,
 			NotificationOutboxRepository outbox,
-			UserRepository users, TemplateRenderer renderer, SmtpConfigurationHolder smtp, Clock clock) {
+			UserRepository users, TemplateRenderer renderer, SmtpConfigurationHolder smtp,
+			NotificationRecipientResolver resolver, NotificationPreferenceService prefService,
+			Clock clock) {
 		this.eventConfigs = eventConfigs;
 		this.templates = templates;
 		this.versions = versions;
@@ -62,42 +84,141 @@ public class NotificationDispatcher {
 		this.users = users;
 		this.renderer = renderer;
 		this.smtp = smtp;
+		this.resolver = resolver;
+		this.prefService = prefService;
 		this.clock = clock;
 	}
 
-	/** Dispatch a single event to one user. */
-	@Transactional
-	public void dispatch(CommunicationEvent event, UUID recipientUserId, Map<String, String> placeholders,
+	/**
+	 * Dispatch an event from inside the caller's business transaction. Outbox rows are written
+	 * on the same transaction; the caller does not need an explicit {@code @Transactional} for
+	 * correctness but SHOULD be transactional so the business state and outbox commit together.
+	 *
+	 * @param event        closed enum identifying the event
+	 * @param placeholders per-call placeholder values rendered into the active email template
+	 * @param inAppTitle   in-app notification title
+	 * @param inAppBody    in-app notification body
+	 * @param inAppLink    in-app deep link (stored as plain text, not interpreted)
+	 * @param refRequestId expense request id for recipient resolution and idempotency grouping
+	 */
+	@Transactional(propagation = Propagation.MANDATORY)
+	public void dispatch(CommunicationEvent event, Map<String, String> placeholders,
+			String inAppTitle, String inAppBody, String inAppLink, UUID refRequestId) {
+		dispatch(event, placeholders, inAppTitle, inAppBody, inAppLink, refRequestId, null);
+	}
+
+	/**
+	 * Dispatch directly to a single, already-resolved user, ignoring the configured
+	 * recipient_groups. Used by forward (where the delegate is decided by the caller at action
+	 * time) and by tests. Note that mandatory-event and per-user preference rules still apply.
+	 */
+	@Transactional(propagation = Propagation.MANDATORY)
+	public void dispatchToUser(CommunicationEvent event, UUID userId, Map<String, String> placeholders,
 			String inAppTitle, String inAppBody, String inAppLink, UUID refRequestId) {
 		NotificationEventConfig cfg = eventConfigs.findByEventCode(event.name()).orElse(null);
 		if (cfg == null || !cfg.isActive()) return;
-		User recipient = users.findById(recipientUserId).orElse(null);
+		User recipient = users.findById(userId).orElse(null);
 		if (recipient == null || !recipient.isActive()) return;
-
 		Instant now = clock.instant();
-		// Mandatory events ignore opt-out; this is enforced server-side, never by the client.
-		boolean emailAllowed = cfg.isEmailEnabled() && smtp.isConfigured()
+		EmailTemplateVersion emailVersion = null;
+		String subject = null, html = null, text = null;
+		boolean emailReady = cfg.isEmailEnabled() && smtp.isConfigured() && cfg.getEmailTemplateId() != null;
+		if (emailReady) {
+			EmailTemplate t = templates.findById(cfg.getEmailTemplateId()).orElse(null);
+			if (t != null && t.isActive()) {
+				emailVersion = versions.findFirstByTemplateIdOrderByVersionNumberDesc(t.getId()).orElse(null);
+				if (emailVersion != null) {
+					Set<String> allowed = new LinkedHashSet<>();
+					allowed.addAll(renderer.extractPlaceholders(emailVersion.getHtmlBody()));
+					allowed.addAll(renderer.extractPlaceholders(emailVersion.getSubject()));
+					if (emailVersion.getTextBody() != null) allowed.addAll(renderer.extractPlaceholders(emailVersion.getTextBody()));
+					Map<String, String> vars = placeholders == null ? Map.of() : placeholders;
+					subject = renderer.renderText(emailVersion.getSubject(), vars, allowed);
+					html = renderer.renderHtml(emailVersion.getHtmlBody(), vars, allowed);
+					text = emailVersion.getTextBody() == null ? "" : renderer.renderText(emailVersion.getTextBody(), vars, allowed);
+				}
+			}
+		}
+		boolean emailForUser = emailReady && emailVersion != null && prefService.emailEnabled(userId, event)
 				&& recipient.getEmail() != null && !recipient.getEmail().isBlank();
-		boolean inAppAllowed = cfg.isInAppEnabled();
-
-		if (emailAllowed) enqueueEmail(event, cfg, recipient, placeholders, refRequestId, now);
-		if (inAppAllowed) enqueueInApp(event, recipient, inAppTitle, inAppBody, inAppLink, refRequestId, now);
+		boolean inAppForUser = cfg.isInAppEnabled() && prefService.inAppEnabled(userId, event);
+		if (emailForUser || inAppForUser) {
+			enqueueForRecipient(event, recipient, emailVersion, subject, html, text,
+					inAppTitle, inAppBody, inAppLink, refRequestId, now, inAppForUser, emailForUser);
+		}
 	}
 
-	private void enqueueEmail(CommunicationEvent event, NotificationEventConfig cfg, User recipient,
-			Map<String, String> placeholders, UUID refRequestId, Instant now) {
-		if (cfg.getEmailTemplateId() == null) return;
-		EmailTemplate t = templates.findById(cfg.getEmailTemplateId()).orElse(null);
-		if (t == null || !t.isActive()) return;
-		EmailTemplateVersion v = versions.findFirstByTemplateIdOrderByVersionNumberDesc(t.getId()).orElse(null);
-		if (v == null) return;
-		Set<String> allowed = renderer.extractPlaceholders(v.getHtmlBody());
-		allowed.addAll(renderer.extractPlaceholders(v.getSubject()));
-		if (v.getTextBody() != null) allowed.addAll(renderer.extractPlaceholders(v.getTextBody()));
-		String subject = renderer.renderText(v.getSubject(), placeholders, allowed);
-		String html = renderer.renderHtml(v.getHtmlBody(), placeholders, allowed);
-		String text = v.getTextBody() == null ? "" : renderer.renderText(v.getTextBody(), placeholders, allowed);
+	@Transactional(propagation = Propagation.MANDATORY)
+	public void dispatch(CommunicationEvent event, Map<String, String> placeholders,
+			String inAppTitle, String inAppBody, String inAppLink, UUID refRequestId,
+			UUID overrideRecipient) {
+		NotificationEventConfig cfg = eventConfigs.findByEventCode(event.name()).orElse(null);
+		if (cfg == null || !cfg.isActive()) {
+			log.debug("notification.dispatch_skipped event={} reason=not_configured", event);
+			return;
+		}
 
+		Set<RecipientGroup> groups = parseGroups(cfg.getRecipientGroups());
+		Set<UUID> recipientIds = resolver.resolve(groups, refRequestId, overrideRecipient);
+		if (recipientIds.isEmpty()) {
+			log.debug("notification.dispatch_skipped event={} reason=no_recipients", event);
+			return;
+		}
+
+		Instant now = clock.instant();
+		List<User> recipients = users.findAllById(recipientIds);
+
+		// Resolve template once (placeholders are user-independent for the current event set).
+		EmailTemplateVersion emailVersion = null;
+		String subject = null;
+		String html = null;
+		String text = null;
+		boolean emailReady = cfg.isEmailEnabled() && smtp.isConfigured() && cfg.getEmailTemplateId() != null;
+		if (emailReady) {
+			EmailTemplate t = templates.findById(cfg.getEmailTemplateId()).orElse(null);
+			if (t != null && t.isActive()) {
+				emailVersion = versions.findFirstByTemplateIdOrderByVersionNumberDesc(t.getId()).orElse(null);
+				if (emailVersion != null) {
+					Set<String> allowed = new LinkedHashSet<>();
+					allowed.addAll(renderer.extractPlaceholders(emailVersion.getHtmlBody()));
+					allowed.addAll(renderer.extractPlaceholders(emailVersion.getSubject()));
+					if (emailVersion.getTextBody() != null) allowed.addAll(renderer.extractPlaceholders(emailVersion.getTextBody()));
+					Map<String, String> vars = placeholders == null ? Map.of() : placeholders;
+					subject = renderer.renderText(emailVersion.getSubject(), vars, allowed);
+					html = renderer.renderHtml(emailVersion.getHtmlBody(), vars, allowed);
+					text = emailVersion.getTextBody() == null ? "" : renderer.renderText(emailVersion.getTextBody(), vars, allowed);
+				}
+			}
+		}
+		final boolean hasEmail = emailReady && emailVersion != null;
+		final boolean hasInApp = cfg.isInAppEnabled();
+
+		for (User recipient : recipients) {
+			if (recipient == null || !recipient.isActive()) continue;
+			boolean emailForUser = hasEmail && prefService.emailEnabled(recipient.getId(), event)
+					&& recipient.getEmail() != null && !recipient.getEmail().isBlank();
+			boolean inAppForUser = hasInApp && prefService.inAppEnabled(recipient.getId(), event);
+			if (!emailForUser && !inAppForUser) continue;
+			enqueueForRecipient(event, recipient, emailVersion, subject, html, text,
+					inAppTitle, inAppBody, inAppLink, refRequestId, now, inAppForUser, emailForUser);
+		}
+	}
+
+	private void enqueueForRecipient(CommunicationEvent event, User recipient,
+			EmailTemplateVersion emailVersion, String subject, String html, String text,
+			String inAppTitle, String inAppBody, String inAppLink, UUID refRequestId, Instant now,
+			boolean inAppAllowed, boolean emailAllowed) {
+		if (emailAllowed && recipient.getEmail() != null && !recipient.getEmail().isBlank()) {
+			saveRow(buildEmail(event, recipient, emailVersion, subject, html, text, refRequestId, now));
+		}
+		if (inAppAllowed) {
+			saveRow(buildInApp(event, recipient, inAppTitle, inAppBody, inAppLink, refRequestId, now));
+		}
+	}
+
+	private NotificationOutbox buildEmail(CommunicationEvent event, User recipient,
+			EmailTemplateVersion v, String subject, String html, String text,
+			UUID refRequestId, Instant now) {
 		NotificationOutbox row = new NotificationOutbox();
 		row.setIdempotencyKey(idempotency(event, recipient.getId(), "EMAIL", refRequestId));
 		row.setEventCode(event.name());
@@ -112,11 +233,11 @@ public class NotificationDispatcher {
 		row.setAttempts(0);
 		row.setMaxAttempts(5);
 		row.setNextAttemptAt(now);
-		outbox.save(row);
+		return row;
 	}
 
-	private void enqueueInApp(CommunicationEvent event, User recipient, String title, String body,
-			String link, UUID refRequestId, Instant now) {
+	private NotificationOutbox buildInApp(CommunicationEvent event, User recipient,
+			String title, String body, String link, UUID refRequestId, Instant now) {
 		NotificationOutbox row = new NotificationOutbox();
 		row.setIdempotencyKey(idempotency(event, recipient.getId(), "IN_APP", refRequestId));
 		row.setEventCode(event.name());
@@ -124,15 +245,43 @@ public class NotificationDispatcher {
 		row.setUserId(recipient.getId());
 		row.setSubject(title);
 		row.setBodyText(body);
-		row.setPayloadJson(link == null ? null : link);
+		row.setPayloadJson(link);
 		row.setStatus(OutboxStatus.PENDING);
 		row.setAttempts(0);
 		row.setMaxAttempts(3);
 		row.setNextAttemptAt(now);
-		outbox.save(row);
+		return row;
 	}
 
-	/** Stable idempotency key: repeated dispatches for the same (event, user, channel, request) are deduplicated. */
+	private void saveRow(NotificationOutbox row) {
+		try {
+			outbox.save(row);
+		} catch (DataIntegrityViolationException dup) {
+			// Duplicate idempotency key from a retry/concurrent dispatch — safe no-op.
+			log.info("notification.duplicate event={} user={} channel={} key={}",
+					row.getEventCode(), row.getUserId(), row.getChannel(), row.getIdempotencyKey());
+		}
+	}
+
+	private Set<RecipientGroup> parseGroups(String json) {
+		if (json == null || json.isBlank()) return Set.of();
+		try {
+			var om = new tools.jackson.databind.ObjectMapper();
+			List<String> names = om.readValue(json, new tools.jackson.core.type.TypeReference<List<String>>() {});
+			Set<RecipientGroup> out = new LinkedHashSet<>();
+			for (String n : names) {
+				try { out.add(RecipientGroup.valueOf(n)); }
+				catch (IllegalArgumentException ex) {
+					log.warn("notification.unknown_group code={}", n);
+				}
+			}
+			return out;
+		} catch (Exception ex) {
+			log.warn("notification.bad_groups_json reason={}", ex.getMessage());
+			return Set.of();
+		}
+	}
+
 	private static String idempotency(CommunicationEvent event, UUID userId, String channel, UUID refRequestId) {
 		try {
 			MessageDigest md = MessageDigest.getInstance("SHA-256");

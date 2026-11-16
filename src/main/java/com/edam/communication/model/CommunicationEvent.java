@@ -12,7 +12,8 @@ public enum CommunicationEvent {
 	EXPENSE_APPROVED("Your expense was approved", false),
 	EXPENSE_REJECTED("Your expense was rejected", false),
 	EXPENSE_RETURNED("Your expense was returned for revision", false),
-	EXPENSE_FORWARDED("An approval was forwarded", false),
+	EXPENSE_FORWARDED("A request you participated in was forwarded", false),
+	EXPENSE_FORWARDED_TO("An approval task was delegated to you", true),
 	EXPENSE_CANCELLED("A request you were part of was cancelled", false);
 
 	private final String description;

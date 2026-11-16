@@ -273,20 +273,18 @@ public class ExpenseRequestService {
 		String num = request.getRequestNumber();
 		String link = "/requests/" + id;
 		Map<String, String> vars = Map.of("requestId", num);
-		notifySafely(CommunicationEvent.EXPENSE_SUBMITTED, request.getRequestedBy(),
+		// Recipients for SUBMITTED and APPROVAL_REQUIRED come from the configured recipient_groups
+		// (REQUESTER and ASSIGNED_APPROVER respectively). We fire both events so that the admin
+		// can independently toggle channels per event; the dispatcher deduplicates within channel
+		// and resolves role-assigned approvers automatically.
+		notifications.dispatch(CommunicationEvent.EXPENSE_SUBMITTED, vars,
 				"Expense request " + num + " submitted",
 				"Your expense request " + num + " has been submitted for approval.",
-				link, id, vars);
-		if (started.openedTasks() != null) {
-			for (var t : started.openedTasks()) {
-				if (t.getAssignedUserId() != null) {
-					notifySafely(CommunicationEvent.APPROVAL_REQUIRED, t.getAssignedUserId(),
-							"Approval required: " + num,
-							"Expense request " + num + " is awaiting your approval.",
-							link, id, vars);
-				}
-			}
-		}
+				link, id);
+		notifications.dispatch(CommunicationEvent.APPROVAL_REQUIRED, vars,
+				"Approval required: " + num,
+				"Expense request " + num + " is awaiting your approval.",
+				link, id);
 		return RequestResponse.from(request, configuration.classification());
 	}
 
@@ -317,21 +315,12 @@ public class ExpenseRequestService {
 		request.cancel(caller.userId(), reason.trim(), Instant.now(this.clock));
 		this.audit.record(AuditAction.CANCEL, "ExpenseRequest", id, reason.trim());
 		String num = request.getRequestNumber();
-		notifySafely(CommunicationEvent.EXPENSE_CANCELLED, request.getRequestedBy(),
+		notifications.dispatch(CommunicationEvent.EXPENSE_CANCELLED,
+				Map.of("requestId", num, "reason", reason.trim()),
 				"Expense request " + num + " cancelled",
 				"Expense request " + num + " has been cancelled. Reason: " + reason.trim(),
-				"/requests/" + id, id, Map.of("requestId", num));
+				"/requests/" + id, id);
 		return RequestResponse.from(request, classification(request));
-	}
-
-	private void notifySafely(CommunicationEvent event, UUID userId, String title, String body, String link,
-			UUID refId, Map<String, String> vars) {
-		if (userId == null || this.notifications == null) return;
-		try {
-			this.notifications.dispatch(event, userId, vars == null ? Map.of() : vars, title, body, link, refId);
-		} catch (Exception ex) {
-			log.warn("notification.dispatch_failed event={} user={} reason={}", event, userId, ex.getMessage());
-		}
 	}
 
 	// ---------------------------------------------------------------------------------------------

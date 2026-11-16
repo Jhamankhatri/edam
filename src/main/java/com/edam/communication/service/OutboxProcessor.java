@@ -27,25 +27,28 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Polls the transactional outbox and delivers messages.
  *
- * <h2>Delivery guarantees</h2>
- * <ul>
- *   <li>Claim uses {@code SELECT … FOR UPDATE SKIP LOCKED} so multiple pods do not double-deliver.</li>
- *   <li>Stale locks (worker crashed mid-send) are reaped after {@code lock_ttl}.</li>
- *   <li>Exponential backoff with jitter on transient failures.</li>
- *   <li>Permanent SMTP/auth failures transition directly to {@code FAILED} with no further retries.</li>
- *   <li>Outbox rows are retained for diagnostic inspection; {@code max_attempts} transitions the row
- *       to a terminal state so it stops being retried.</li>
- *   <li>Notification inbox rows are written inside the same transaction as the outbox state flip
- *       to SENT, so "enqueued but not delivered" is impossible for IN_APP.</li>
- * </ul>
+ * <h2>Transaction model</h2>
+ * <ol>
+ *   <li>{@link #sweep()} is NOT transactional. It calls {@link #claimBatch} in a short
+ *       transaction that atomically selects due rows via {@code FOR UPDATE SKIP LOCKED} and
+ *       flips them to PROCESSING, releasing the connection immediately.</li>
+ *   <li>Each row is then delivered inside its own {@code REQUIRES_NEW} transaction
+ *       ({@link #processRow}), so one failure can never roll back a sibling row's SENT/FAILED
+ *       transition.</li>
+ *   <li>SMTP/network failures are caught per row and converted to FAILED/RETRY_PENDING with
+ *       exponential backoff. They never propagate.</li>
+ * </ol>
  *
- * <p>Email delivery failures are logged and counted but never re-thrown to the caller's
- * transaction — a mail-server outage must never roll back an already-committed expense approval.
+ * <p>Outbox rows are inserted in the same transaction as the business state change by
+ * {@link NotificationDispatcher}; a rollback therefore never produces an orphan notification,
+ * and a commit always has matching outbox rows. Actual mail delivery is asynchronous here,
+ * so mail-server outages cannot affect business commits.
  */
 @Service
 public class OutboxProcessor {
@@ -83,45 +86,79 @@ public class OutboxProcessor {
 		}
 	}
 
-	/** Every 15 seconds, sweep a batch of pending rows. */
-	@Scheduled(fixedDelayString = "${edam.mail.outbox.interval-ms:15000}", initialDelayString = "${edam.mail.outbox.initial-delay-ms:10000}")
-	@Transactional
+	@Scheduled(fixedDelayString = "${edam.mail.outbox.interval-ms:15000}",
+			initialDelayString = "${edam.mail.outbox.initial-delay-ms:10000}")
 	public void sweep() {
 		if (!enabled) return;
 		Instant now = clock.instant();
-		Instant stale = now.minus(LOCK_TTL);
-		List<NotificationOutbox> batch = outbox.claimBatch(now, stale, PageRequest.of(0, BATCH_SIZE));
+		List<NotificationOutbox> batch;
+		try {
+			batch = claimBatch(now);
+		} catch (Exception ex) {
+			log.warn("edam.outbox.claim_failed reason={}", ex.getMessage());
+			return;
+		}
 		for (NotificationOutbox row : batch) {
 			try {
-				deliver(row);
+				processRow(row.getId());
 			} catch (Exception ex) {
-				// A single failed message must not abort the sweep.
-				log.warn("edam.outbox.delivery_failed id={} channel={} attempt={} reason={}",
-						row.getId(), row.getChannel(), row.getAttempts() + 1, safe(ex));
-				markFailed(row, ex, now);
+				log.warn("edam.outbox.process_failed id={} reason={}", row.getId(), ex.getMessage());
 			}
 		}
 	}
 
-	void deliver(NotificationOutbox row) throws Exception {
-		Instant now = clock.instant();
-		outbox.claim(row.getId(), workerId, OutboxStatus.PROCESSING, now);
-		row.setStatus(OutboxStatus.PROCESSING);
-		row.setLockedBy(workerId);
-		row.setLockedAt(now);
-		row.setAttempts(row.getAttempts() + 1);
-		row.setLastAttemptAt(now);
-		if (row.getChannel() == NotificationOutbox.Channel.EMAIL) {
-			deliverEmail(row);
-		} else {
-			deliverInApp(row);
+	/** Atomically select a batch of due rows and mark them claimed. */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public List<NotificationOutbox> claimBatch(Instant now) {
+		Instant stale = now.minus(LOCK_TTL);
+		List<NotificationOutbox> rows = outbox.claimBatch(now, stale, PageRequest.of(0, BATCH_SIZE));
+		for (NotificationOutbox r : rows) {
+			r.setStatus(OutboxStatus.PROCESSING);
+			r.setLockedBy(workerId);
+			r.setLockedAt(now);
+			r.setLastAttemptAt(now);
+			r.setAttempts(r.getAttempts() + 1);
 		}
-		row.setStatus(OutboxStatus.SENT);
-		row.setSentAt(now);
-		row.setLockedBy(null);
-		row.setLockedAt(null);
-		row.setNextAttemptAt(null);
-		outbox.save(row);
+		return outbox.saveAll(rows);
+	}
+
+	/** Deliver one claimed row in its own transaction. All exceptions are caught by sweep(). */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public void processRow(UUID id) {
+		NotificationOutbox row = outbox.findById(id).orElse(null);
+		if (row == null) return;
+		if (row.getStatus() != OutboxStatus.PROCESSING) return;
+		// Double-check lock ownership.
+		if (!workerId.equals(row.getLockedBy())) return;
+
+		Instant now = clock.instant();
+		try {
+			if (row.getChannel() == NotificationOutbox.Channel.EMAIL) {
+				deliverEmail(row);
+			} else {
+				deliverInApp(row);
+			}
+			outbox.markSent(id, workerId, OutboxStatus.SENT, now);
+		} catch (Exception ex) {
+			boolean permanent = isPermanentFailure(ex);
+			String safeMsg = safe(ex);
+			Instant next;
+			OutboxStatus newStatus;
+			if (permanent || row.getAttempts() >= row.getMaxAttempts()) {
+				newStatus = OutboxStatus.FAILED;
+				next = null;
+				log.warn("edam.outbox.failed id={} channel={} attempt={} permanent={} reason={}",
+						id, row.getChannel(), row.getAttempts(), permanent, safeMsg);
+			} else {
+				newStatus = OutboxStatus.RETRY_PENDING;
+				long seconds = Math.min(MAX_BACKOFF.getSeconds(),
+						INITIAL_BACKOFF.getSeconds() * (1L << Math.max(0, row.getAttempts() - 1)));
+				double jitter = 0.8 + Math.random() * 0.4;
+				next = now.plusSeconds((long) (seconds * jitter));
+			}
+			outbox.markFailed(id, workerId, newStatus,
+					safeMsg.substring(0, Math.min(500, safeMsg.length())), next);
+		}
 	}
 
 	private void deliverEmail(NotificationOutbox row) throws Exception {
@@ -132,13 +169,13 @@ public class OutboxProcessor {
 		SmtpConfigurationHolder.SenderEnvelope sender = smtpHolder.currentSender();
 		MimeMessage msg = new MimeMessage(session);
 		msg.setFrom(new InternetAddress(sender.fromEmail(),
-				sender.fromDisplayName() == null ? "" : sender.fromDisplayName(), java.nio.charset.StandardCharsets.UTF_8.name()));
+				sender.fromDisplayName() == null ? "" : sender.fromDisplayName(),
+				java.nio.charset.StandardCharsets.UTF_8.name()));
 		msg.setRecipients(Message.RecipientType.TO, InternetAddress.parse(row.getRecipientEmail()));
 		msg.setSubject(row.getSubject(), "UTF-8");
 
 		boolean hasHtml = row.getBodyHtml() != null && !row.getBodyHtml().isBlank();
 		boolean hasText = row.getBodyText() != null && !row.getBodyText().isBlank();
-
 		if (hasHtml && hasText) {
 			MimeMultipart alt = new MimeMultipart("alternative");
 			MimeBodyPart textPart = new MimeBodyPart();
@@ -168,43 +205,24 @@ public class OutboxProcessor {
 		notifications.save(n);
 	}
 
-	private void markFailed(NotificationOutbox row, Exception ex, Instant now) {
-		boolean permanent = isPermanentFailure(ex);
-		row.setLastError(safe(ex).substring(0, Math.min(500, safe(ex).length())));
-		row.setLockedBy(null);
-		row.setLockedAt(null);
-		if (permanent || row.getAttempts() >= row.getMaxAttempts()) {
-			row.setStatus(OutboxStatus.FAILED);
-			row.setNextAttemptAt(null);
-		} else {
-			// Exponential backoff: 30s * 2^attempts, plus small jitter
-			long seconds = Math.min(MAX_BACKOFF.getSeconds(), INITIAL_BACKOFF.getSeconds() * (1L << (row.getAttempts() - 1)));
-			double jitter = 0.8 + Math.random() * 0.4;
-			row.setNextAttemptAt(now.plusSeconds((long)(seconds * jitter)));
-			row.setStatus(OutboxStatus.RETRY_PENDING);
-		}
-		outbox.save(row);
-	}
-
-	/** Classify SMTP errors. Auth/config errors are permanent; network/connect errors are transient. */
 	private static boolean isPermanentFailure(Exception ex) {
 		if (ex instanceof PermanentMailException) return true;
 		if (ex instanceof TransientMailException) return false;
 		String msg = ex.getMessage() == null ? "" : ex.getMessage().toLowerCase();
-		if (msg.contains("authenticationfailed") || msg.contains("auth failed")
-				|| msg.contains("535") || msg.contains("550") || msg.contains("invalid address")
-				|| msg.contains("unknown host") || msg.contains("illegal address")) {
-			return true;
-		}
-		return false;
+		return msg.contains("authenticationfailed")
+				|| msg.contains("535") || msg.contains("550 5")
+				|| msg.contains("invalid address")
+				|| msg.contains("unknown host")
+				|| msg.contains("illegal address");
 	}
 
 	private static String safe(Exception ex) {
 		String m = ex.getMessage();
-		return m == null ? ex.getClass().getSimpleName() : m;
+		if (m == null) return ex.getClass().getSimpleName();
+		// Sanitize potential AUTH/credential echoes.
+		return m.replaceAll("(?i)(AUTH|password|passwd|credential)[^\\s]*\\s+\\S+", "$1 ***");
 	}
 
-	/** Internal markers for failure classification. */
 	public static class TransientMailException extends Exception {
 		public TransientMailException(String msg) { super(msg); }
 	}

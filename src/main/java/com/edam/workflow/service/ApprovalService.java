@@ -418,55 +418,40 @@ public class ApprovalService {
 		String num = request.getRequestNumber();
 		UUID reqId = request.getId();
 		String link = "/requests/" + reqId;
-		UUID requester = request.getRequestedBy();
-		Map<String, String> vars = java.util.Map.of("requestId", num, "remarks", remarks == null ? "" : remarks.trim());
-		try {
-			switch (action) {
-				case APPROVE -> {
-					if (outcome.workflowCompleted()) {
-						notifySafely(CommunicationEvent.EXPENSE_APPROVED, requester,
-								"Expense " + num + " approved",
-								"Your expense request " + num + " has been fully approved.", link, reqId, vars);
-					}
-				}
-				case REJECT -> {
-					notifySafely(CommunicationEvent.EXPENSE_REJECTED, requester,
-							"Expense " + num + " rejected",
-							"Your expense request " + num + " was rejected."
-								+ (remarks == null ? "" : " Reason: " + remarks.trim()),
-							link, reqId, vars);
-				}
-				case REVERT -> {
-					notifySafely(CommunicationEvent.EXPENSE_RETURNED, requester,
-							"Expense " + num + " returned for correction",
-							"Your expense request " + num + " was returned for correction."
-								+ (remarks == null ? "" : " Reason: " + remarks.trim()),
-							link, reqId, vars);
-				}
-			}
-			// Notify any newly-assigned approvers (next step) and also the first approver on submit.
-			if (outcome.openedTasks() != null) {
-				for (WorkflowTask opened : outcome.openedTasks()) {
-					if (opened.getAssignedUserId() != null) {
-						notifySafely(CommunicationEvent.APPROVAL_REQUIRED, opened.getAssignedUserId(),
-								"Approval required: " + num,
-								"Expense request " + num + " is awaiting your approval.",
-								link, reqId, vars);
-					}
-				}
-			}
-		} catch (Exception ex) {
-			log.warn("notification.dispatch_failed action={} request={} reason={}", action, reqId, ex.getMessage());
-		}
-	}
+		Map<String, String> vars = Map.of("requestId", num, "remarks", remarks == null ? "" : remarks.trim());
 
-	private void notifySafely(CommunicationEvent event, UUID userId, String title, String body,
-			String link, UUID refId, Map<String, String> vars) {
-		if (userId == null || this.notifications == null) return;
-		try {
-			this.notifications.dispatch(event, userId, vars == null ? Map.of() : vars, title, body, link, refId);
-		} catch (Exception ex) {
-			log.warn("notification.dispatch_failed event={} user={} reason={}", event, userId, ex.getMessage());
+		switch (action) {
+			case APPROVE -> {
+				if (outcome.workflowCompleted()) {
+					notifications.dispatch(CommunicationEvent.EXPENSE_APPROVED, vars,
+							"Expense " + num + " approved",
+							"Your expense request " + num + " has been fully approved.",
+							link, reqId);
+				}
+			}
+			case REJECT -> {
+				notifications.dispatch(CommunicationEvent.EXPENSE_REJECTED, vars,
+						"Expense " + num + " rejected",
+						"Your expense request " + num + " was rejected."
+							+ (remarks == null ? "" : " Reason: " + remarks.trim()),
+						link, reqId);
+			}
+			case REVERT -> {
+				notifications.dispatch(CommunicationEvent.EXPENSE_RETURNED, vars,
+						"Expense " + num + " returned for correction",
+						"Your expense request " + num + " was returned for correction."
+							+ (remarks == null ? "" : " Reason: " + remarks.trim()),
+						link, reqId);
+			}
+		}
+		// Next-step approvers (opened by advance or revert) get APPROVAL_REQUIRED. The dispatcher
+		// resolves role-assigned tasks automatically via NotificationRecipientResolver when the
+		// group list includes ASSIGNED_APPROVER.
+		if (outcome.openedTasks() != null && !outcome.openedTasks().isEmpty()) {
+			notifications.dispatch(CommunicationEvent.APPROVAL_REQUIRED, vars,
+					"Approval required: " + num,
+					"Expense request " + num + " is awaiting your approval.",
+					link, reqId);
 		}
 	}
 
@@ -518,16 +503,18 @@ public class ApprovalService {
 		this.audit.recordChange(AuditAction.FORWARD, "WorkflowTask", taskId, before, after);
 		log.info("approval.forward taskId={} to={} actor={}", taskId, recipientUserId, caller.userId());
 		String num = request.getRequestNumber();
-		notifySafely(CommunicationEvent.EXPENSE_FORWARDED, recipientUserId,
+		Map<String, String> vars = Map.of("requestId", num);
+		// FORWARDED_TO goes directly to the named delegate (recipient chosen by the actor, not a
+		// configured group), so use dispatchToUser. FORWARDED uses configured groups (requester
+		// and prior participants) via the standard dispatch path.
+		notifications.dispatchToUser(CommunicationEvent.EXPENSE_FORWARDED_TO, recipientUserId, vars,
 				"Expense " + num + " forwarded to you for approval",
 				"Expense request " + num + " has been forwarded to you for approval.",
-				"/requests/" + request.getId(), request.getId(),
-				java.util.Map.of("requestId", num));
-		notifySafely(CommunicationEvent.EXPENSE_FORWARDED, request.getRequestedBy(),
+				"/requests/" + request.getId(), request.getId());
+		notifications.dispatch(CommunicationEvent.EXPENSE_FORWARDED, vars,
 				"Expense " + num + " forwarded",
-				"Your expense request " + num + " was forwarded to another approver.",
-				"/requests/" + request.getId(), request.getId(),
-				java.util.Map.of("requestId", num));
+				"Expense request " + num + " was forwarded to another approver.",
+				"/requests/" + request.getId(), request.getId());
 		WorkflowState state = instance.getCurrentStateId() == null ? null
 				: this.states.findById(instance.getCurrentStateId()).orElse(null);
 		return new ActionResponse(task.getId(), task.getStatus().name(),

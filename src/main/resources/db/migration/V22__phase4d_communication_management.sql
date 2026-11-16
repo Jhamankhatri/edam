@@ -163,10 +163,11 @@ CREATE TABLE comm_smtp_test_history (
 
 -- Seed initial supported event triggers.
 INSERT INTO comm_notification_event_configs (event_code, email_enabled, in_app_enabled, recipient_groups) VALUES
-    ('EXPENSE_SUBMITTED',     TRUE, TRUE, '["ASSIGNED_APPROVER"]'),
+    ('EXPENSE_SUBMITTED',     TRUE, TRUE, '["REQUESTER"]'),
     ('APPROVAL_REQUIRED',     TRUE, TRUE, '["ASSIGNED_APPROVER"]'),
     ('EXPENSE_APPROVED',      TRUE, TRUE, '["REQUESTER"]'),
     ('EXPENSE_REJECTED',      TRUE, TRUE, '["REQUESTER"]'),
     ('EXPENSE_RETURNED',      TRUE, TRUE, '["REQUESTER"]'),
-    ('EXPENSE_FORWARDED',     TRUE, TRUE, '["ASSIGNED_APPROVER","REQUESTER"]'),
+    ('EXPENSE_FORWARDED',     TRUE, TRUE, '["REQUESTER","WORKFLOW_PARTICIPANTS"]'),
+    ('EXPENSE_FORWARDED_TO',  TRUE, TRUE, '["FORWARDED_RECIPIENT"]'),
     ('EXPENSE_CANCELLED',     TRUE, TRUE, '["WORKFLOW_PARTICIPANTS"]');

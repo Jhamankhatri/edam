@@ -18,6 +18,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -52,6 +53,16 @@ public class SmtpConfigurationController {
 		SmtpConfigurationResponse saved = service.save(body);
 		return ResponseEntity.status(HttpStatus.OK)
 				.body(ApiResponse.success(saved, CorrelationId.current(), request.getRequestURI()));
+	}
+
+
+	@DeleteMapping("/active")
+	@EdamPermission(Permissions.EMAIL_CONFIGURATION_MANAGE)
+	@Operation(summary = "Deactivate the currently-active SMTP configuration and clear in-memory credentials")
+	public ApiResponse<Map<String, Object>> deactivate(HttpServletRequest request) {
+		service.deactivate();
+		return ApiResponse.success(Map.of("active", false),
+				CorrelationId.current(), request.getRequestURI());
 	}
 
 	@PostMapping("/test")
