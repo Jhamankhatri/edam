@@ -24,6 +24,7 @@ import com.edam.communication.support.SmtpConfigurationHolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -65,15 +66,20 @@ public class OutboxProcessor {
 	private final SmtpConfigurationHolder smtpHolder;
 	private final Clock clock;
 	private final boolean enabled;
+	/** Self-proxy so that {@code @Transactional(REQUIRES_NEW)} actually applies when sweep()
+	 *  invokes its own per-row methods (Spring AOP does not intercept {@code this} calls). */
+	private final OutboxProcessor self;
 	private String workerId;
 
 	public OutboxProcessor(NotificationOutboxRepository outbox, NotificationRepository notifications,
 			SmtpConfigurationHolder smtpHolder, Clock clock,
+			@Lazy OutboxProcessor self,
 			@Value("${edam.mail.outbox.enabled:true}") boolean enabled) {
 		this.outbox = outbox;
 		this.notifications = notifications;
 		this.smtpHolder = smtpHolder;
 		this.clock = clock;
+		this.self = self;
 		this.enabled = enabled;
 	}
 
@@ -93,14 +99,16 @@ public class OutboxProcessor {
 		Instant now = clock.instant();
 		List<NotificationOutbox> batch;
 		try {
-			batch = claimBatch(now);
+			// Call via the self-proxy so REQUIRES_NEW actually starts a new transaction.
+			batch = self.claimBatch(now);
 		} catch (Exception ex) {
 			log.warn("edam.outbox.claim_failed reason={}", ex.getMessage());
 			return;
 		}
 		for (NotificationOutbox row : batch) {
 			try {
-				processRow(row.getId());
+				// Per-row REQUIRES_NEW transaction via the proxy; one failure cannot roll back siblings.
+				self.processRow(row.getId());
 			} catch (Exception ex) {
 				log.warn("edam.outbox.process_failed id={} reason={}", row.getId(), ex.getMessage());
 			}
