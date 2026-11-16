@@ -40,17 +40,34 @@ def _escape_data(value: str) -> str:
 MAX_MESSAGE = 1400
 
 
-def emit(kind: str, title: str, message: str) -> None:
+def emit(kind: str, title: str, message: str, file: str | None = None, line: int | None = None) -> None:
     """Emit one annotation.
 
-    A long message is truncated rather than split: GitHub discards annotations past a per-run
-    budget, so spending three of them on one stack trace can hide three other failures. The head
-    of a stack trace carries the assertion; the tail is framework frames.
+    A long message is split into chunked annotations sharing the same title (with a (1/N)
+    suffix) so that stack traces with SQLState / PostgreSQL error text are not silently
+    truncated -- when artifact upload is blocked the annotations are the only diagnostic
+    channel, and truncating at the assertion line hides the root cause.
     """
     text = " ".join(str(message).split())
-    if len(text) > MAX_MESSAGE:
-        text = text[:MAX_MESSAGE] + " [truncated]"
-    print(f"::{kind} title={_escape_property(title)}::{_escape_data(text)}")
+    chunks: list[str] = []
+    if not text:
+        chunks = [""]
+    else:
+        i = 0
+        while i < len(text):
+            chunks.append(text[i:i + MAX_MESSAGE])
+            i += MAX_MESSAGE
+    if len(chunks) == 1:
+        heads = [title]
+    else:
+        heads = [f"{title} ({i+1}/{len(chunks)})" for i in range(len(chunks))]
+    loc = ""
+    if file:
+        loc = f" file={_escape_property(file)}"
+        if line:
+            loc += f",line={line}"
+    for head, chunk in zip(heads, chunks):
+        print(f"::{kind} title={_escape_property(head)}{loc}::{_escape_data(chunk)}")
 
 
 def report_test_results() -> None:
@@ -73,7 +90,20 @@ def report_test_results() -> None:
                         detail = f"{message} | {body}"
                     else:
                         detail = body or message or tag
-                    emit("error", f"FAIL {classname}.{name}", detail)
+                    # Emit the raw body un-collapsed (preserve newlines) for the first chunk
+                    # so Caused-by chains remain readable, then a collapsed version too.
+                    raw = (bad.text or "").strip()
+                    if raw:
+                        detail_raw = f"{message}\n{raw}" if message and message not in raw else (raw or message)
+                    else:
+                        detail_raw = detail
+                    src_line = None
+                    src_file = None
+                    m = re.search(r"\((\w+\.java):(\d+)\)", raw or "")
+                    if m:
+                        src_file = m.group(1)
+                        src_line = int(m.group(2))
+                    emit("error", f"FAIL {classname}.{name}", detail_raw, file=src_file, line=src_line)
 
 
 def report_log(log: str) -> None:
