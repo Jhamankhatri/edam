@@ -285,7 +285,20 @@ public class ReportingService {
 		validateFilter(filter);
 		Pageable safe = safePageable(pageable);
 
-		String sql = REGISTER_SELECT + whereClause(scope, filter, false) + orderByClause(safe) + " limit ? offset ?";
+		String where = whereClause(scope, filter, false);
+		// Run count first — it is the simplest query and its error message is easiest to read.
+		long total;
+		try {
+			total = this.jdbc.query(
+					"select count(*) from expense_requests r " + where,
+					ps -> bindWhere(ps, scope, filter, false, 1),
+					rs -> { rs.next(); return rs.getLong(1); });
+		} catch (RuntimeException rex) {
+			log.error("register count SQL failed: {}; WHERE:\n{}", rex.getMessage(), where, rex);
+			throw rex;
+		}
+
+		String sql = REGISTER_SELECT + where + " order by r.submitted_at desc nulls last limit ? offset ?";
 		List<Object[]> rows;
 		try {
 			rows = this.jdbc.query(sql,
@@ -297,18 +310,6 @@ public class ReportingService {
 				(rs, n) -> mapRow(rs));
 		} catch (RuntimeException rex) {
 			log.error("register page SQL failed: {}\nSQL: {}", rex.getMessage(), sql, rex);
-			throw rex;
-		}
-
-		long total;
-		try {
-			total = this.jdbc.query(
-					"select count(*) from expense_requests r "
-					+ whereClause(scope, filter, false),
-					ps -> bindWhere(ps, scope, filter, false, 1),
-					rs -> { rs.next(); return rs.getLong(1); });
-		} catch (RuntimeException rex) {
-			log.error("register count SQL failed: {}", rex.getMessage(), rex);
 			throw rex;
 		}
 
