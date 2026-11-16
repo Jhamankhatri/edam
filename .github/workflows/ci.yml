@@ -29,11 +29,20 @@ jobs:
         id: build
         shell: bash
         run: |
-          set -o pipefail
           set +e
-          mvn -B -ntp -Dstyle.color=never -e -DtrimStackTrace=false verify 2>&1 | tee build.log
-          echo "rc=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
-          python3 tools/ci-report.py build.log
+          # Strip non-printable bytes from the console stream BEFORE it reaches GitHub's log
+          # parser. Maven/surefire echoes binary XLSX response bodies from assertion failures,
+          # and GitHub surfaces every [ERROR] line containing those bytes as a separate
+          # annotation. That garbage pushed the actual PSQLException/Caused-by annotations
+          # off the visible list. We keep the original (binary) build.log for diagnostics
+          # artifact upload, but feed a sanitized copy to the console and to ci-report.py.
+          mvn -B -ntp -Dstyle.color=never -e -DtrimStackTrace=false verify > build.log 2>&1
+          mvn_rc=$?
+          LC_ALL=C tr -dc '\t\n\r\40-\176' < build.log > build.clean.log
+          cat build.clean.log
+          echo "rc=$mvn_rc" >> "$GITHUB_OUTPUT"
+          python3 tools/ci-report.py build.clean.log
+          exit $mvn_rc
 
       - name: Diagnose failure
         if: steps.build.outputs.rc != 0
