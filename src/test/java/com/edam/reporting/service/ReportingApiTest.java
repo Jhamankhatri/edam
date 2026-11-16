@@ -221,29 +221,44 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 
 		// Filter dashboard to our two test requesters by chaining two dashboard calls:
 		// per-requester totals are asserted below; combined total is 4.
-		// Use jsonPath on individual metric cards — the shared Postgres container may retain
-		// non-draft requests for the freshly-created requester from earlier committed tests,
-		// so our fixtures must AT LEAST contribute the expected counts (gte).
-		this.mockMvc.perform(get(REPORTING + "/dashboard")
+		// Parse the JSON body and assert via AssertJ (more robust than jsonPath for filter
+		// predicates, and tolerant of cross-test fixtures in the shared Postgres container:
+		// we require AT LEAST the counts produced by our own fixtures).
+		var bodyA = this.mockMvc.perform(get(REPORTING + "/dashboard")
 				.param("requesterId", this.requesterA.getId().toString())
 				.with(user(installationAdmin())))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.data.metrics[0].key").value("total_requests"))
-			.andExpect(jsonPath("$.data.metrics[0].value").value(org.hamcrest.Matchers.greaterThanOrEqualTo(2)))
-			.andExpect(jsonPath("$.data.metrics[1].key").value("pending_approvals"))
-			.andExpect(jsonPath("$.data.metrics[1].value").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
-			.andExpect(jsonPath("$.data.metrics[4].key").value("approved_total"))
-			.andExpect(jsonPath("$.data.metrics[4].value").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)));
+			.andReturn().getResponse().getContentAsString();
+		// Find each metric by key and assert gte.
+		java.util.function.BiConsumer<String, Integer> assertMetric = (key, min) -> {
+			java.util.regex.Matcher m = java.util.regex.Pattern
+				.compile("\"key\":\"" + key + "\",\"label\":\"[^\"]*\",\"value\":(\\d+)")
+				.matcher(bodyA);
+			org.assertj.core.api.Assertions.assertThat(m.find())
+				.as("metric %s present", key).isTrue();
+			int v = Integer.parseInt(m.group(1));
+			org.assertj.core.api.Assertions.assertThat(v).as("metric %s", key).isGreaterThanOrEqualTo(min);
+		};
+		assertMetric.accept("total_requests", 2);
+		assertMetric.accept("pending_approvals", 1);
+		assertMetric.accept("approved_total", 1);
 
-		this.mockMvc.perform(get(REPORTING + "/dashboard")
+		var bodyB = this.mockMvc.perform(get(REPORTING + "/dashboard")
 				.param("requesterId", this.requesterB.getId().toString())
 				.with(user(installationAdmin())))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.data.metrics[0].value").value(org.hamcrest.Matchers.greaterThanOrEqualTo(2)))
-			.andExpect(jsonPath("$.data.metrics[6].key").value("rejected_total"))
-			.andExpect(jsonPath("$.data.metrics[6].value").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
-			.andExpect(jsonPath("$.data.metrics[7].key").value("returned_total"))
-			.andExpect(jsonPath("$.data.metrics[7].value").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)));
+			.andReturn().getResponse().getContentAsString();
+		java.util.function.BiConsumer<String, Integer> assertMetricB = (key, min) -> {
+			java.util.regex.Matcher m = java.util.regex.Pattern
+				.compile("\"key\":\"" + key + "\",\"label\":\"[^\"]*\",\"value\":(\\d+)")
+				.matcher(bodyB);
+			org.assertj.core.api.Assertions.assertThat(m.find()).as("metric %s", key).isTrue();
+			int v = Integer.parseInt(m.group(1));
+			org.assertj.core.api.Assertions.assertThat(v).as("metric %s", key).isGreaterThanOrEqualTo(min);
+		};
+		assertMetricB.accept("total_requests", 2);
+		assertMetricB.accept("rejected_total", 1);
+		assertMetricB.accept("returned_total", 1);
 	}
 
 	@Test
@@ -279,24 +294,33 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 		submit(this.requesterA, this.deptA, this.opex, "20", ExpenseRequest.Status.APPROVED, t1);
 		submit(this.requesterA, this.deptA, this.opex, "30", ExpenseRequest.Status.APPROVED, t2);
 
-		// [t0, t1] includes t0 and t1 but not t2. Filter to requesterA so we don't count
-		// records left by other tests in the shared Postgres container; use gte matchers
-		// for the same reason (our fixtures guarantee AT LEAST 2 rows in this window).
-		this.mockMvc.perform(get(REPORTING + "/expense-requests/register")
+		// [t0, t1] includes t0 and t1 but not t2. Filter to requesterA; use gte matchers
+		// because the shared container may have other requester-A records in this window.
+		var regBody = this.mockMvc.perform(get(REPORTING + "/expense-requests/register")
 				.param("from", t0.toString())
 				.param("to", t1.toString())
 				.param("requesterId", this.requesterA.getId().toString())
 				.with(user(installationAdmin())))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.data.total").value(org.hamcrest.Matchers.greaterThanOrEqualTo(2)));
+			.andReturn().getResponse().getContentAsString();
+		var tm = java.util.regex.Pattern.compile("\"total\":(\\d+)").matcher(regBody);
+		org.assertj.core.api.Assertions.assertThat(tm.find()).isTrue();
+		org.assertj.core.api.Assertions.assertThat(Integer.parseInt(tm.group(1)))
+			.as("register total in [t0,t1]").isGreaterThanOrEqualTo(2);
 
-		this.mockMvc.perform(get(REPORTING + "/dashboard")
+		var dashBody = this.mockMvc.perform(get(REPORTING + "/dashboard")
 				.param("from", t0.toString())
 				.param("to", t1.toString())
 				.param("requesterId", this.requesterA.getId().toString())
 				.with(user(installationAdmin())))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.data.metrics[?(@.key=='total_requests')].value[0]").value(org.hamcrest.Matchers.greaterThanOrEqualTo(2)));
+			.andReturn().getResponse().getContentAsString();
+		var dm = java.util.regex.Pattern
+			.compile("\"key\":\"total_requests\",\"label\":\"[^\"]*\",\"value\":(\\d+)")
+			.matcher(dashBody);
+		org.assertj.core.api.Assertions.assertThat(dm.find()).isTrue();
+		org.assertj.core.api.Assertions.assertThat(Integer.parseInt(dm.group(1)))
+			.as("dashboard total_requests in [t0,t1]").isGreaterThanOrEqualTo(2);
 	}
 
 	@Test
