@@ -272,10 +272,12 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 		submit(this.requesterA, this.deptA, this.opex, "20", ExpenseRequest.Status.APPROVED, t1);
 		submit(this.requesterA, this.deptA, this.opex, "30", ExpenseRequest.Status.APPROVED, t2);
 
-		// [t0, t1] includes t0 and t1 but not t2
+		// [t0, t1] includes t0 and t1 but not t2. Filter to requesterA to isolate from
+		// data left by other tests in the shared Postgres container.
 		var reg = this.mockMvc.perform(get(REPORTING + "/expense-requests/register")
 				.param("from", t0.toString())
 				.param("to", t1.toString())
+				.param("requesterId", this.requesterA.getId().toString())
 				.with(user(installationAdmin())))
 			.andExpect(status().isOk())
 			.andReturn().getResponse().getContentAsString();
@@ -284,6 +286,7 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 		var dash = this.mockMvc.perform(get(REPORTING + "/dashboard")
 				.param("from", t0.toString())
 				.param("to", t1.toString())
+				.param("requesterId", this.requesterA.getId().toString())
 				.with(user(installationAdmin())))
 			.andExpect(status().isOk())
 			.andReturn().getResponse().getContentAsString();

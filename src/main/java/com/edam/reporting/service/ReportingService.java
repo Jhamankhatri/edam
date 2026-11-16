@@ -474,6 +474,13 @@ public class ReportingService {
 	 */
 	String whereClause(Scope scope, ReportingDtos.ReportFilter f, boolean dashboard) {
 		StringBuilder sql = new StringBuilder(" where 1=1");
+		// Dashboard aggregates and register TOTALS always exclude DRAFTs — drafts are a
+		// private workspace of their requester and are not counted in visible metrics. The
+		// paged register continues to show them (to the requester / scoped manager) via the
+		// scope predicate so that users can resume work on their drafts.
+		if (dashboard) {
+			sql.append(" and r.current_status_code <> 'DRAFT'");
+		}
 		// Scope predicates
 		if (!scope.installationWide()) {
 			// Self-only with no department/branch scopes restricts to own requests (including drafts).
