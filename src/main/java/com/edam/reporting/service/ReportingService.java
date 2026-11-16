@@ -783,10 +783,13 @@ public class ReportingService {
 	}
 
 	private Object[] mapRow(ResultSet rs) throws SQLException {
-		// Read typed columns via getObject(idx, Class) where possible so NULL literals in
-		// the projection come back as null of the correct Java type instead of as a
-		// driver-internal placeholder that later fails a (UUID)/(Long) cast.
-		Long ageBoxed = rs.getObject("decision_age_seconds", Long.class);
+		// Avoid ResultSet.getObject(col, Class) for numeric columns: the PG JDBC driver
+		// returns BigInteger/BigDecimal from SUM/COUNT projections and for NULL numeric
+		// literals cast to BIGINT, which then fails a (Long) cast downstream. Use the
+		// typed getter + wasNull() idiom, which always returns the expected primitive/
+		// wrapper.
+		long agePrim = rs.getLong("decision_age_seconds");
+		Long ageBoxed = rs.wasNull() ? null : agePrim;
 		return new Object[] {
 				rs.getObject("id", UUID.class),
 				rs.getString("request_number"),
