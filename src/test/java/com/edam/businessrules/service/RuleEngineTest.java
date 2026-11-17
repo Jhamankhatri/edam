@@ -86,12 +86,28 @@ class RuleEngineTest {
 	}
 
 	@Test
-	@DisplayName("unknown action type is rejected at parse time")
+	@DisplayName("unknown action type is rejected; parameter whitelist enforced when schema supplied")
 	void actionValidation() {
 		assertThatThrownBy(() -> engine.parseAction("{\"type\":\"DROP_TABLE\"}"))
 				.isInstanceOf(BusinessException.class);
+		// No schema -> only type and scalar shape validated.
 		Map<String,Object> a = engine.parseAction("{\"type\":\"WARN\",\"message\":\"high amount\"}");
 		assertThat(a.get("type")).isEqualTo("WARN");
+		// With schema -> undeclared parameters are rejected.
+		RuleEngine.ActionSchema schema = new RuleEngine.ActionSchema() {
+			@Override public boolean allowsType(String t) { return "WARN".equals(t) || "REQUIRE_APPROVAL_LEVEL".equals(t); }
+			@Override public java.util.Set<String> allowedParameters(String t) {
+				return "REQUIRE_APPROVAL_LEVEL".equals(t) ? java.util.Set.of("level") : java.util.Set.of("message");
+			}
+		};
+		assertThatThrownBy(() -> engine.parseAction("{\"type\":\"WARN\",\"hacked\":true}", schema))
+				.isInstanceOf(BusinessException.class);
+		// REQUIRE_APPROVAL_LEVEL requires a scalar "level".
+		assertThatThrownBy(() -> engine.parseAction("{\"type\":\"REQUIRE_APPROVAL_LEVEL\"}", schema))
+				.isInstanceOf(BusinessException.class);
+		Map<String,Object> good = engine.parseAction(
+				"{\"type\":\"REQUIRE_APPROVAL_LEVEL\",\"level\":\"EC2\"}", schema);
+		assertThat(good.get("level")).isEqualTo("EC2");
 	}
 
 	private boolean eval(Map<String,Object> cond) {

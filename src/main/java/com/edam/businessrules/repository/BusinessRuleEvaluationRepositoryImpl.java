@@ -16,7 +16,7 @@ public class BusinessRuleEvaluationRepositoryImpl implements BusinessRuleEvaluat
 	 * one PUBLISHED version per set.
 	 */
 	private static final String ACTIVE_RULES_SQL = """
-			select r.id, r.rule_code, s.rule_set_code, r.priority,
+			select r.id, r.rule_code, s.rule_set_code, v.version_number, r.priority,
 			       r.condition_definition::text, r.action_definition::text
 			  from business_rules r
 			  join business_rule_versions v on v.id = r.rule_version_id
@@ -32,7 +32,7 @@ public class BusinessRuleEvaluationRepositoryImpl implements BusinessRuleEvaluat
 			""";
 
 	private static final String ACTIVE_RULES_MODULE_SQL = """
-			select r.id, r.rule_code, s.rule_set_code, r.priority,
+			select r.id, r.rule_code, s.rule_set_code, v.version_number, r.priority,
 			       r.condition_definition::text, r.action_definition::text
 			  from business_rules r
 			  join business_rule_versions v on v.id = r.rule_version_id
@@ -58,7 +58,7 @@ public class BusinessRuleEvaluationRepositoryImpl implements BusinessRuleEvaluat
 				ps -> { ps.setString(1, module); ps.setString(2, ruleSetCode); },
 				(rs, n) -> new ActiveRule(
 						(UUID) rs.getObject(1), rs.getString(2), rs.getString(3),
-						rs.getInt(4), rs.getString(5), rs.getString(6)));
+						rs.getInt(4), rs.getInt(5), rs.getString(6), rs.getString(7)));
 	}
 
 	@Override
@@ -67,6 +67,6 @@ public class BusinessRuleEvaluationRepositoryImpl implements BusinessRuleEvaluat
 				ps -> ps.setString(1, module),
 				(rs, n) -> new ActiveRule(
 						(UUID) rs.getObject(1), rs.getString(2), rs.getString(3),
-						rs.getInt(4), rs.getString(5), rs.getString(6)));
+						rs.getInt(4), rs.getInt(5), rs.getString(6), rs.getString(7)));
 	}
 }

@@ -64,4 +64,31 @@ public final class RuleDtos {
 
 	public record PublishRequest(Instant effectiveFrom) {
 	}
+
+	/** Per-rule outcome from {@code evaluate()}. The caller MUST inspect {@code status()} before
+	 *  trusting {@code matched()}: an {@code ERROR} outcome means the rule could not be safely
+	 *  evaluated and mandatory controls MUST NOT be skipped (fail-closed for dispatch). */
+	public enum RuleMatchStatus { MATCH, NO_MATCH, ERROR }
+
+	public record RuleEvaluationResult(
+			UUID ruleId,
+			String ruleCode,
+			int versionNumber,
+			int priority,
+			RuleMatchStatus status,
+			/** Action payload when status == MATCH; null otherwise. */
+			Map<String, Object> action,
+			/** Stable, non-sensitive diagnostic when status == ERROR. Never includes request data. */
+			String errorCode) {
+	}
+
+	/** Aggregate outcome of evaluating active rules for a (module, set, context). Callers MUST
+	 *  treat {@code hasErrors()} as a hard stop for mandatory-control dispatch: if any rule
+	 *  failed to evaluate, treat the set as unsafe to apply. */
+	public record EvaluationOutcome(
+			List<RuleEvaluationResult> results,
+			List<RuleEvaluationResult> matches,
+			List<RuleEvaluationResult> errors) {
+		public boolean hasErrors() { return !errors.isEmpty(); }
+	}
 }

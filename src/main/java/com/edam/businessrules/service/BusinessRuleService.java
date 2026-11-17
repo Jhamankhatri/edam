@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -19,6 +20,7 @@ import com.edam.businessrules.repository.BusinessRuleEvaluationRepository.Active
 import com.edam.businessrules.repository.BusinessRuleRepository;
 import com.edam.businessrules.repository.BusinessRuleSetRepository;
 import com.edam.businessrules.repository.BusinessRuleVersionRepository;
+import com.edam.businessrules.spi.RuleFieldContributor;
 import com.edam.common.api.ErrorCode;
 import com.edam.common.audit.AuditAction;
 import com.edam.common.audit.AuditRecorder;
@@ -46,18 +48,44 @@ public class BusinessRuleService {
 	private final BusinessRuleEvaluationRepository eval;
 	private final RuleEngine engine;
 	private final AuditRecorder audit;
+	private final Map<String, RuleFieldContributor> contributorsByModule;
 
 	public BusinessRuleService(BusinessRuleSetRepository sets,
 			BusinessRuleVersionRepository versions,
 			BusinessRuleRepository rules,
 			BusinessRuleEvaluationRepository eval,
-			RuleEngine engine, AuditRecorder audit) {
+			RuleEngine engine, AuditRecorder audit,
+			List<RuleFieldContributor> contributors) {
 		this.sets = sets;
 		this.versions = versions;
 		this.rules = rules;
 		this.eval = eval;
 		this.engine = engine;
 		this.audit = audit;
+		Map<String, RuleFieldContributor> m = new LinkedHashMap<>();
+		for (RuleFieldContributor c : contributors) m.put(c.moduleCode(), c);
+		this.contributorsByModule = Map.copyOf(m);
+	}
+
+	/** Returns the field/action whitelist contributor for a module, or throws if the module
+	 *  has no contributor — publishing rules against an unknown module is fail-closed: we
+	 *  cannot validate fields safely, so we refuse to publish. */
+	private RuleFieldContributor contributorFor(String module) {
+		RuleFieldContributor c = this.contributorsByModule.get(module);
+		if (c == null) {
+			throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+					"No field whitelist registered for module \"" + module
+					+ "\". A RuleFieldContributor bean must be provided before rules can be published.");
+		}
+		return c;
+	}
+
+	private RuleEngine.ActionSchema schemaFor(String module) {
+		RuleFieldContributor c = contributorFor(module);
+		return new RuleEngine.ActionSchema() {
+			@Override public boolean allowsType(String t) { return c.allowedActionTypes().contains(t); }
+			@Override public Set<String> allowedParameters(String t) { return c.allowedActionParameters(t); }
+		};
 	}
 
 	// --------------------------------------------------------------------------------
@@ -152,12 +180,16 @@ public class BusinessRuleService {
 			.orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Draft disappeared"));
 		BusinessRuleSet s = draft.getRuleSet();
 
-		// Validate every rule before flipping status (syntax-only; field whitelist enforced at eval time).
-		RuleEngine.EvaluationContext validationCtx = RuleEngine.EvaluationContext.wildcard();
+		// Validate every rule against the module's real field/action whitelist. wildcard()
+		// is NOT used here: unknown fields/ops/actions/parameters are rejected BEFORE publish
+		// so malformed rules never reach evaluation.
+		RuleFieldContributor contrib = contributorFor(s.getModule());
+		RuleEngine.EvaluationContext fieldCtx = RuleEngine.EvaluationContext.forFields(contrib.exposedFields());
+		RuleEngine.ActionSchema actionSchema = schemaFor(s.getModule());
 		for (BusinessRule r : draft.getRules()) {
 			Map<String, Object> cond = this.engine.parseCondition(r.getConditionDefinition());
-			this.engine.validateCondition(cond, validationCtx);
-			this.engine.parseAction(r.getActionDefinition());
+			this.engine.validateCondition(cond, fieldCtx);
+			this.engine.parseAction(r.getActionDefinition(), actionSchema);
 		}
 
 		// Retire any previously PUBLISHED version; the partial unique index enforces at most one.
@@ -208,10 +240,18 @@ public class BusinessRuleService {
 		if (v.getStatus() != RuleVersionStatus.DRAFT) {
 			throw new BusinessException(ErrorCode.VALIDATION_FAILED, "Rules can only be edited in DRAFT versions.");
 		}
-		// Validate the condition/action syntax now (deeper context validation happens on publish).
+		// Resolve module through the owning set and validate against the module's field/action
+		// whitelist. Upsert rejects unknown fields/ops/actions/parameters so a bad rule cannot be
+		// saved and later "fixed" by a publish — fail as early as possible.
+		UUID setId = v.getRuleSet().getId(); // works on lazy proxy without initialising it
+		BusinessRuleSet s = this.sets.findById(setId)
+				.orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Rule set not found for version"));
+		RuleFieldContributor contrib = contributorFor(s.getModule());
 		Map<String, Object> cond = this.engine.parseCondition(this.engine.writeCondition(req.condition() == null ? Map.of("all", List.of()) : req.condition()));
-		this.engine.validateCondition(cond, RuleEngine.EvaluationContext.wildcard());
-		Map<String, Object> act = this.engine.parseAction(this.engine.writeAction(req.action() == null ? Map.of("type", "WARN") : req.action()));
+		this.engine.validateCondition(cond, RuleEngine.EvaluationContext.forFields(contrib.exposedFields()));
+		Map<String, Object> act = this.engine.parseAction(
+				this.engine.writeAction(req.action() == null ? Map.of("type", "WARN") : req.action()),
+				schemaFor(s.getModule()));
 
 		BusinessRule target;
 		if (req.id() != null) {
@@ -258,28 +298,95 @@ public class BusinessRuleService {
 	// Evaluation entry point (used by other services like expense-request validation)
 	// --------------------------------------------------------------------------------
 
-	/** Evaluate the active rules for a given module+rule set against the supplied context.
-	 *  Returns ordered list of matched actions (priority order). */
+	/**
+	 * Evaluate active rules for (module, ruleSetCode) against a caller-supplied context.
+	 *
+	 * <p>Returns an {@link RuleDtos.EvaluationOutcome} that explicitly distinguishes MATCH,
+	 * NO_MATCH, and ERROR. Callers of mandatory-control dispatch (REJECT_REQUEST,
+	 * REQUIRE_APPROVAL_LEVEL, REQUIRE_ATTACHMENT, SET_DELEGATION_TARGET) MUST check
+	 * {@code outcome.hasErrors()} and treat an ERROR outcome as a hard stop: no mandatory
+	 * control may be skipped because a rule failed to evaluate. It is the caller's
+	 * responsibility to convert an ERROR outcome into a safe operation (e.g., block
+	 * submission pending operator review). The engine itself does NOT auto-reject, because
+	 * blanket rejection is itself a business policy decision.
+	 *
+	 * <p>Error diagnostics are stable codes (no request data is echoed into logs or into the
+	 * returned structure) so audit trails can correlate failures without leaking PII.
+	 */
 	@Transactional(readOnly = true)
-	public List<RuleDtos.RuleDetail> evaluate(String module, String ruleSetCode, RuleEngine.EvaluationContext ctx) {
+	public RuleDtos.EvaluationOutcome evaluate(String module, String ruleSetCode, RuleEngine.EvaluationContext ctx) {
+		// Enforce the field whitelist at evaluation entry point as well, so that a caller that
+		// constructs a context with unexpected names cannot bypass publish-time validation via
+		// direct service calls.
+		RuleFieldContributor contrib = this.contributorsByModule.get(module);
+		Set<String> allowed = (contrib != null) ? contrib.exposedFields() : Set.of();
+		// Re-wrap the supplied context to enforce the whitelist even if the caller passed a
+		// wildcard or a permissive map.
+		RuleEngine.EvaluationContext safeCtx = new RuleEngine.EvaluationContext() {
+			@Override public boolean isAllowedField(String f) { return allowed.contains(f); }
+			@Override public Object get(String f) { return allowed.contains(f) ? ctx.get(f) : null; }
+		};
+
 		List<ActiveRule> rules = this.eval.loadActiveRules(module, ruleSetCode);
-		List<RuleDtos.RuleDetail> matched = new ArrayList<>();
+		List<RuleDtos.RuleEvaluationResult> results = new ArrayList<>(rules.size());
+		List<RuleDtos.RuleEvaluationResult> matches = new ArrayList<>();
+		List<RuleDtos.RuleEvaluationResult> errors = new ArrayList<>();
 		for (ActiveRule ar : rules) {
-			Map<String, Object> cond = this.engine.parseCondition(ar.conditionJson());
+			Map<String, Object> cond;
 			try {
-				if (this.engine.evaluate(cond, ctx)) {
-					Map<String, Object> action = this.engine.parseAction(ar.actionJson());
-					matched.add(new RuleDtos.RuleDetail(ar.ruleId(), ar.ruleCode(), ar.ruleCode(),
-							cond, action, ar.priority(), true));
+				cond = this.engine.parseCondition(ar.conditionJson());
+			} catch (BusinessException bex) {
+				RuleDtos.RuleEvaluationResult err = new RuleDtos.RuleEvaluationResult(
+						ar.ruleId(), ar.ruleCode(), ar.versionNumber(), ar.priority(),
+						RuleDtos.RuleMatchStatus.ERROR, null, "RULE_PARSE_ERROR");
+				results.add(err); errors.add(err);
+				log.warn("Rule {} v{} parse failed at evaluation: code=RULE_PARSE_ERROR", ar.ruleId(), ar.versionNumber());
+				continue;
+			}
+			try {
+				boolean matched = this.engine.evaluate(cond, safeCtx);
+				if (matched) {
+					Map<String, Object> action = (contrib == null)
+							? this.engine.parseAction(ar.actionJson())
+							: this.engine.parseAction(ar.actionJson(), schemaFor(module));
+					RuleDtos.RuleEvaluationResult r = new RuleDtos.RuleEvaluationResult(
+							ar.ruleId(), ar.ruleCode(), ar.versionNumber(), ar.priority(),
+							RuleDtos.RuleMatchStatus.MATCH, action, null);
+					results.add(r); matches.add(r);
+				} else {
+					results.add(new RuleDtos.RuleEvaluationResult(
+							ar.ruleId(), ar.ruleCode(), ar.versionNumber(), ar.priority(),
+							RuleDtos.RuleMatchStatus.NO_MATCH, null, null));
 				}
 			} catch (BusinessException bex) {
-				// Safe-fail: log and continue rather than silently treating as match or throwing
-				// up into a caller that cannot correct the data. Publish-time validation should
-				// prevent this path for well-formed rules.
-				log.warn("Rule {} evaluation failed safely: {}", ar.ruleCode(), bex.getMessage());
+				// ERROR is recorded explicitly; we NEVER treat a failed rule as either matched
+				// (would fire unsafe actions) or non-matched (would skip mandatory controls).
+				RuleDtos.RuleEvaluationResult err = new RuleDtos.RuleEvaluationResult(
+						ar.ruleId(), ar.ruleCode(), ar.versionNumber(), ar.priority(),
+						RuleDtos.RuleMatchStatus.ERROR, null, "RULE_EVAL_ERROR");
+				results.add(err); errors.add(err);
+				log.warn("Rule {} v{} evaluation failed: code=RULE_EVAL_ERROR", ar.ruleId(), ar.versionNumber());
 			}
 		}
-		return matched;
+		return new RuleDtos.EvaluationOutcome(List.copyOf(results), List.copyOf(matches), List.copyOf(errors));
+	}
+
+	/** Convenience wrapper returning only matched actions. Throws if any rule errored, so
+	 *  callers that ask for matches cannot silently skip mandatory controls. */
+	@Transactional(readOnly = true)
+	public List<RuleDtos.RuleDetail> evaluateMatches(String module, String ruleSetCode, RuleEngine.EvaluationContext ctx) {
+		RuleDtos.EvaluationOutcome o = evaluate(module, ruleSetCode, ctx);
+		if (o.hasErrors()) {
+			throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+					"Rule evaluation produced " + o.errors().size()
+					+ " error(s); mandatory controls cannot be safely applied.");
+		}
+		List<RuleDtos.RuleDetail> out = new ArrayList<>();
+		for (RuleDtos.RuleEvaluationResult r : o.matches()) {
+			out.add(new RuleDtos.RuleDetail(r.ruleId(), r.ruleCode(), r.ruleCode(),
+					null, r.action(), r.priority(), true));
+		}
+		return out;
 	}
 
 	// --------------------------------------------------------------------------------

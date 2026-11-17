@@ -83,9 +83,16 @@ public class RuleEngine {
 		}
 	}
 
-	/** Parse an action JSON. */
+	/** Parse an action JSON, validating type and parameters against the contributor (if supplied).
+	 *  Pass {@code null} for syntax-only parse (upsert path); pass a contributor at publish time
+	 *  to enforce parameter whitelisting. */
 	@SuppressWarnings("unchecked")
 	public Map<String, Object> parseAction(String jsonStr) {
+		return parseAction(jsonStr, null);
+	}
+
+	@SuppressWarnings("unchecked")
+	public Map<String, Object> parseAction(String jsonStr, ActionSchema schema) {
 		if (jsonStr == null || jsonStr.isBlank()) {
 			throw new BusinessException(ErrorCode.VALIDATION_FAILED, "Action must be a JSON object.");
 		}
@@ -99,6 +106,35 @@ public class RuleEngine {
 			if (!(type instanceof String t) || !AllowedActions.isAllowed(t)) {
 				throw new BusinessException(ErrorCode.VALIDATION_FAILED,
 						"Unknown action type: " + type + ". Supported: " + AllowedActions.supported());
+			}
+			if (schema != null && !schema.allowsType(t)) {
+				throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+						"Action type \"" + t + "\" is not declared for this module.");
+			}
+			// Validate parameters
+			Set<String> allowedParams = (schema == null) ? null : schema.allowedParameters(t);
+			for (Map.Entry<String, Object> e : m.entrySet()) {
+				String k = e.getKey();
+				if ("type".equals(k)) continue;
+				if (allowedParams != null && !allowedParams.contains(k)) {
+					throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+							"Action \"" + t + "\" does not accept parameter \"" + k + "\"; allowed: " + allowedParams);
+				}
+				if (!isScalar(e.getValue())) {
+					throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+							"Action parameter \"" + k + "\" must be a scalar.");
+				}
+			}
+			if (schema != null) {
+				// Required parameters per action: level for REQUIRE_APPROVAL_LEVEL.
+				if ("REQUIRE_APPROVAL_LEVEL".equals(t) && !(m.get("level") instanceof String)) {
+					throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+							"REQUIRE_APPROVAL_LEVEL action requires a scalar \"level\" parameter.");
+				}
+				if ("REQUIRE_ATTACHMENT".equals(t) && !(m.get("attachmentType") instanceof String)) {
+					throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+							"REQUIRE_ATTACHMENT action requires a scalar \"attachmentType\" parameter.");
+				}
 			}
 			return m;
 		} catch (java.io.IOException iox) {
@@ -304,10 +340,16 @@ public class RuleEngine {
 		throw new EvalException("Not a number: " + n);
 	}
 
+	/** Schema for action validation against a specific module's {@link com.edam.businessrules.spi.RuleFieldContributor}. */
+	public interface ActionSchema {
+		boolean allowsType(String actionType);
+		Set<String> allowedParameters(String actionType);
+	}
+
 	/** Evaluation context exposed to rules: a fixed, read-only map of field → value. */
 	public interface EvaluationContext {
 		boolean isAllowedField(String field);
-		/** @return true if the context accepts any field (syntax-only validation path). */
+		/** @return true if the context accepts any field (syntax-only validation path at upsert time). */
 		default boolean isWildcardAllowed() { return false; }
 		Object get(String field);
 
@@ -320,11 +362,22 @@ public class RuleEngine {
 			};
 		}
 
-		/** Syntax-only validation context (accepts any field name). Used at upsert/publish time. */
+		/** Syntax-only validation context (accepts any field name). Used ONLY at upsert time
+		 *  when the rule set module is known but we validate shape before the user navigates away.
+		 *  Publish MUST use a real field-set, never wildcard(). */
 		static EvaluationContext wildcard() {
 			return new EvaluationContext() {
 				@Override public boolean isAllowedField(String f) { return true; }
 				@Override public boolean isWildcardAllowed() { return true; }
+				@Override public Object get(String f) { return null; }
+			};
+		}
+
+		/** Validation context tied to a concrete field whitelist. Used at publish + eval time. */
+		static EvaluationContext forFields(Set<String> allowedFields) {
+			Set<String> allowed = Set.copyOf(allowedFields);
+			return new EvaluationContext() {
+				@Override public boolean isAllowedField(String f) { return allowed.contains(f); }
 				@Override public Object get(String f) { return null; }
 			};
 		}

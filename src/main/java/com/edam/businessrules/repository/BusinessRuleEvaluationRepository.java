@@ -20,6 +20,6 @@ public interface BusinessRuleEvaluationRepository {
 	/** Load every active rule from every active rule set in the given module. */
 	List<ActiveRule> loadActiveRulesForModule(String module);
 
-	record ActiveRule(UUID ruleId, String ruleCode, String ruleSetCode, int priority,
+	record ActiveRule(UUID ruleId, String ruleCode, String ruleSetCode, int versionNumber, int priority,
 			String conditionJson, String actionJson) {}
 }
