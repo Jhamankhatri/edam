@@ -69,12 +69,11 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 	void setup() {
 		this.admin = users.findAll().stream().findFirst().orElseGet(() ->
 			com.edam.testsupport.RequestFixtures.user(this.users, null));
-		// Direct SQL cleanup avoids JPA cascading/entity-order surprises and resets
-		// state between tests. Audit FKs on entity_id are soft (no FK constraint),
-		// so wipe them too to keep the redaction assertion deterministic.
-		jdbc.execute("DELETE FROM audit_events WHERE entity_type IN ('IntegrationConfig','IntegrationExecution')");
-		jdbc.execute("DELETE FROM integration_executions");
-		jdbc.execute("DELETE FROM integration_configs");
+		// Clean up rows created by this test class. audit_events is append-only
+		// (trigger-enforced), so do NOT attempt to delete audit rows; filter by
+		// the unique test-prefix code in assertions instead.
+		jdbc.execute("DELETE FROM integration_executions WHERE config_id IN (SELECT id FROM integration_configs WHERE code LIKE 's-%')");
+		jdbc.execute("DELETE FROM integration_configs WHERE code LIKE 's-%'");
 	}
 
 	private EdamPrincipal adminUser() {
@@ -225,12 +224,13 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 
 	@Test @DisplayName("worker claim -> process transitions to RETRY_PENDING/FAILED, audit never contains secret")
 	void workerClaimFailAndAuditRedaction() throws Exception {
-		String id = createStub("https://example.com/", null);
+		String uniqueSecret = "worker-secret-" + UUID.randomUUID();
+		String id = createStub("https://example.com/", uniqueSecret);
 		mockMvc.perform(post(BASE + "/" + id + "/activate").with(csrf()).with(user(adminUser())))
 			.andExpect(status().isOk());
 		String r = mockMvc.perform(post(BASE + "/" + id + "/executions").with(csrf()).with(user(adminUser()))
 				.contentType(MediaType.APPLICATION_JSON)
-				.content(json.writeValueAsString(Map.of("operation", "ping", "idempotencyKey", "worker-1"))))
+				.content(json.writeValueAsString(Map.of("operation", "ping", "idempotencyKey", "worker-" + UUID.randomUUID()))))
 			.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
 		UUID eid = UUID.fromString(json.readTree(r).path("data").path("id").asText());
 		worker.sweep();
@@ -241,8 +241,9 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 		assertThat(done.getStatus()).isIn(IntegrationExecution.ExecutionStatus.RETRY_PENDING,
 			IntegrationExecution.ExecutionStatus.FAILED);
 		Integer secretLeaks = jdbc.queryForObject(
-			"select count(*) from audit_events where new_values::text like '%super-secret-token%' "
-			+ "or old_values::text like '%super-secret-token%'", Integer.class);
+			"select count(*) from audit_events where entity_type in ('IntegrationConfig','IntegrationExecution') "
+			+ "and (new_values::text like ? or old_values::text like ?)",
+			Integer.class, "%" + uniqueSecret + "%", "%" + uniqueSecret + "%");
 		assertThat(secretLeaks).isEqualTo(0);
 	}
 
