@@ -93,11 +93,17 @@ class BusinessRulesIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 	void lifecycleCreateUpsertPublish() throws Exception {
 		// Create (unique suffix avoids cross-test UK collisions when running without @Transactional rollback)
 		String uniq = "EXP_" + UUID.randomUUID().toString().substring(0, 8).replace("-", "A");
+		String bodyContent = "{\"code\":\"" + uniq + "\",\"name\":\"Expense Approval\",\"module\":\"EXPENSE\"}";
 		MvcResult created = this.mockMvc.perform(post(BASE)
 				.with(csrf()).with(user(adminPrincipal()))
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"code\":\"" + uniq + "\",\"name\":\"Expense Approval\",\"module\":\"EXPENSE\"}"))
-			.andExpect(status().isOk())
+				.content(bodyContent))
+			.andExpect(result -> {
+				if (result.getResponse().getStatus() != 200) {
+					throw new AssertionError("Expected 200, got " + result.getResponse().getStatus()
+						+ " body=" + result.getResponse().getContentAsString());
+				}
+			})
 			.andExpect(jsonPath("$.data.code").value(uniq))
 			.andReturn();
 		String setId = data(created).path("id").asText();
