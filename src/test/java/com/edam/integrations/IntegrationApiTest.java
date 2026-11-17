@@ -72,8 +72,8 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 		// Clean up rows created by this test class. audit_events is append-only
 		// (trigger-enforced), so do NOT attempt to delete audit rows; filter by
 		// the unique test-prefix code in assertions instead.
-		jdbc.execute("DELETE FROM integration_executions WHERE config_id IN (SELECT id FROM integration_configs WHERE code LIKE 's-%')");
-		jdbc.execute("DELETE FROM integration_configs WHERE code LIKE 's-%'");
+		jdbc.execute("DELETE FROM integration_executions WHERE config_id IN (SELECT id FROM integration_configs WHERE integration_code LIKE 's-%')");
+		jdbc.execute("DELETE FROM integration_configs WHERE integration_code LIKE 's-%'");
 	}
 
 	private EdamPrincipal adminUser() {
