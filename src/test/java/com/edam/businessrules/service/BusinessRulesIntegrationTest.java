@@ -53,7 +53,7 @@ class BusinessRulesIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 	private static final String BASE = "/api/v1/business-rules";
 
 	@Autowired private MockMvc mockMvc;
-	@Autowired private ObjectMapper json;
+	private final ObjectMapper json = new ObjectMapper();
 	@Autowired private BusinessRuleService service;
 	@Autowired private DepartmentRepository departments;
 	@Autowired private OrganizationUnitRepository units;
