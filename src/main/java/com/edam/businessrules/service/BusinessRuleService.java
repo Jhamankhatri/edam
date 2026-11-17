@@ -74,6 +74,12 @@ public class BusinessRuleService {
 		BusinessRuleSet s = this.sets.findByIdWithVersions(id)
 				.orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Rule set not found"));
 		BusinessRuleVersion v = draftOrLatest(s);
+		if (v == null) {
+			throw new BusinessException(ErrorCode.NOT_FOUND, "No version found for rule set");
+		}
+		// Reload the chosen version with rules eagerly fetched so toDetail can enumerate them.
+		v = this.versions.findByIdWithRules(v.getId())
+				.orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Version disappeared"));
 		return toDetail(v, true);
 	}
 
@@ -137,18 +143,16 @@ public class BusinessRuleService {
 
 	@Transactional
 	public RuleDtos.RuleVersionDetail publish(UUID ruleSetId, RuleDtos.PublishRequest req, EdamPrincipal caller) {
-		BusinessRuleSet s = this.sets.findByIdWithVersions(ruleSetId)
-				.orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Rule set not found"));
-		BusinessRuleVersion draft = s.getVersions().stream()
-				.filter(v -> v.getStatus() == RuleVersionStatus.DRAFT)
-				.findFirst().orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_FAILED, "No DRAFT version to publish."));
+		// 1. Locate the current draft under a PESSIMISTIC_WRITE lock so concurrent publications
+		//    cannot clobber each other, and join-fetch rules for validation.
+		BusinessRuleVersion draft = this.versions.findByRuleSetAndStatusWithRules(ruleSetId, RuleVersionStatus.DRAFT)
+			.orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_FAILED, "No DRAFT version to publish."));
+		// Acquire a row-level lock via the lock query (same id, re-selected with LockModeType.PESSIMISTIC_WRITE).
+		this.versions.lockById(draft.getId())
+			.orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Draft disappeared"));
+		BusinessRuleSet s = draft.getRuleSet();
 
-		// Publish is an integrity-sensitive operation; lock the draft row to prevent
-		// concurrent publications from silently clobbering each other.
-		draft = this.versions.lockById(draft.getId())
-				.orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Draft disappeared"));
-
-		// Validate every rule before flipping status.
+		// Validate every rule before flipping status (syntax-only; field whitelist enforced at eval time).
 		RuleEngine.EvaluationContext validationCtx = RuleEngine.EvaluationContext.wildcard();
 		for (BusinessRule r : draft.getRules()) {
 			Map<String, Object> cond = this.engine.parseCondition(r.getConditionDefinition());
@@ -156,41 +160,37 @@ public class BusinessRuleService {
 			this.engine.parseAction(r.getActionDefinition());
 		}
 
-		// Retire any previously PUBLISHED version; the partial unique index on (rule_set_id)
-		// WHERE status='PUBLISHED' enforces that at most one PUBLISHED exists, so retire first.
-		List<BusinessRuleVersion> published = s.getVersions().stream()
-				.filter(v -> v.getStatus() == RuleVersionStatus.PUBLISHED).toList();
+		// Retire any previously PUBLISHED version; the partial unique index enforces at most one.
 		Instant now = Instant.now();
-		for (BusinessRuleVersion p : published) {
-			p.markRetired(now);
-			this.audit.record(AuditAction.DEACTIVATE, "BusinessRuleVersion", p.getId(),
-					"retired v" + p.getVersionNumber() + " in favour of v" + draft.getVersionNumber());
-		}
+		this.versions.findByRuleSetAndStatusWithRules(ruleSetId, RuleVersionStatus.PUBLISHED).ifPresent(p -> {
+			if (!p.getId().equals(draft.getId())) {
+				p.markRetired(now);
+				this.audit.record(AuditAction.DEACTIVATE, "BusinessRuleVersion", p.getId(),
+						"retired v" + p.getVersionNumber() + " in favour of v" + draft.getVersionNumber());
+			}
+		});
 
 		Instant effFrom = (req != null && req.effectiveFrom() != null) ? req.effectiveFrom() : now;
 		if (effFrom.isBefore(now.minusSeconds(1))) {
 			throw new BusinessException(ErrorCode.VALIDATION_FAILED, "effectiveFrom cannot be in the past.");
 		}
-		draft.markPublished(caller.userId(), now);
 		draft.setEffectiveFrom(effFrom);
-		// Optimistic-lock version bump happens on save; @Version will reject stale writes.
+		draft.markPublished(caller.userId(), now);
 		this.versions.save(draft);
-		this.sets.save(s);
 		this.audit.record(AuditAction.PUBLISH, "BusinessRuleVersion", draft.getId(),
-				"published v" + draft.getVersionNumber() + " of " + s.getCode());
+			"published v" + draft.getVersionNumber() + " of " + s.getCode());
 		return toDetail(draft, true);
 	}
 
 	@Transactional
 	public RuleDtos.RuleVersionDetail retirePublished(UUID ruleSetId, EdamPrincipal caller) {
-		BusinessRuleSet s = this.sets.findByIdWithVersions(ruleSetId)
-				.orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Rule set not found"));
-		BusinessRuleVersion published = s.getVersions().stream()
-				.filter(v -> v.getStatus() == RuleVersionStatus.PUBLISHED)
-				.findFirst().orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_FAILED, "No PUBLISHED version to retire."));
-		published = this.versions.lockById(published.getId())
+		BusinessRuleVersion published = this.versions.findByRuleSetAndStatusWithRules(ruleSetId, RuleVersionStatus.PUBLISHED)
+				.orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_FAILED, "No PUBLISHED version to retire."));
+		// Acquire pessimistic lock to serialize concurrent retirements.
+		this.versions.lockById(published.getId())
 				.orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Published version disappeared"));
-		published.markRetired(Instant.now());
+		Instant now = Instant.now();
+		published.markRetired(now);
 		this.versions.save(published);
 		this.audit.record(AuditAction.DEACTIVATE, "BusinessRuleVersion", published.getId(),
 				"retired v" + published.getVersionNumber());
