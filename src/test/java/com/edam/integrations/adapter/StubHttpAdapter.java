@@ -77,9 +77,10 @@ public class StubHttpAdapter implements IntegrationAdapter {
 				return ConnectionTestResult.ok(dur);
 			}
 			return ConnectionTestResult.failure("HTTP_" + resp.statusCode(), "Provider returned HTTP " + resp.statusCode(), dur);
-		} catch (java.net.SocketTimeoutException | HttpTimeoutException e) {
+		} catch (java.net.SocketTimeoutException e) {
 			return ConnectionTestResult.failure("TIMEOUT", "Request timed out after " + readTimeout, (int)(System.currentTimeMillis()-start));
-		} catch (ConnectException | java.net.UnknownHostException | IOException e) {
+		} catch (java.io.IOException e) {
+			// Covers HttpTimeoutException, ConnectException, UnknownHostException, and generic I/O.
 			return ConnectionTestResult.failure("NETWORK", "Network error: " + sanitize(e.getMessage()), (int)(System.currentTimeMillis()-start));
 		} catch (IllegalArgumentException | URISyntaxException e) {
 			return ConnectionTestResult.failure("BAD_URL", "Malformed endpoint URL.", null);
