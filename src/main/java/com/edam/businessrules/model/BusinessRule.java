@@ -6,7 +6,6 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import jakarta.persistence.Version;
 
 import com.edam.common.audit.AuditableEntity;
 
@@ -47,9 +46,7 @@ public class BusinessRule extends AuditableEntity {
 	@Column(name = "is_active", nullable = false)
 	private boolean active = true;
 
-	@Version
-	@Column(name = "version", nullable = false)
-	private long version;
+	// version inherited from AuditableEntity (@Version optimistic locking).
 
 	public BusinessRuleVersion getRuleVersion() { return this.ruleVersion; }
 	public String getCode() { return this.code; }
@@ -58,7 +55,6 @@ public class BusinessRule extends AuditableEntity {
 	public String getActionDefinition() { return this.actionDefinition; }
 	public int getPriority() { return this.priority; }
 	public boolean isActive() { return this.active; }
-	public long getVersion() { return this.version; }
 
 	public void setRuleVersion(BusinessRuleVersion v) { this.ruleVersion = v; }
 	public void setCode(String c) { this.code = c; }

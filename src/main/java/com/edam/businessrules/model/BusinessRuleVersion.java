@@ -16,7 +16,6 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
-import jakarta.persistence.Version;
 
 import com.edam.common.audit.AuditableEntity;
 
@@ -53,9 +52,7 @@ public class BusinessRuleVersion extends AuditableEntity {
 	@Column(name = "published_at")
 	private Instant publishedAt;
 
-	@Version
-	@Column(name = "version", nullable = false)
-	private long version;
+	// version inherited from AuditableEntity (@Version optimistic locking).
 
 	@OneToMany(mappedBy = "ruleVersion", cascade = CascadeType.ALL, orphanRemoval = true)
 	@OrderBy("priority ASC, code ASC")
@@ -68,7 +65,6 @@ public class BusinessRuleVersion extends AuditableEntity {
 	public Instant getEffectiveTo() { return this.effectiveTo; }
 	public UUID getPublishedBy() { return this.publishedBy; }
 	public Instant getPublishedAt() { return this.publishedAt; }
-	public long getVersion() { return this.version; }
 	public List<BusinessRule> getRules() { return this.rules; }
 
 	public void setRuleSet(BusinessRuleSet ruleSet) { this.ruleSet = ruleSet; }

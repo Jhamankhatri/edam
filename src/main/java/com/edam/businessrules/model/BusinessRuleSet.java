@@ -13,7 +13,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
-import jakarta.persistence.Version;
 
 /**
  * A named collection of {@link BusinessRuleVersion}s grouped by {@code module} (e.g.
@@ -40,9 +39,7 @@ public class BusinessRuleSet extends AuditableEntity {
 	@Column(name = "is_active", nullable = false)
 	private boolean active = true;
 
-	@Version
-	@Column(name = "version", nullable = false)
-	private long version;
+	// version field inherited from AuditableEntity (@Version optimistic locking).
 
 	@OneToMany(mappedBy = "ruleSet", cascade = CascadeType.ALL, orphanRemoval = true)
 	@OrderBy("versionNumber DESC")
@@ -53,7 +50,6 @@ public class BusinessRuleSet extends AuditableEntity {
 	public String getModule() { return this.module; }
 	public String getDescription() { return this.description; }
 	public boolean isActive() { return this.active; }
-	public long getVersion() { return this.version; }
 	public List<BusinessRuleVersion> getVersions() { return this.versions; }
 
 	public void setCode(String code) { this.code = code; }
