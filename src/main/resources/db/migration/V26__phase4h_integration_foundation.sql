@@ -17,7 +17,10 @@
 -- 1. integration_configs — evolve V11's minimal table into an actively-managed config.
 -- -------------------------------------------------------------------------------------
 
+-- V11 created integration_configs without a description column; add it along with all
+-- Phase 4H lifecycle columns. The column name matches the entity field.
 ALTER TABLE integration_configs
+    ADD COLUMN IF NOT EXISTS description    TEXT,
     ADD COLUMN IF NOT EXISTS encrypted_secret TEXT,
     ADD COLUMN IF NOT EXISTS secret_version   INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS archived        BOOLEAN NOT NULL DEFAULT FALSE,
