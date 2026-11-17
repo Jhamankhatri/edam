@@ -69,8 +69,9 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 	void setup() {
 		this.admin = users.findAll().stream().findFirst().orElseGet(() ->
 			com.edam.testsupport.RequestFixtures.user(this.users, null));
-		configs.findAll().forEach(c -> configs.delete(c));
+		// Delete executions first because of FK config_id ON DELETE RESTRICT.
 		executions.findAll().forEach(e -> executions.delete(e));
+		configs.findAll().forEach(c -> configs.delete(c));
 	}
 
 	private EdamPrincipal adminUser() {
