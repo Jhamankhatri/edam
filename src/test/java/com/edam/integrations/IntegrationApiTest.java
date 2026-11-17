@@ -278,6 +278,55 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 			.andExpect(status().is4xxClientError());
 	}
 
+	@Test @DisplayName("INTEGRATION_TEST and INTEGRATION_EXECUTE are enforced separately")
+	void fineGrainedPermissionsEnforced() throws Exception {
+		String id = createStub("https://example.com/", null);
+		mockMvc.perform(post(BASE + "/" + id + "/activate").with(csrf()).with(user(adminUser())))
+			.andExpect(status().isOk());
+		// VIEW-only user may not test or execute.
+		mockMvc.perform(post(BASE + "/" + id + "/test").with(csrf()).with(user(viewer())))
+			.andExpect(status().isForbidden());
+		mockMvc.perform(post(BASE + "/" + id + "/executions").with(csrf()).with(user(viewer()))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(json.writeValueAsString(Map.of("operation", "ping"))))
+			.andExpect(status().isForbidden());
+		// TEST-only user may test but not execute.
+		EdamPrincipal tester = new EdamPrincipal(this.admin.getId(), this.admin.getEmployeeCode(),
+				this.admin.getUsername(), this.admin.displayName(), Set.of("ADMIN"),
+				Set.of(Permissions.INTEGRATION_VIEW, Permissions.INTEGRATION_TEST),
+				Set.of(new DataScope(DataScope.Type.ALL, null)));
+		mockMvc.perform(post(BASE + "/" + id + "/test").with(csrf()).with(user(tester)))
+			.andExpect(status().isOk());
+		mockMvc.perform(post(BASE + "/" + id + "/executions").with(csrf()).with(user(tester))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(json.writeValueAsString(Map.of("operation", "ping"))))
+			.andExpect(status().isForbidden());
+		// EXECUTE-only user may execute but not test.
+		EdamPrincipal runner = new EdamPrincipal(this.admin.getId(), this.admin.getEmployeeCode(),
+				this.admin.getUsername(), this.admin.displayName(), Set.of("ADMIN"),
+				Set.of(Permissions.INTEGRATION_VIEW, Permissions.INTEGRATION_EXECUTE),
+				Set.of(new DataScope(DataScope.Type.ALL, null)));
+		mockMvc.perform(post(BASE + "/" + id + "/test").with(csrf()).with(user(runner)))
+			.andExpect(status().isForbidden());
+		mockMvc.perform(post(BASE + "/" + id + "/executions").with(csrf()).with(user(runner))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(json.writeValueAsString(Map.of("operation", "ping"))))
+			.andExpect(status().isOk());
+	}
+
+	@Test @DisplayName("archived integration blocks both test and execution")
+	void archivedBlocksTestAndExecute() throws Exception {
+		String id = createStub("https://example.com/", null);
+		mockMvc.perform(delete(BASE + "/" + id).with(csrf()).with(user(adminUser())))
+			.andExpect(status().isOk());
+		mockMvc.perform(post(BASE + "/" + id + "/test").with(csrf()).with(user(adminUser())))
+			.andExpect(status().is4xxClientError());
+		mockMvc.perform(post(BASE + "/" + id + "/executions").with(csrf()).with(user(adminUser()))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(json.writeValueAsString(Map.of("operation", "ping"))))
+			.andExpect(status().is4xxClientError());
+	}
+
 	private String createStub(String url, String secret) throws Exception {
 		Map<String, Object> body = new LinkedHashMap<>();
 		body.put("code", "s-" + UUID.randomUUID().toString().substring(0, 8));

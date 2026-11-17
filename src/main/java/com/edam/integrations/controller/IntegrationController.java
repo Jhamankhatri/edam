@@ -103,7 +103,7 @@ public class IntegrationController {
 	}
 
 	@PostMapping("/{id}/test")
-	@EdamPermission(Permissions.INTEGRATION_MANAGE)
+	@EdamPermission(Permissions.INTEGRATION_TEST)
 	@Operation(summary = "Test an integration connection (no side effects on provider)")
 	public ApiResponse<ConnectionTestResponse> test(@PathVariable UUID id,
 			@AuthenticationPrincipal EdamPrincipal caller, HttpServletRequest r) {
@@ -111,7 +111,7 @@ public class IntegrationController {
 	}
 
 	@PostMapping("/{id}/executions")
-	@EdamPermission(Permissions.INTEGRATION_MANAGE)
+	@EdamPermission(Permissions.INTEGRATION_EXECUTE)
 	@Operation(summary = "Enqueue an execution")
 	public ApiResponse<ExecutionSummary> execute(@PathVariable UUID id,
 			@RequestBody ExecuteRequest req,
