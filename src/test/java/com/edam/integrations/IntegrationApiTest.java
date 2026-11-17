@@ -223,6 +223,25 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 		assertThat(json.readTree(r2).path("data").path("id").asText()).isEqualTo(eid);
 	}
 
+	@Test @DisplayName("submissions without idempotency key enqueue separate executions (not collapsed)")
+	void nullIdempotencyKeysDoNotCollide() throws Exception {
+		String id = createStub("https://example.com/", null);
+		mockMvc.perform(post(BASE + "/" + id + "/activate").with(csrf()).with(user(adminUser())))
+			.andExpect(status().isOk());
+		String body = json.writeValueAsString(Map.of("operation", "ping"));
+		String r1 = mockMvc.perform(post(BASE + "/" + id + "/executions").with(csrf()).with(user(adminUser()))
+				.contentType(MediaType.APPLICATION_JSON).content(body))
+			.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+		String r2 = mockMvc.perform(post(BASE + "/" + id + "/executions").with(csrf()).with(user(adminUser()))
+				.contentType(MediaType.APPLICATION_JSON).content(body))
+			.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+		String id1 = json.readTree(r1).path("data").path("id").asText();
+		String id2 = json.readTree(r2).path("data").path("id").asText();
+		assertThat(id1).isNotBlank();
+		assertThat(id2).isNotBlank();
+		assertThat(id1).isNotEqualTo(id2);
+	}
+
 	@Test @DisplayName("worker claim -> process transitions to RETRY_PENDING/FAILED, audit never contains secret")
 	void workerClaimFailAndAuditRedaction() throws Exception {
 		String uniqueSecret = "worker-secret-" + UUID.randomUUID();
@@ -301,16 +320,26 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(json.writeValueAsString(Map.of("operation", "ping"))))
 			.andExpect(status().isForbidden());
-		// EXECUTE-only user may execute but not test.
+		// EXECUTE-only user may execute (and retry) but not test.
 		EdamPrincipal runner = new EdamPrincipal(this.admin.getId(), this.admin.getEmployeeCode(),
 				this.admin.getUsername(), this.admin.displayName(), Set.of("ADMIN"),
 				Set.of(Permissions.INTEGRATION_VIEW, Permissions.INTEGRATION_EXECUTE),
 				Set.of(new DataScope(DataScope.Type.ALL, null)));
 		mockMvc.perform(post(BASE + "/" + id + "/test").with(csrf()).with(user(runner)))
 			.andExpect(status().isForbidden());
-		mockMvc.perform(post(BASE + "/" + id + "/executions").with(csrf()).with(user(runner))
+		String execResp = mockMvc.perform(post(BASE + "/" + id + "/executions").with(csrf()).with(user(runner))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(json.writeValueAsString(Map.of("operation", "ping"))))
+			.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+		String execId = json.readTree(execResp).path("data").path("id").asText();
+		// TEST-only user cannot retry; EXECUTE user can.
+		mockMvc.perform(post(BASE + "/executions/" + execId + "/retry").with(csrf()).with(user(tester))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{}"))
+			.andExpect(status().isForbidden());
+		mockMvc.perform(post(BASE + "/executions/" + execId + "/retry").with(csrf()).with(user(runner))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{}"))
 			.andExpect(status().isOk());
 	}
 

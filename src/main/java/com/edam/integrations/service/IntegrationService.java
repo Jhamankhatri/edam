@@ -11,6 +11,8 @@ import com.edam.common.audit.AuditAction;
 import com.edam.common.audit.AuditRecorder;
 import com.edam.common.exception.BusinessException;
 import com.edam.common.security.EdamPrincipal;
+
+import org.springframework.dao.DataIntegrityViolationException;
 import com.edam.integrations.crypto.IntegrationSecretCrypto;
 import com.edam.integrations.dto.IntegrationDtos;
 import com.edam.integrations.dto.IntegrationDtos.*;
@@ -308,7 +310,19 @@ public class IntegrationService {
 		e.setNextRetryAt(Instant.now());
 		Map<String, Object> safeMeta = DiagnosticRedactor.sanitizeMetadata(req.requestMetadata());
 		e.setRequestMetadata(writeJson(safeMeta));
-		executions.save(e);
+		try {
+			executions.save(e);
+		} catch (DataIntegrityViolationException dup) {
+			// Another concurrent request with the same idempotency key beat us to insert;
+			// replay the existing row rather than surfacing a constraint error to the caller.
+			// Only honoured when a key was supplied (duplicate null-key inserts are legitimate
+			// separate executions — see V27 ux_integration_executions_idempotency_key).
+			if (idemKey == null) throw dup;
+			return executions.findByIdempotencyKeyAndIntegrationConfigIdAndOperationType(
+					idemKey, configId, req.operation())
+				.map(this::toExecSummary)
+				.orElseThrow(() -> dup);
+		}
 		audit.record(AuditAction.CREATE, "IntegrationExecution", e.getId(),
 			"Enqueued operation=" + req.operation() + " integration=" + c.getCode());
 		return toExecSummary(e);
