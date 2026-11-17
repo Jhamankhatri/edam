@@ -8,13 +8,17 @@ import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.PreparedStatementSetter;
 import org.springframework.jdbc.core.RowCallbackHandler;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.stereotype.Repository;
 
 /**
- * Holds all native SQL and JDBC access for the reporting module. The reporting service
- * composes queries and interprets results, but it never touches JDBC directly —
- * {@code Controller → Service → Repository} layering holds project-wide.
+ * All native SQL / JDBC access for the reporting module lives here so services contain no
+ * JDBC wiring and the project-wide {@code Controller → Service → Repository} layering holds.
+ *
+ * <p>This class intentionally exposes the same narrow set of {@code query(...)} overloads that
+ * {@link JdbcTemplate} does; ReportingService composes queries and interprets results but
+ * never talks to JDBC directly.
  */
 @Repository
 public class ReportingJdbcRepository {
@@ -29,19 +33,26 @@ public class ReportingJdbcRepository {
 		return this.jdbc.query(sql, pss, rse);
 	}
 
+	public <T> T query(String sql, ResultSetExtractor<T> rse) {
+		return this.jdbc.query(sql, rse);
+	}
+
+	public <T> List<T> query(String sql, PreparedStatementSetter pss, RowMapper<T> rm) {
+		return this.jdbc.query(sql, pss, rm);
+	}
+
+	public <T> List<T> query(String sql, RowMapper<T> rm) {
+		return this.jdbc.query(sql, rm);
+	}
+
 	public void query(String sql, PreparedStatementSetter pss, RowCallbackHandler rch) {
 		this.jdbc.query(sql, pss, rch);
 	}
 
-	/** Functional hook for populating bind variables; keeps binding close to query composition. */
-	@FunctionalInterface
-	public interface Binder {
-		void bind(PreparedStatement ps) throws SQLException;
+	public void query(String sql, RowCallbackHandler rch) {
+		this.jdbc.query(sql, rch);
 	}
 
-	/** Functional hook for reading a single row of a result set. */
-	@FunctionalInterface
-	public interface RowReader<T> {
-		T read(ResultSet rs) throws SQLException;
-	}
+	/** For package-private test hooks that need the raw template. */
+	public JdbcTemplate jdbcTemplate() { return this.jdbc; }
 }

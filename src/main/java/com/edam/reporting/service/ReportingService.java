@@ -977,5 +977,5 @@ public class ReportingService {
 	public static final List<String> REPORT_CATALOGUE = List.of("expense_request_register");
 
 	// Package-private accessor for tests that verify aggregate scope semantics.
-	JdbcTemplate jdbc() { return this.jdbc; }
+	org.springframework.jdbc.core.JdbcTemplate jdbc() { return this.jdbc.jdbcTemplate(); }
 }
