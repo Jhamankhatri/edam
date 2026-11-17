@@ -83,21 +83,32 @@ public class IntegrationExecutionWorker {
 	public void sweep() {
 		if (!enabled) return;
 		if (adapters.supportedProviderTypes().isEmpty()) return;
-		try { executions.releaseExpiredClaims(Instant.now()); }
+		try { self.recoverExpiredClaims(); }
 		catch (RuntimeException ex) { log.warn("integration.claim_recovery_failed {}", ex.toString()); }
 
+		IntegrationExecution claimed = self.claimNext();
+		if (claimed == null) return;
+		try {
+			self.processOne(claimed.getId());
+		} catch (RuntimeException ex) {
+			log.error("integration.process_fatal id={} type={}", claimed.getId(), ex.toString());
+		}
+	}
+
+	/** Reclaims executions whose claim TTL expired before a worker could finish them. */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public void recoverExpiredClaims() {
+		executions.releaseExpiredClaims(Instant.now());
+	}
+
+	/** Atomically claims the next due execution; returns it or {@code null} if none due. */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public IntegrationExecution claimNext() {
 		Instant now = Instant.now();
 		int claimed = executions.claimOne(now, now.plus(CLAIM_TTL), workerId);
-		if (claimed == 0) return;
-
+		if (claimed == 0) return null;
 		List<IntegrationExecution> batch = executions.findClaimedBy(workerId, PageRequest.of(0, 1));
-		if (batch.isEmpty()) return;
-		IntegrationExecution e = batch.get(0);
-		try {
-			self.processOne(e.getId());
-		} catch (RuntimeException ex) {
-			log.error("integration.process_fatal id={} type={}", e.getId(), ex.toString());
-		}
+		return batch.isEmpty() ? null : batch.get(0);
 	}
 
 	/**
