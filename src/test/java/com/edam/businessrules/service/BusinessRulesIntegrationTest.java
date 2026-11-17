@@ -9,8 +9,6 @@ import java.util.Set;
 import java.util.UUID;
 
 import com.edam.businessrules.dto.RuleDtos;
-import com.edam.businessrules.repository.BusinessRuleSetRepository;
-import com.edam.businessrules.repository.BusinessRuleVersionRepository;
 import com.edam.common.security.DataScope;
 import com.edam.common.security.EdamPrincipal;
 import com.edam.common.security.Permissions;
@@ -31,9 +29,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -44,6 +45,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+@SpringBootTest
+@AutoConfigureMockMvc
+@Transactional
 class BusinessRulesIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 
 	private static final String BASE = "/api/v1/business-rules";
@@ -51,8 +55,6 @@ class BusinessRulesIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 	@Autowired private MockMvc mockMvc;
 	@Autowired private ObjectMapper json;
 	@Autowired private BusinessRuleService service;
-	@Autowired private BusinessRuleSetRepository sets;
-	@Autowired private BusinessRuleVersionRepository versions;
 	@Autowired private DepartmentRepository departments;
 	@Autowired private OrganizationUnitRepository units;
 	@Autowired private OrganizationUnitTypeRepository unitTypes;
