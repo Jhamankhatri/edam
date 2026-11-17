@@ -367,7 +367,6 @@ public class IntegrationService {
 			return null;
 		}
 	}
-	}
 
 	@Transactional
 	public ExecutionDetail executionDetail(UUID id) {
