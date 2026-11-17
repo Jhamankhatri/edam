@@ -249,7 +249,7 @@ class BusinessRulesIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 				Map.of("field", "amount", "op", "gt", "value", 0),
 				Map.of("type", "WARN"), 1, true), adminPrincipal());
 		var pub1 = service.publish(setId, new RuleDtos.PublishRequest(Instant.now().minusMillis(100)), adminPrincipal());
-		assertThat(pub1.status()).isEqualTo(RuleDtos.RuleVersionStatus.PUBLISHED);
+		assertThat(pub1.status()).isEqualTo(RuleVersionStatus.PUBLISHED);
 		// Cannot publish again without a new draft (no DRAFT exists after publish).
 		assertThatThrownBy(() -> service.publish(setId, new RuleDtos.PublishRequest(null), adminPrincipal()))
 			.isInstanceOf(BusinessException.class);
