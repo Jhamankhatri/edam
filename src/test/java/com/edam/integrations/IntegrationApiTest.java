@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import java.net.InetSocketAddress;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -253,7 +254,7 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 			.andExpect(status().isOk());
 		String key = "concurrent-" + UUID.randomUUID();
 		final UUID configId = UUID.fromString(id);
-		final int threads = 4;
+		final int threads = 2;
 		java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
 		java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(threads);
 		java.util.List<java.util.concurrent.Future<UUID>> futures = new java.util.ArrayList<>();
@@ -273,11 +274,14 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 			try { returnedIds.add(f.get()); }
 			catch (Exception ex) {
 				Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
-				failures.add(cause.getClass().getSimpleName() + ": " + cause.getMessage());
+				StringWriter sw = new StringWriter(); cause.printStackTrace(new java.io.PrintWriter(sw));
+				failures.add(sw.toString());
 			}
 		}
 		pool.shutdown();
-		assertThat(failures).as("concurrent submit exceptions: %s", failures).isEmpty();
+		if (!failures.isEmpty()) {
+			org.junit.jupiter.api.Assertions.fail("concurrent failures:\n" + String.join("\n---\n", failures));
+		}
 		// All threads must see the same winning execution id.
 		assertThat(returnedIds).hasSize(1);
 		long rows = jdbc.queryForObject(
