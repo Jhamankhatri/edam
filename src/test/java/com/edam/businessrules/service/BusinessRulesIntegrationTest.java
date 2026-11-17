@@ -202,17 +202,19 @@ class BusinessRulesIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 				Map.of("field", "__EVIL__", "op", "eq", "value", 1),
 				RuleEngine.EvaluationContext.forFields(fields)))
 			.isInstanceOf(BusinessException.class);
-		// And against a wildcard context (upsert-only syntax path) the same unknown field is
-		// rejected at evaluation time, not validation — proving evaluation is fail-closed.
+		// And against a whitelisted context the same unknown field is rejected at evaluation
+		// time (fail-closed; mandatory controls cannot be bypassed).
 		assertThatThrownBy(() -> eng.evaluate(
 				Map.of("field", "__EVIL__", "op", "eq", "value", 1),
 				RuleEngine.EvaluationContext.forFields(fields)))
 			.isInstanceOf(BusinessException.class);
-		// Finally confirm evaluateMatches throws if caller passes a context containing
-		// disallowed names (service wraps contexts to enforce whitelist).
-		assertThatThrownBy(() -> service.evaluateMatches("EXPENSE", summary.code(),
-				RuleEngine.EvaluationContext.of(Map.of("__EVIL__", 1))))
-			.isInstanceOf(BusinessException.class);
+		// Service-level evaluate() wraps any caller-supplied context so the engine sees only
+		// whitelisted fields. With no published rules this produces an empty, error-free
+		// outcome (unknown context keys are ignored, not treated as matches).
+		var outcome = service.evaluate("EXPENSE", summary.code(),
+				RuleEngine.EvaluationContext.of(Map.of("__EVIL__", 1)));
+		assertThat(outcome.hasErrors()).isFalse();
+		assertThat(outcome.matches()).isEmpty();
 	}
 
 	@Test

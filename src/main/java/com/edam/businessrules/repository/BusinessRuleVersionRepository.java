@@ -18,7 +18,7 @@ import jakarta.persistence.LockModeType;
 @Repository
 public interface BusinessRuleVersionRepository extends JpaRepository<BusinessRuleVersion, UUID> {
 
-	@Query("select v from BusinessRuleVersion v left join fetch v.rules "
+	@Query("select v from BusinessRuleVersion v left join fetch v.rules join fetch v.ruleSet "
 			+ "where v.id = ?1")
 	Optional<BusinessRuleVersion> findByIdWithRules(UUID id);
 
