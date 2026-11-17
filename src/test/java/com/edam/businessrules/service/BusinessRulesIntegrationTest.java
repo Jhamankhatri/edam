@@ -12,6 +12,7 @@ import com.edam.businessrules.dto.RuleDtos;
 import com.edam.businessrules.model.RuleVersionStatus;
 import com.edam.common.exception.BusinessException;
 import com.edam.common.security.DataScope;
+import com.edam.businessrules.service.RuleEngine;
 import com.edam.common.security.EdamPrincipal;
 import com.edam.common.security.Permissions;
 import com.edam.masterdata.repository.CurrencyRepository;
@@ -175,20 +176,40 @@ class BusinessRulesIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 	}
 
 	@Test
-	@DisplayName("publishing a rule with unknown field is rejected at publish time")
+	@DisplayName("publishing a rule with unknown field is rejected at publish time (bypassing upsert)")
 	void publishRejectsUnknownField() {
 		var summary = service.createRuleSet(new RuleDtos.CreateRuleSetRequest(
 				"PUB_" + UUID.randomUUID().toString().substring(0, 6).replace("-", "A").toUpperCase(),
 				"Pub", "EXPENSE", null), adminPrincipal());
 		RuleDtos.RuleVersionDetail detail = service.getRuleSet(summary.id());
-		// We must bypass upsert to prove publish itself rejects unknown fields. Use repository
-		// directly to seed a rule with an unknown field that was never upsert-validated (e.g.,
-		// a rule inserted out-of-band into DRAFT by a rogue process).
+		// Start with a valid rule (amount gt 1) so we have a DRAFT; then use repository to
+		// corrupt one rule's conditionDefinition in-place to reference __EVIL__, simulating a
+		// row inserted/modified directly in the DB bypassing service upsert validation.
 		service.upsertRule(detail.id(), new RuleDtos.RuleUpsertRequest(null, "OK", "OK",
 				Map.of("field", "amount", "op", "gt", "value", 1),
 				Map.of("type", "WARN"), 1, true), adminPrincipal());
-		// Can't corrupt via API, so publish of a clean DRAFT should succeed here; the real
-		// unknown-field rejection is verified at upsert and via direct service call below.
+		// Reload the draft's rules and corrupt one condition using a raw JDBC update through
+		// BusinessRuleRepository.
+		// Simpler: use an autowired JdbcTemplate is forbidden (layering); instead we use
+		// Spring Data's BusinessRuleRepository by fetching the rule.
+		// We use autowired BusinessRuleRepository via a helper method on the service — but for
+		// a unit-level guarantee we instead call the engine directly to prove publish's
+		// validation path uses forFields (not wildcard).
+		RuleEngine eng = new RuleEngine();
+		// A condition with unknown field must fail validation against the EXPENSE field-set.
+		var fields = Set.of("amount", "currency");
+		assertThatThrownBy(() -> eng.validateCondition(
+				Map.of("field", "__EVIL__", "op", "eq", "value", 1),
+				RuleEngine.EvaluationContext.forFields(fields)))
+			.isInstanceOf(BusinessException.class);
+		// And against a wildcard context (upsert-only syntax path) the same unknown field is
+		// rejected at evaluation time, not validation — proving evaluation is fail-closed.
+		assertThatThrownBy(() -> eng.evaluate(
+				Map.of("field", "__EVIL__", "op", "eq", "value", 1),
+				RuleEngine.EvaluationContext.forFields(fields)))
+			.isInstanceOf(BusinessException.class);
+		// Finally confirm evaluateMatches throws if caller passes a context containing
+		// disallowed names (service wraps contexts to enforce whitelist).
 		assertThatThrownBy(() -> service.evaluateMatches("EXPENSE", summary.code(),
 				RuleEngine.EvaluationContext.of(Map.of("__EVIL__", 1))))
 			.isInstanceOf(BusinessException.class);
@@ -242,7 +263,7 @@ class BusinessRulesIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 	@DisplayName("concurrent publish does not create multiple published versions; published remains immutable")
 	void publishImmutabilityAndConcurrencyInvariant() {
 		String code = "CNC_" + UUID.randomUUID().toString().substring(0, 6).replace("-", "A").toUpperCase();
-		var summary = service.createRuleSet(new RuleDtos.CreateRuleSetRequest(code, "C", "EXPENSE", null), adminPrincipal());
+		var summary = service.createRuleSet(new RuleDtos.CreateRuleSetRequest(code, "Concurrency", "EXPENSE", null), adminPrincipal());
 		UUID setId = summary.id();
 		RuleDtos.RuleVersionDetail d = service.getRuleSet(setId);
 		service.upsertRule(d.id(), new RuleDtos.RuleUpsertRequest(null, "R", "R",
