@@ -138,7 +138,7 @@ public class IntegrationController {
 	}
 
 	@PostMapping("/executions/{execId}/retry")
-	@EdamPermission(Permissions.INTEGRATION_MANAGE)
+	@EdamPermission(Permissions.INTEGRATION_EXECUTE)
 	@Operation(summary = "Retry an eligible failed execution")
 	public ApiResponse<ExecutionSummary> retry(@PathVariable UUID execId,
 			@RequestBody(required = false) RetryRequest req,

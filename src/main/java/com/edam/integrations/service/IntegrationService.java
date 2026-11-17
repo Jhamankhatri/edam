@@ -11,6 +11,8 @@ import com.edam.common.audit.AuditAction;
 import com.edam.common.audit.AuditRecorder;
 import com.edam.common.exception.BusinessException;
 import com.edam.common.security.EdamPrincipal;
+
+import org.springframework.dao.DataIntegrityViolationException;
 import com.edam.integrations.crypto.IntegrationSecretCrypto;
 import com.edam.integrations.dto.IntegrationDtos;
 import com.edam.integrations.dto.IntegrationDtos.*;
@@ -30,6 +32,7 @@ import org.slf4j.LoggerFactory;
 import tools.jackson.databind.json.JsonMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -56,19 +59,22 @@ public class IntegrationService {
 	private final IntegrationSecretCrypto crypto;
 	private final AuditRecorder audit;
 	private final JsonMapper json;
+	private final IntegrationService self;
 
 	public IntegrationService(IntegrationConfigRepository configs,
 			IntegrationExecutionRepository executions,
 			IntegrationAdapterRegistry adapters,
 			IntegrationSecretCrypto crypto,
 			AuditRecorder audit,
-			JsonMapper json) {
+			JsonMapper json,
+			@Lazy IntegrationService self) {
 		this.configs = configs;
 		this.executions = executions;
 		this.adapters = adapters;
 		this.crypto = crypto;
 		this.audit = audit;
 		this.json = json;
+		this.self = self;
 	}
 
 	// ----------------------------------------------------------------------------------
@@ -296,22 +302,77 @@ public class IntegrationService {
 			}
 		}
 
+		Map<String, Object> safeMeta = DiagnosticRedactor.sanitizeMetadata(req.requestMetadata());
+		String metaJson = writeJson(safeMeta);
+		UUID triggeredBy = caller == null ? null : caller.userId();
+		// Insert in a nested REQUIRES_NEW transaction so a unique-key collision rolls back
+		// only that insert and leaves the outer transaction usable to look up the winner.
+		// Catching DataIntegrityViolationException in the same TX cannot recover once the
+		// connection's TX has been marked rollback-only (Spring translates the constraint
+		// error after the statement fails), hence the nested transaction via self-proxy.
+		// The inner method builds a fresh entity inside its own persistence context so the
+		// outer PC never holds a rolled-back instance.
+		UUID newId;
+		try {
+			newId = self.tryInsertExecution(configId, req.operation(), idemKey, triggeredBy, metaJson);
+		} catch (DataIntegrityViolationException dup) {
+			// Another concurrent request with the same idempotency key beat us to insert;
+			// replay the existing row rather than surfacing a constraint error. Only honoured
+			// when a key was supplied (duplicate null-key inserts are legitimate separate
+			// executions — see V27 ux_integration_executions_idempotency_key).
+			if (idemKey == null) throw dup;
+			return executions.findByIdempotencyKeyAndIntegrationConfigIdAndOperationType(
+					idemKey, configId, req.operation())
+				.map(this::toExecSummary)
+				.orElseThrow(() -> dup);
+		}
+		// Inner TX returned null (only possible on a keyed concurrent insert where the
+		// nested TX rolled back). The winner must now be visible; replay it.
+		if (newId == null) {
+			return executions.findByIdempotencyKeyAndIntegrationConfigIdAndOperationType(
+					idemKey, configId, req.operation())
+				.map(this::toExecSummary)
+				.orElseThrow(() -> new BusinessException(ErrorCode.CONCURRENT_MODIFICATION,
+					"Concurrent execution insert collided but no winning row was found."));
+		}
+		IntegrationExecution persisted = executions.findById(newId).orElseThrow();
+		audit.record(AuditAction.CREATE, "IntegrationExecution", persisted.getId(),
+			"Enqueued operation=" + req.operation() + " integration=" + c.getCode());
+		return toExecSummary(persisted);
+	}
+
+	/**
+	 * Insert a new execution row in its own transaction so a unique-key collision rolls back
+	 * only this TX and never marks the caller's TX rollback-only. Returns the new row's id on
+	 * success, or {@code null} when {@code keyed} is true and the insert collided with a
+	 * concurrent winner — the caller then re-queries for the winner. For null-key inserts
+	 * ({@code keyed=false}) a collision propagates as an exception.
+	 */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public UUID tryInsertExecution(UUID configId, String operation, String idemKey,
+			UUID triggeredBy, String metaJson) {
+		boolean keyed = idemKey != null;
 		IntegrationExecution e = new IntegrationExecution();
 		e.setIntegrationConfigId(configId);
-		e.setOperationType(req.operation());
+		e.setOperationType(operation);
 		e.setIdempotencyKey(idemKey);
 		e.setStatus(ExecutionStatus.PENDING);
 		e.setAttemptCount(0);
 		e.setMaxAttempts(3);
 		e.setRetryable(true);
-		e.setTriggeredBy(caller == null ? null : caller.userId());
+		e.setTriggeredBy(triggeredBy);
 		e.setNextRetryAt(Instant.now());
-		Map<String, Object> safeMeta = DiagnosticRedactor.sanitizeMetadata(req.requestMetadata());
-		e.setRequestMetadata(writeJson(safeMeta));
-		executions.save(e);
-		audit.record(AuditAction.CREATE, "IntegrationExecution", e.getId(),
-			"Enqueued operation=" + req.operation() + " integration=" + c.getCode());
-		return toExecSummary(e);
+		e.setRequestMetadata(metaJson);
+		try {
+			// Force INSERT + unique-index check inside this nested TX by flushing; otherwise
+			// the statement is deferred to commit and DataIntegrityViolationException would
+			// surface outside our try/catch.
+			IntegrationExecution saved = executions.saveAndFlush(e);
+			return saved.getId();
+		} catch (DataIntegrityViolationException dup) {
+			if (!keyed) throw dup;
+			return null;
+		}
 	}
 
 	@Transactional

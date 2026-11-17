@@ -7,10 +7,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import java.net.InetSocketAddress;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.*;
 
 import com.edam.common.security.DataScope;
 import com.edam.common.security.EdamPrincipal;
@@ -21,6 +23,8 @@ import com.edam.integrations.model.IntegrationConfig.AuthType;
 import com.edam.integrations.model.IntegrationExecution;
 import com.edam.integrations.repository.IntegrationConfigRepository;
 import com.edam.integrations.repository.IntegrationExecutionRepository;
+import com.edam.integrations.service.IntegrationService;
+import com.edam.integrations.dto.IntegrationDtos.ExecuteRequest;
 import com.edam.integrations.service.IntegrationExecutionWorker;
 import com.edam.integrations.service.adapters.*;
 import com.edam.testsupport.AbstractPostgreSqlIntegrationTest;
@@ -62,6 +66,7 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 	@Autowired private IntegrationExecutionRepository executions;
 	@Autowired private IntegrationSecretCrypto crypto;
 	@Autowired private IntegrationExecutionWorker worker;
+	@Autowired private IntegrationService service;
 	@Autowired private JdbcTemplate jdbc;
 
 	private User admin;
@@ -223,6 +228,70 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 		assertThat(json.readTree(r2).path("data").path("id").asText()).isEqualTo(eid);
 	}
 
+	@Test @DisplayName("submissions without idempotency key enqueue separate executions (not collapsed)")
+	void nullIdempotencyKeysDoNotCollide() throws Exception {
+		String id = createStub("https://example.com/", null);
+		mockMvc.perform(post(BASE + "/" + id + "/activate").with(csrf()).with(user(adminUser())))
+			.andExpect(status().isOk());
+		String body = json.writeValueAsString(Map.of("operation", "ping"));
+		String r1 = mockMvc.perform(post(BASE + "/" + id + "/executions").with(csrf()).with(user(adminUser()))
+				.contentType(MediaType.APPLICATION_JSON).content(body))
+			.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+		String r2 = mockMvc.perform(post(BASE + "/" + id + "/executions").with(csrf()).with(user(adminUser()))
+				.contentType(MediaType.APPLICATION_JSON).content(body))
+			.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+		String id1 = json.readTree(r1).path("data").path("id").asText();
+		String id2 = json.readTree(r2).path("data").path("id").asText();
+		assertThat(id1).isNotBlank();
+		assertThat(id2).isNotBlank();
+		assertThat(id1).isNotEqualTo(id2);
+	}
+
+	@Test @DisplayName("concurrent same-key submissions collapse to one execution (REQUIRES_NEW insert)")
+	void concurrentSameKeyCollapses() throws Exception {
+		String id = createStub("https://example.com/", null);
+		mockMvc.perform(post(BASE + "/" + id + "/activate").with(csrf()).with(user(adminUser())))
+			.andExpect(status().isOk());
+		String key = "concurrent-" + UUID.randomUUID();
+		final UUID configId = UUID.fromString(id);
+		final int threads = 2;
+		java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+		java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(threads);
+		java.util.List<java.util.concurrent.Future<UUID>> futures = new java.util.ArrayList<>();
+		for (int i = 0; i < threads; i++) {
+			futures.add(pool.submit(() -> {
+				start.await();
+				// Hit the service directly to avoid MockMvc/CSRF thread-safety noise; each
+				// call opens its own transaction via Spring's proxy (same as the HTTP path).
+				return service.submitExecution(adminUser(), configId,
+					new ExecuteRequest("ping", key, Map.of())).id();
+			}));
+		}
+		start.countDown();
+		java.util.Set<UUID> returnedIds = new java.util.HashSet<>();
+		java.util.List<String> failures = new java.util.ArrayList<>();
+		for (var f : futures) {
+			try { returnedIds.add(f.get()); }
+			catch (Exception ex) {
+				Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
+				StringWriter sw = new StringWriter(); cause.printStackTrace(new java.io.PrintWriter(sw));
+				failures.add(sw.toString());
+			}
+		}
+		pool.shutdown();
+		if (!failures.isEmpty()) {
+			org.junit.jupiter.api.Assertions.fail("concurrent failures:\n" + String.join("\n---\n", failures));
+		}
+		// All threads must see the same winning execution id.
+		assertThat(returnedIds).hasSize(1);
+		long rows = jdbc.queryForObject(
+			"select count(*) from integration_executions "
+			+ "where integration_config_id = ?::uuid and operation_type = 'ping' and idempotency_key = ?",
+			Long.class, configId, key);
+		// Exactly one execution row for this (config, op, key) regardless of thread count.
+		assertThat(rows).isEqualTo(1);
+	}
+
 	@Test @DisplayName("worker claim -> process transitions to RETRY_PENDING/FAILED, audit never contains secret")
 	void workerClaimFailAndAuditRedaction() throws Exception {
 		String uniqueSecret = "worker-secret-" + UUID.randomUUID();
@@ -301,16 +370,26 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(json.writeValueAsString(Map.of("operation", "ping"))))
 			.andExpect(status().isForbidden());
-		// EXECUTE-only user may execute but not test.
+		// EXECUTE-only user may execute (and retry) but not test.
 		EdamPrincipal runner = new EdamPrincipal(this.admin.getId(), this.admin.getEmployeeCode(),
 				this.admin.getUsername(), this.admin.displayName(), Set.of("ADMIN"),
 				Set.of(Permissions.INTEGRATION_VIEW, Permissions.INTEGRATION_EXECUTE),
 				Set.of(new DataScope(DataScope.Type.ALL, null)));
 		mockMvc.perform(post(BASE + "/" + id + "/test").with(csrf()).with(user(runner)))
 			.andExpect(status().isForbidden());
-		mockMvc.perform(post(BASE + "/" + id + "/executions").with(csrf()).with(user(runner))
+		String execResp = mockMvc.perform(post(BASE + "/" + id + "/executions").with(csrf()).with(user(runner))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(json.writeValueAsString(Map.of("operation", "ping"))))
+			.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+		String execId = json.readTree(execResp).path("data").path("id").asText();
+		// TEST-only user cannot retry; EXECUTE user can.
+		mockMvc.perform(post(BASE + "/executions/" + execId + "/retry").with(csrf()).with(user(tester))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{}"))
+			.andExpect(status().isForbidden());
+		mockMvc.perform(post(BASE + "/executions/" + execId + "/retry").with(csrf()).with(user(runner))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{}"))
 			.andExpect(status().isOk());
 	}
 
