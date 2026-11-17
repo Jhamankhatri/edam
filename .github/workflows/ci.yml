@@ -29,11 +29,20 @@ jobs:
         id: build
         shell: bash
         run: |
-          set -o pipefail
           set +e
-          mvn -B -ntp -Dstyle.color=never -e -DtrimStackTrace=false verify 2>&1 | tee build.log
-          echo "rc=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
-          python3 tools/ci-report.py build.log
+          # Strip non-printable bytes from the console stream BEFORE it reaches GitHub's log
+          # parser. Maven/surefire echoes binary XLSX response bodies from assertion failures,
+          # and GitHub surfaces every [ERROR] line containing those bytes as a separate
+          # annotation. That garbage pushed the actual PSQLException/Caused-by annotations
+          # off the visible list. We keep the original (binary) build.log for diagnostics
+          # artifact upload, but feed a sanitized copy to the console and to ci-report.py.
+          mvn -B -ntp -Dstyle.color=never -e -DtrimStackTrace=false verify > build.log 2>&1
+          mvn_rc=$?
+          LC_ALL=C tr -dc '\t\n\r\40-\176' < build.log > build.clean.log
+          cat build.clean.log
+          echo "rc=$mvn_rc" >> "$GITHUB_OUTPUT"
+          python3 tools/ci-report.py build.clean.log
+          exit $mvn_rc
 
       - name: Diagnose failure
         if: steps.build.outputs.rc != 0
@@ -41,28 +50,57 @@ jobs:
         run: |
           set +e
           rc=${{ steps.build.outputs.rc }}
+          # Print everything we need to stdout FIRST so it appears in the step's visible log,
+          # then also to $GITHUB_STEP_SUMMARY. The sandbox environment cannot download the
+          # job logs (results-receiver is unreachable), and artifact upload is quota-blocked,
+          # so stdout is the only reliable channel.
           {
             echo "# Build failure diagnostics"
             echo ""
             echo "## Maven exit code: $rc"
             echo ""
-            echo "### All [ERROR] lines"
+            echo "### All [ERROR] lines (first 300)"
             echo '```'
-            grep -nE "\[ERROR\]" build.log | head -200
+            grep -nE "\[ERROR\]" build.clean.log | head -300
+            echo '```'
+            echo ""
+            echo "### PSQLException / SQL error lines"
+            echo '```'
+            grep -nE "PSQLException|BadSqlGrammar|SQLState|ServerErrorMessage|ERROR:|does not exist|column .* (not exist|ambig|cannot)|operator does not exist|relation .* does not|syntax error|register count|register page" build.clean.log | head -100
             echo '```'
             echo ""
             echo "### Caused-by chain"
             echo '```'
-            grep -nE "Caused by:|BeanCreationException|BeanInstantiationException|UnsatisfiedDependencyException|NoSuchBeanDefinitionException|NoUniqueBeanDefinitionException|PSQLException|Flyway|Schema-validation|APPLICATION FAILED TO START|NoClassDefFoundError|NoSuchMethodError|ClassNotFoundException|NullPointerException|IllegalStateException" build.log | head -150
+            grep -nE "Caused by:" build.clean.log | head -60
             echo '```'
-            echo ""
-            echo "### First ConfigurationApiTest surefire output"
-            echo '```'
-            for f in target/surefire-reports/*ConfigurationApiTest*; do
-              [ -f "$f" ] && { echo "=== $f ==="; head -c 8000 "$f"; }
-            done
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          echo ""
+          echo "### SUREFIRE REPORTS (failing tests, stack traces only) >>>"
+          shopt -s nullglob
+          any=0
+          for f in target/surefire-reports/TEST-*.txt; do
+            if grep -qE '<<< (FAILURE|ERROR)!|Failures: [1-9]|Errors: [1-9]' "$f"; then
+              any=1
+              echo
+              echo "=== $f ==="
+              # Extract only stack-trace / header sections; drop any body line longer than 500
+              # printable chars (those are binary response-body comparisons like XLSX payloads).
+              LC_ALL=C awk '
+                /^[A-Z][a-zA-Z ]+ Tests run:/ { print; in_f=1; next }
+                /^$/ { if (in_f) print; next }
+                {
+                  # Strip any non-ASCII / control bytes so annotations never show binary noise.
+                  line = $0
+                  gsub(/[^[:print:]\t]/, ".", line)
+                  if (length(line) > 500) next          # binary-payload assertion -> skip
+                  print line
+                }
+              ' "$f" | head -n 200
+              echo "---"
+            fi
+          done
+          [ "$any" -eq 0 ] && echo "(no surefire failure reports found)"
+          echo "<<< END SUREFIRE REPORTS"
 
           # Emit a single error annotation carrying the deepest Caused-by line from BOTH
           # the Maven log AND surefire reports. Maven's own MojoFailure wrapper is filtered.
@@ -82,9 +120,25 @@ jobs:
           fi
           echo "----- DIAGNOSTIC EXCERPT -----"
           grep -nE "\[ERROR\]|Caused by:|APPLICATION FAILED|COMPILATION ERROR|cannot find symbol|Tests run:" build.log | head -80
-          echo "----- FIRST SUREFIRE FAILURE REPORT -----"
-          firstf=$(ls target/surefire-reports/TEST-com.edam.api.ConfigurationApiTest.txt 2>/dev/null)
-          if [ -n "$firstf" ]; then head -n 120 "$firstf"; else echo "(no surefire report for ConfigurationApiTest)"; fi
+          echo "----- ALL SUREFAILURE FAILURE REPORTS (first 200 lines each) -----"
+          shopt -s nullglob
+          fail_count=0
+          for f in target/surefire-reports/TEST-*.txt; do
+            # surefire puts failures/errors after "<<< FAILURE!" / "<<< ERROR!" markers; also include any
+            # file that has at least one failing test line.
+            if grep -qE '<<< (FAILURE|ERROR)!|Failures: [1-9]|Errors: [1-9]' "$f"; then
+              fail_count=$((fail_count+1))
+              echo
+              echo "=========================================="
+              echo "=== $f ==="
+              echo "=========================================="
+              head -n 200 "$f"
+            fi
+          done
+          if [ "$fail_count" -eq 0 ]; then
+            echo "(no surefire failure reports found in target/surefire-reports)"
+            ls -la target/surefire-reports/ 2>/dev/null | head -20 || true
+          fi
 
       - name: Fail the job
         if: steps.build.outputs.rc != 0
@@ -92,6 +146,7 @@ jobs:
 
       - name: Upload diagnostic logs and reports (failure only)
         if: failure()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: ci-diagnostics
@@ -99,18 +154,20 @@ jobs:
             build.log
             target/surefire-reports/TEST-*.txt
             target/surefire-reports/TEST-*.xml
-          retention-days: 3
-          if-no-files-found: warn
+          retention-days: 1
+          if-no-files-found: ignore
           compression-level: 9
 
       - name: Upload WAR
         if: success()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: edam-war
           path: target/edam.war
           retention-days: 7
-          if-no-files-found: error
+          if-no-files-found: warn
+          overwrite: true
 
   # Renders the JSP views from the packaged executable WAR, which is the artifact that is
   # actually deployed. Spring Boot cannot render JSPs inside an embedded test container, so
@@ -138,14 +195,20 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
-      - name: Download WAR
+      - name: Download WAR (fall back to local package if artifact storage is exhausted)
+        id: dl
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: edam-war
           path: target
+      - name: Package WAR locally if download failed
+        if: steps.dl.outcome != 'success'
+        run: mvn -B -ntp -DskipTests package
       - name: Start the executable WAR
         run: |
           set -euo pipefail
+          ls -la target/edam.war
           export EDAM_DB_URL=jdbc:postgresql://localhost:5432/edam
           export EDAM_DB_USERNAME=edam
           export EDAM_DB_PASSWORD=edam-ci-only
@@ -239,14 +302,15 @@ jobs:
         run: tail -c 6000 war.log || true
       - name: Upload smoke logs
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: war-smoke-logs
           path: |
             war.log
             war-contents.txt
-          retention-days: 3
-          if-no-files-found: warn
+          retention-days: 1
+          if-no-files-found: ignore
           compression-level: 9
 
   prod-profile-smoke:
@@ -272,14 +336,20 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
-      - name: Download WAR
+      - name: Download WAR (fall back to local package if artifact storage is exhausted)
+        id: dl
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: edam-war
           path: target
+      - name: Package WAR locally if download failed
+        if: steps.dl.outcome != 'success'
+        run: mvn -B -ntp -DskipTests package
       - name: Start with prod profile defaults
         run: |
           set -euo pipefail
+          ls -la target/edam.war
           export EDAM_DB_URL=jdbc:postgresql://localhost:5432/edam
           export EDAM_DB_USERNAME=edam
           export EDAM_DB_PASSWORD=edam-ci-only
@@ -300,10 +370,11 @@ jobs:
         run: tail -c 4000 prod.log || true
       - name: Upload prod logs
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: prod-smoke-logs
           path: prod.log
-          retention-days: 3
-          if-no-files-found: warn
+          retention-days: 1
+          if-no-files-found: ignore
           compression-level: 9

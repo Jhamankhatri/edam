@@ -32,25 +32,53 @@ def _escape_property(value: str) -> str:
     return text
 
 
+_PRINTABLE_RE = re.compile(r"[^\t\n\r -~]")  # strip all non-printable / control chars
+
+
 def _escape_data(value: str) -> str:
-    """Escape workflow-command message data."""
-    return (str(value).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))
+    """Escape workflow-command message data.
+
+    In addition to the mandatory %/CR/LF escapes, strip every non-printable byte. A single
+    stray NUL or \003 in the message corrupts GitHub's workflow-command parser and causes
+    the TITLE of the annotation to be displayed as binary garbage -- which is exactly how
+    XLSX-byte assertions in surefire reports were pushing PSQLException/Caused-by evidence
+    off the visible annotation list.
+    """
+    text = _PRINTABLE_RE.sub(".", str(value))
+    return text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
 
 
 MAX_MESSAGE = 1400
 
 
-def emit(kind: str, title: str, message: str) -> None:
+def emit(kind: str, title: str, message: str, file: str | None = None, line: int | None = None) -> None:
     """Emit one annotation.
 
-    A long message is truncated rather than split: GitHub discards annotations past a per-run
-    budget, so spending three of them on one stack trace can hide three other failures. The head
-    of a stack trace carries the assertion; the tail is framework frames.
+    A long message is split into chunked annotations sharing the same title (with a (1/N)
+    suffix) so that stack traces with SQLState / PostgreSQL error text are not silently
+    truncated -- when artifact upload is blocked the annotations are the only diagnostic
+    channel, and truncating at the assertion line hides the root cause.
     """
     text = " ".join(str(message).split())
-    if len(text) > MAX_MESSAGE:
-        text = text[:MAX_MESSAGE] + " [truncated]"
-    print(f"::{kind} title={_escape_property(title)}::{_escape_data(text)}")
+    chunks: list[str] = []
+    if not text:
+        chunks = [""]
+    else:
+        i = 0
+        while i < len(text):
+            chunks.append(text[i:i + MAX_MESSAGE])
+            i += MAX_MESSAGE
+    if len(chunks) == 1:
+        heads = [title]
+    else:
+        heads = [f"{title} ({i+1}/{len(chunks)})" for i in range(len(chunks))]
+    loc = ""
+    if file:
+        loc = f" file={_escape_property(file)}"
+        if line:
+            loc += f",line={line}"
+    for head, chunk in zip(heads, chunks):
+        print(f"::{kind} title={_escape_property(head)}{loc}::{_escape_data(chunk)}")
 
 
 def report_test_results() -> None:
@@ -68,12 +96,69 @@ def report_test_results() -> None:
                     # repeats it followed by the stack. Prefer the message so the annotation opens
                     # with the reason rather than with a frame.
                     message = (bad.get("message") or "").strip()
-                    body = " ".join((bad.text or "").split())
-                    if message and body and message not in body:
-                        detail = f"{message} | {body}"
+                    raw = (bad.text or "").strip()
+                    # When a test compares against binary payloads (XLSX/ZIP bytes), the XML body
+                    # can be thousands of bytes of high-control characters. Cap those payloads
+                    # aggressively so that real SQL/stack-trace failures are not pushed off the
+                    # annotation budget.
+                    # Binary payload detection: XLSX responses come back as zip-magic
+                    # sequences ("PK\003\004") either as raw bytes or XML-entity-encoded
+                    # ("PK&#3;&#4;"). Also catch large volumes of other control characters
+                    # or the xml: [Content_Types].xml marker that ZIP/XLSX always carries.
+                    sample = raw[:6000]
+                    binary_hits = sum(1 for c in sample if ord(c) < 9 or (ord(c) > 13 and ord(c) < 32))
+                    zip_magic = ("PK\u0003\u0004" in sample or "PK\u0005\u0006" in sample
+                                 or "PK&#3;&#4;" in sample or "PK&amp#3;&amp#4;" in sample
+                                 or "[Content_Types].xml" in sample or "xl/worksheets/sheet" in sample
+                                 or "_rels/.rels" in sample)
+                    binary_indicator = zip_magic or binary_hits > 40
+                    if binary_indicator:
+                        # Emit a tiny one-line annotation instead of the dump so the failure
+                        # is still named, but the binary bytes don't flood the list.
+                        emit("error", f"FAIL {classname}.{name}",
+                             f"{message or 'binary payload assertion'} [binary response body elided]")
                     else:
-                        detail = body or message or tag
-                    emit("error", f"FAIL {classname}.{name}", detail)
+                        # One short headline per failure so all failures remain visible
+                        # even when there are many of them.
+                        short = (message or tag)[:500]
+                        emit("error", f"FAIL {classname}.{name}", short)
+                        # Emit Caused-by lines so SQL exceptions are visible.
+                        if raw:
+                            causes = re.findall(r"Caused by:\s*([^\n]+)", raw)
+                            for idx, c in enumerate(causes[:2]):
+                                emit("error", f"CAUSED_BY {classname}.{name} ({idx+1})", c.strip()[:600])
+                    # Surface the first Caused-by line(s) as ROOT_CAUSE annotations so the
+                    # real exception is visible even when the outer message is just the
+                    # assertion ("expected 200 but was 500"). Emit up to three distinct
+                    # Caused-by lines so the full chain is captured.
+                    # The surefire failure body starts with the assertion message then
+                    # the full stack trace. Pull out the first service-frame throw line
+                    # (ExceptionType: message) which is the REAL root cause; Caused-by lines
+                    # follow the stack frames.
+                    exception_lines = []
+                    for line in raw.split("\n"):
+                        stripped = line.strip()
+                        # Exception lines end with a colon + message or just the type name,
+                        # never start with whitespace/"at ..."/"... more"/number.
+                        if (re.match(r"^[a-zA-Z][\w.$]*(?:Exception|Error|Failure|InternalError)", stripped)
+                                and ": " in stripped or re.match(r"^[a-zA-Z][\w.$]+Exception$", stripped)):
+                            if "java.lang.AssertionError" not in stripped:  # the assertion wrapper
+                                exception_lines.append(stripped)
+                    for i, line in enumerate(exception_lines[:3]):
+                        emit("error", f"ROOT_CAUSE {classname}.{name} ({i+1})", line)
+                    if raw:
+                        causes = re.findall(r"Caused by:\s*([^\n]+)", raw)
+                        seen = set()
+                        for idx, c in enumerate(causes[:4]):
+                            line = c.strip()
+                            if line in seen:
+                                continue
+                            seen.add(line)
+                            emit("error", f"CAUSED_BY {classname}.{name} ({idx+1})", line)
+                    if raw:
+                        first_frame = re.search(r"at com\.edam\.[^)]+\)", raw)
+                        if first_frame:
+                            emit("notice", f"THREW_AT {classname}.{name}", first_frame.group(0))
 
 
 def report_log(log: str) -> None:
@@ -90,6 +175,11 @@ def report_log(log: str) -> None:
                 r"|No qualifying bean|Failed to instantiate|Migration .* failed|Schema-validation"
                 r"|JasperException|Unable to compile class for JSP|NoClassDefFoundError"
                 r"|ClassNotFoundException)"),
+        ("sql", r"(?:PSQLException|BadSqlGrammarException|DataAccessException|SQLTransientException"
+                r"|SQLState|ERROR: [^\n]{0,300}|operator does not exist|column \S+ does not exist"
+                r"|relation \S+ does not exist|syntax error at or near|cannot cast type"
+                r"|function \S+ does not exist|operator is not unique|invalid input syntax)"),
+        ("app", r"(?:register page SQL failed|register count SQL failed|ReportingService|reporting)"),
     ]
     for title, pattern in patterns:
         for match in list(re.finditer(pattern, log))[:10]:
@@ -108,9 +198,18 @@ def report_error_lines(log: str) -> None:
     failing-test evidence off the end of that list.
     """
     seen: set[str] = set()
-    for match in list(re.finditer(r"\[ERROR\][^\n]{0,400}", log))[:3]:
-        line = " ".join(match.group(0).split())
-        if line in seen:
+    for match in list(re.finditer(r"\[ERROR\][^\n]{0,400}", log))[:10]:
+        raw_line = match.group(0)
+        # Drop any line that carries binary (XLSX/ZIP) evidence -- Maven echoes the failing
+        # assertion to [ERROR] lines too, and those bytes would corrupt annotation parsing.
+        if any(tok in raw_line for tok in ("PK&#3;&#4;", "PK\u0003\u0004", "[Content_Types].xml",
+                                           "xl/worksheets/sheet", "_rels/.rels")):
+            continue
+        ctrl = sum(1 for c in raw_line[:2000] if ord(c) < 9 or (ord(c) > 13 and ord(c) < 32))
+        if ctrl > 20:
+            continue
+        line = " ".join(raw_line.split())
+        if line in seen or len(line) < 10:
             continue
         seen.add(line)
         emit("error", "build", line)
@@ -168,12 +267,13 @@ def main() -> int:
         emit("warning", "ci-report", f"{path} not found")
         return 0
     # Order matters: GitHub keeps only the first ~10-20 annotations of a run, so the most
-    # specific evidence goes first. A failing test case is worth more than a summary line,
-    # and the raw [ERROR] dump is the last resort because it is the noisiest.
-    report_test_results()
-    report_summaries()
-    report_log(log)
-    report_error_lines(log)
+    # specific evidence goes FIRST. A PSQLException / SQL error line IS the root cause of
+    # the 500s; failing-test assertions ("expected 200 but was 500") are the symptom and
+    # come second. Binary-payload annotations are skipped entirely.
+    report_log(log)          # PSQL/Caused-by/ctx/deps/plugin — root-cause first
+    report_test_results()    # FAIL Class.method  — per-test assertions
+    report_summaries()       # TEST TOTAL / TEST Foo
+    report_error_lines(log)  # remaining [ERROR] lines
     return 0
 
 
