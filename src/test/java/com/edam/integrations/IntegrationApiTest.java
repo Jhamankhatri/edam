@@ -44,7 +44,8 @@ import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest(properties = {
 	"EDAM_INTEGRATION_MASTER_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-	"edam.integrations.worker.enabled=false"
+	"edam.integrations.worker.enabled=true",
+	"edam.integrations.worker.delay-ms=999999999"
 })
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
