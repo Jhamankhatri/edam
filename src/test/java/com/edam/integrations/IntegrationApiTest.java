@@ -22,8 +22,8 @@ import com.edam.integrations.service.IntegrationExecutionWorker;
 import com.edam.testsupport.AbstractPostgreSqlIntegrationTest;
 import com.edam.usermanagement.model.User;
 import com.edam.usermanagement.repository.UserRepository;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import com.sun.net.httpserver.HttpServer;
 
 import org.junit.jupiter.api.*;
@@ -47,7 +47,7 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 	private static final String BASE = "/api/v1/integrations";
 
 	@Autowired private MockMvc mockMvc;
-	@Autowired private ObjectMapper json;
+	@Autowired private JsonMapper json;
 	@Autowired private UserRepository users;
 	@Autowired private IntegrationConfigRepository configs;
 	@Autowired private IntegrationExecutionRepository executions;
