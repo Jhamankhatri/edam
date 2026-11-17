@@ -2,7 +2,6 @@ package com.edam.businessrules.service;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -150,11 +149,10 @@ class BusinessRulesIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 				.content("{\"code\":\"BAD3\",\"name\":\"Bad\",\"condition\":{\"field\":\"amount\",\"op\":\"gt\",\"value\":1},\"action\":{\"type\":\"WARN\",\"hacked\":true},\"priority\":1}"))
 			.andExpect(status().isBadRequest());
 
-		Instant eff = Instant.now().plus(1, ChronoUnit.SECONDS);
 		this.mockMvc.perform(post(BASE + "/" + setId + "/publish")
 				.with(csrf()).with(user(adminPrincipal()))
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"effectiveFrom\":\"" + eff + "\"}"))
+				.content("{}"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.status").value("PUBLISHED"));
 
@@ -239,7 +237,7 @@ class BusinessRulesIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 						Map.of("field", "amount", "op", "gt", "value", 10000),
 						Map.of("field", "currency", "op", "eq", "value", "PKR"))),
 				Map.of("type", "WARN"), 50, true), adminPrincipal());
-		service.publish(setId, new RuleDtos.PublishRequest(Instant.now().minusMillis(100)), adminPrincipal());
+		service.publish(setId, new RuleDtos.PublishRequest(null), adminPrincipal());
 
 		// Match
 		var outcome = service.evaluate("EXPENSE", summary.code(),
@@ -271,7 +269,7 @@ class BusinessRulesIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 		service.upsertRule(d.id(), new RuleDtos.RuleUpsertRequest(null, "R", "R",
 				Map.of("field", "amount", "op", "gt", "value", 0),
 				Map.of("type", "WARN"), 1, true), adminPrincipal());
-		var pub1 = service.publish(setId, new RuleDtos.PublishRequest(Instant.now().minusMillis(100)), adminPrincipal());
+		var pub1 = service.publish(setId, new RuleDtos.PublishRequest(null), adminPrincipal());
 		assertThat(pub1.status()).isEqualTo(RuleVersionStatus.PUBLISHED);
 		// Cannot publish again without a new draft (no DRAFT exists after publish).
 		assertThatThrownBy(() -> service.publish(setId, new RuleDtos.PublishRequest(null), adminPrincipal()))
@@ -281,7 +279,7 @@ class BusinessRulesIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 		service.upsertRule(v2.id(), new RuleDtos.RuleUpsertRequest(null, "R2", "R2",
 				Map.of("field", "amount", "op", "gt", "value", 1),
 				Map.of("type", "WARN"), 1, true), adminPrincipal());
-		var pub2 = service.publish(setId, new RuleDtos.PublishRequest(Instant.now().minusMillis(100)), adminPrincipal());
+		var pub2 = service.publish(setId, new RuleDtos.PublishRequest(null), adminPrincipal());
 		assertThat(pub2.versionNumber()).isEqualTo(2);
 	}
 
@@ -295,7 +293,7 @@ class BusinessRulesIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 		service.upsertRule(detail.id(), new RuleDtos.RuleUpsertRequest(null, "R1", "R1",
 				Map.of("field", "amount", "op", "gt", "value", 0),
 				Map.of("type", "WARN"), 10, true), adminPrincipal());
-		service.publish(setId, new RuleDtos.PublishRequest(Instant.now().minusMillis(100)), adminPrincipal());
+		service.publish(setId, new RuleDtos.PublishRequest(null), adminPrincipal());
 
 		var matched = service.evaluate("EXPENSE", summary.code(),
 				RuleEngine.EvaluationContext.of(Map.of("amount", new BigDecimal("1"), "currency", "PKR")));

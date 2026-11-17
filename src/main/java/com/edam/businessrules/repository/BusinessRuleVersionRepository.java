@@ -22,7 +22,7 @@ public interface BusinessRuleVersionRepository extends JpaRepository<BusinessRul
 			+ "where v.id = ?1")
 	Optional<BusinessRuleVersion> findByIdWithRules(UUID id);
 
-	@Query("select v from BusinessRuleVersion v left join fetch v.rules "
+	@Query("select v from BusinessRuleVersion v left join fetch v.rules join fetch v.ruleSet "
 			+ "where v.ruleSet.id = ?1 and v.status = ?2")
 	Optional<BusinessRuleVersion> findByRuleSetAndStatusWithRules(UUID ruleSetId, RuleVersionStatus status);
 
