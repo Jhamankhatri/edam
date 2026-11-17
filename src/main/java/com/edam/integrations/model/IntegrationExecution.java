@@ -15,6 +15,8 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 
 import org.hibernate.annotations.Generated;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.hibernate.generator.EventType;
 
 /**
@@ -81,9 +83,11 @@ public class IntegrationExecution {
 	@Column(name = "retryable", nullable = false)
 	private boolean retryable = false;
 
+	@JdbcTypeCode(SqlTypes.JSON)
 	@Column(name = "request_metadata", columnDefinition = "jsonb")
 	private String requestMetadata;
 
+	@JdbcTypeCode(SqlTypes.JSON)
 	@Column(name = "response_metadata", columnDefinition = "jsonb")
 	private String responseMetadata;
 

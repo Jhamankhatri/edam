@@ -15,6 +15,8 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 
 import org.hibernate.annotations.Generated;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.hibernate.generator.EventType;
 
 /**
@@ -72,6 +74,7 @@ public class IntegrationConfig {
 	private int secretVersion = 0;
 
 	/** Adapter-specific non-sensitive settings; validated by the adapter on write. */
+	@JdbcTypeCode(SqlTypes.JSON)
 	@Column(name = "configuration", columnDefinition = "jsonb")
 	private String configurationJson;
 
