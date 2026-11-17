@@ -162,7 +162,12 @@ public class RuleEngine {
 			Object op = m.get("op");
 			Object value = m.get("value");
 			if (!(field instanceof String f)) { errs.add("\"field\" must be a string"); return 0; }
-			if (!ctx.isAllowedField(f)) { errs.add("Field \"" + f + "\" is not exposed to rules"); return 0; }
+			// Field whitelist is enforced at evaluation time (the same rule text may be valid in one
+			// EvaluationContext and invalid in another; upsert/publish only validates syntax + shape).
+			if (ctx != null && !ctx.isWildcardAllowed() && !ctx.isAllowedField(f)) {
+				errs.add("Field \"" + f + "\" is not exposed to rules");
+				return 0;
+			}
 			if (path.contains(f)) {
 				// No loop possible without arbitrary functions; this guards against accidental
 				// duplicate branches that cause huge evaluations.
@@ -224,6 +229,9 @@ public class RuleEngine {
 		String field = (String) node.get("field");
 		String op = (String) node.get("op");
 		Object value = node.get("value");
+		if (!ctx.isWildcardAllowed() && !ctx.isAllowedField(field)) {
+			throw new EvalException("Field \"" + field + "\" is not exposed to rules");
+		}
 		Object actual = ctx.get(field);
 		return compare(op, actual, value);
 	}
@@ -299,6 +307,8 @@ public class RuleEngine {
 	/** Evaluation context exposed to rules: a fixed, read-only map of field → value. */
 	public interface EvaluationContext {
 		boolean isAllowedField(String field);
+		/** @return true if the context accepts any field (syntax-only validation path). */
+		default boolean isWildcardAllowed() { return false; }
 		Object get(String field);
 
 		static EvaluationContext of(Map<String, ?> allowedFields) {
@@ -307,6 +317,15 @@ public class RuleEngine {
 			return new EvaluationContext() {
 				@Override public boolean isAllowedField(String f) { return allowed.contains(f); }
 				@Override public Object get(String f) { return values.get(f); }
+			};
+		}
+
+		/** Syntax-only validation context (accepts any field name). Used at upsert/publish time. */
+		static EvaluationContext wildcard() {
+			return new EvaluationContext() {
+				@Override public boolean isAllowedField(String f) { return true; }
+				@Override public boolean isWildcardAllowed() { return true; }
+				@Override public Object get(String f) { return null; }
 			};
 		}
 	}

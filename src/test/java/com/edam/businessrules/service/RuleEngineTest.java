@@ -61,17 +61,27 @@ class RuleEngineTest {
 	@DisplayName("unknown field, operator, non-scalar value, and excessive nesting are rejected")
 	void validationRejectsUnsafe() {
 		RuleEngine.EvaluationContext c = ctx;
+		// Whitelist rejection fires when a concrete (non-wildcard) context is provided.
 		assertThatThrownBy(() -> engine.validateCondition(Map.of("field","__BAD__","op","eq","value","x"), c))
 				.isInstanceOf(BusinessException.class);
-		assertThatThrownBy(() -> engine.validateCondition(Map.of("field","amount","op","exec","value","x"), c))
+		// Unknown operator rejected even against wildcard syntax validation.
+		RuleEngine.EvaluationContext wild = RuleEngine.EvaluationContext.wildcard();
+		assertThatThrownBy(() -> engine.validateCondition(Map.of("field","amount","op","exec","value","x"), wild))
 				.isInstanceOf(BusinessException.class);
-		assertThatThrownBy(() -> engine.validateCondition(Map.of("field","amount","op","eq","value",Map.of("a",1)), c))
+		assertThatThrownBy(() -> engine.validateCondition(Map.of("field","amount","op","eq","value",Map.of("a",1)), wild))
 				.isInstanceOf(BusinessException.class);
 		// Deep nesting is rejected
 		Map<String,Object> deep = Map.of("not", Map.of("not", Map.of("not", Map.of("not", Map.of("not",
 				Map.of("not", Map.of("not", Map.of("not", Map.of("not", Map.of("not",
 				Map.of("not", Map.of("not", Map.of("field","amount","op","eq","value",1)))))))))))));
-		assertThatThrownBy(() -> engine.validateCondition(deep, c))
+		assertThatThrownBy(() -> engine.validateCondition(deep, wild))
+				.isInstanceOf(BusinessException.class);
+	}
+
+	@Test
+	@DisplayName("whitelist violation during evaluation raises a safe exception (no reflection)")
+	void evaluationRejectsDisallowedField() {
+		assertThatThrownBy(() -> engine.evaluate(Map.of("field","__EVIL__","op","eq","value",1), ctx))
 				.isInstanceOf(BusinessException.class);
 	}
 

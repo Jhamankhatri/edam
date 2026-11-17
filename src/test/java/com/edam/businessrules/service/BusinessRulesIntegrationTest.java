@@ -121,11 +121,11 @@ class BusinessRulesIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.code").value("HIGH_AMOUNT_PKR"));
 
-		// Invalid rule (unknown field) should be rejected at upsert time
+		// Invalid rule (unknown operator) should be rejected at upsert time
 		this.mockMvc.perform(put(BASE + "/versions/" + vId + "/rules")
 				.with(csrf()).with(user(adminPrincipal()))
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"code\":\"BAD\",\"name\":\"Bad\",\"condition\":{\"field\":\"__EVIL__\",\"op\":\"eq\",\"value\":1},\"action\":{\"type\":\"WARN\"},\"priority\":1}"))
+				.content("{\"code\":\"BAD\",\"name\":\"Bad\",\"condition\":{\"field\":\"amount\",\"op\":\"dropTable\",\"value\":1},\"action\":{\"type\":\"WARN\"},\"priority\":1}"))
 			.andExpect(status().isBadRequest());
 
 		// Publish

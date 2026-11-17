@@ -149,7 +149,7 @@ public class BusinessRuleService {
 				.orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Draft disappeared"));
 
 		// Validate every rule before flipping status.
-		RuleEngine.EvaluationContext validationCtx = RuleEngine.EvaluationContext.of(Map.of());
+		RuleEngine.EvaluationContext validationCtx = RuleEngine.EvaluationContext.wildcard();
 		for (BusinessRule r : draft.getRules()) {
 			Map<String, Object> cond = this.engine.parseCondition(r.getConditionDefinition());
 			this.engine.validateCondition(cond, validationCtx);
@@ -210,7 +210,7 @@ public class BusinessRuleService {
 		}
 		// Validate the condition/action syntax now (deeper context validation happens on publish).
 		Map<String, Object> cond = this.engine.parseCondition(this.engine.writeCondition(req.condition() == null ? Map.of("all", List.of()) : req.condition()));
-		this.engine.validateCondition(cond, RuleEngine.EvaluationContext.of(Map.of()));
+		this.engine.validateCondition(cond, RuleEngine.EvaluationContext.wildcard());
 		Map<String, Object> act = this.engine.parseAction(this.engine.writeAction(req.action() == null ? Map.of("type", "WARN") : req.action()));
 
 		BusinessRule target;
