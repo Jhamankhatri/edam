@@ -72,7 +72,7 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 		// Direct SQL cleanup avoids JPA cascading/entity-order surprises and resets
 		// state between tests. Audit FKs on entity_id are soft (no FK constraint),
 		// so wipe them too to keep the redaction assertion deterministic.
-		jdbc.execute("DELETE FROM audit_log WHERE entity_type IN ('IntegrationConfig','IntegrationExecution')");
+		jdbc.execute("DELETE FROM audit_events WHERE entity_type IN ('IntegrationConfig','IntegrationExecution')");
 		jdbc.execute("DELETE FROM integration_executions");
 		jdbc.execute("DELETE FROM integration_configs");
 	}
