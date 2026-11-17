@@ -1,14 +1,13 @@
 {
   "department_approval_limits": {
     "class": "DepartmentApprovalLimit",
-    "file": "com/edam/approvallimits/model/DepartmentApprovalLimit.java",
+    "file": "src/main/java/com/edam/approvallimits/model/DepartmentApprovalLimit.java",
     "cols": [
       {
         "field": "departmentId",
         "column": "department_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -16,8 +15,7 @@
         "field": "userId",
         "column": "user_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -25,8 +23,7 @@
         "field": "currencyId",
         "column": "currency_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -34,8 +31,7 @@
         "field": "approvalLimit",
         "column": "approval_limit",
         "jtype": "BigDecimal",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": "19"
       },
@@ -43,8 +39,7 @@
         "field": "effectiveFrom",
         "column": "effective_from",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -52,8 +47,7 @@
         "field": "effectiveTo",
         "column": "effective_to",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -61,14 +55,13 @@
   },
   "exceeding_limit_rules": {
     "class": "ExceedingLimitRule",
-    "file": "com/edam/approvallimits/model/ExceedingLimitRule.java",
+    "file": "src/main/java/com/edam/approvallimits/model/ExceedingLimitRule.java",
     "cols": [
       {
         "field": "natureId",
         "column": "nature_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -76,8 +69,7 @@
         "field": "currencyId",
         "column": "currency_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -85,8 +77,7 @@
         "field": "thresholdAmount",
         "column": "threshold_amount",
         "jtype": "BigDecimal",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": "19"
       }
@@ -94,14 +85,13 @@
   },
   "recommending_authorities": {
     "class": "RecommendingAuthority",
-    "file": "com/edam/approvallimits/model/RecommendingAuthority.java",
+    "file": "src/main/java/com/edam/approvallimits/model/RecommendingAuthority.java",
     "cols": [
       {
         "field": "departmentId",
         "column": "department_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -109,8 +99,7 @@
         "field": "userId",
         "column": "user_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -118,8 +107,7 @@
         "field": "effectiveFrom",
         "column": "effective_from",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -127,8 +115,7 @@
         "field": "effectiveTo",
         "column": "effective_to",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -136,14 +123,13 @@
   },
   "business_rules": {
     "class": "BusinessRule",
-    "file": "com/edam/businessrules/model/BusinessRule.java",
+    "file": "src/main/java/com/edam/businessrules/model/BusinessRule.java",
     "cols": [
       {
         "field": "code",
         "column": "rule_code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "64",
         "precision": null
       },
@@ -151,8 +137,7 @@
         "field": "name",
         "column": "rule_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "200",
         "precision": null
       },
@@ -160,8 +145,7 @@
         "field": "conditionDefinition",
         "column": "condition_definition",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": "jsonb",
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -169,8 +153,7 @@
         "field": "actionDefinition",
         "column": "action_definition",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": "jsonb",
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -178,21 +161,20 @@
         "field": "ruleVersion",
         "column": "rule_version_id",
         "jtype": "BusinessRuleVersion",
-        "nullable": "true",
-        "join": true
+        "join": true,
+        "nullable": false
       }
     ]
   },
   "business_rule_sets": {
     "class": "BusinessRuleSet",
-    "file": "com/edam/businessrules/model/BusinessRuleSet.java",
+    "file": "src/main/java/com/edam/businessrules/model/BusinessRuleSet.java",
     "cols": [
       {
         "field": "code",
         "column": "rule_set_code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "64",
         "precision": null
       },
@@ -200,8 +182,7 @@
         "field": "name",
         "column": "rule_set_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "200",
         "precision": null
       },
@@ -209,8 +190,7 @@
         "field": "module",
         "column": "module",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "60",
         "precision": null
       },
@@ -218,8 +198,7 @@
         "field": "description",
         "column": "description",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -227,14 +206,13 @@
   },
   "business_rule_versions": {
     "class": "BusinessRuleVersion",
-    "file": "com/edam/businessrules/model/BusinessRuleVersion.java",
+    "file": "src/main/java/com/edam/businessrules/model/BusinessRuleVersion.java",
     "cols": [
       {
         "field": "versionNumber",
         "column": "version_number",
         "jtype": "int",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -242,8 +220,7 @@
         "field": "effectiveFrom",
         "column": "effective_from",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -251,8 +228,7 @@
         "field": "effectiveTo",
         "column": "effective_to",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -260,8 +236,7 @@
         "field": "publishedBy",
         "column": "published_by",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -269,8 +244,7 @@
         "field": "publishedAt",
         "column": "published_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -278,21 +252,20 @@
         "field": "ruleSet",
         "column": "rule_set_id",
         "jtype": "BusinessRuleSet",
-        "nullable": "true",
-        "join": true
+        "join": true,
+        "nullable": false
       }
     ]
   },
   "committee_levels": {
     "class": "CommitteeLevel",
-    "file": "com/edam/committee/model/CommitteeLevel.java",
+    "file": "src/main/java/com/edam/committee/model/CommitteeLevel.java",
     "cols": [
       {
         "field": "levelNumber",
         "column": "level_number",
         "jtype": "short",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -300,8 +273,7 @@
         "field": "levelName",
         "column": "level_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "200",
         "precision": null
       },
@@ -309,8 +281,7 @@
         "field": "minimumAmount",
         "column": "minimum_amount",
         "jtype": "BigDecimal",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": "19"
       },
@@ -318,8 +289,7 @@
         "field": "maximumAmount",
         "column": "maximum_amount",
         "jtype": "BigDecimal",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": "19"
       },
@@ -327,8 +297,7 @@
         "field": "currencyId",
         "column": "currency_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -336,8 +305,7 @@
         "field": "minimumApprovals",
         "column": "minimum_approvals",
         "jtype": "short",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -345,21 +313,20 @@
         "field": "committee",
         "column": "committee_id",
         "jtype": "ExpenseCommittee",
-        "nullable": "true",
-        "join": true
+        "join": true,
+        "nullable": false
       }
     ]
   },
   "committee_members": {
     "class": "CommitteeMember",
-    "file": "com/edam/committee/model/CommitteeMember.java",
+    "file": "src/main/java/com/edam/committee/model/CommitteeMember.java",
     "cols": [
       {
         "field": "userId",
         "column": "user_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -367,8 +334,7 @@
         "field": "effectiveFrom",
         "column": "effective_from",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -376,8 +342,7 @@
         "field": "effectiveTo",
         "column": "effective_to",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -385,21 +350,20 @@
         "field": "committee",
         "column": "committee_id",
         "jtype": "ExpenseCommittee",
-        "nullable": "true",
-        "join": true
+        "join": true,
+        "nullable": false
       }
     ]
   },
   "committee_level_members": {
     "class": "CommitteeLevelMember",
-    "file": "com/edam/committee/model/CommitteeLevelMember.java",
+    "file": "src/main/java/com/edam/committee/model/CommitteeLevelMember.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -407,8 +371,7 @@
         "field": "mandatory",
         "column": "is_mandatory",
         "jtype": "boolean",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -416,8 +379,7 @@
         "field": "approvalOrder",
         "column": "approval_order",
         "jtype": "Short",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -425,28 +387,27 @@
         "field": "level",
         "column": "committee_level_id",
         "jtype": "CommitteeLevel",
-        "nullable": "true",
-        "join": true
+        "join": true,
+        "nullable": false
       },
       {
         "field": "member",
         "column": "committee_member_id",
         "jtype": "CommitteeMember",
-        "nullable": "true",
-        "join": true
+        "join": true,
+        "nullable": false
       }
     ]
   },
   "expense_committees": {
     "class": "ExpenseCommittee",
-    "file": "com/edam/committee/model/ExpenseCommittee.java",
+    "file": "src/main/java/com/edam/committee/model/ExpenseCommittee.java",
     "cols": [
       {
         "field": "committeeCode",
         "column": "committee_code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "64",
         "precision": null
       },
@@ -454,8 +415,7 @@
         "field": "committeeName",
         "column": "committee_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "200",
         "precision": null
       },
@@ -463,8 +423,7 @@
         "field": "description",
         "column": "description",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -472,14 +431,13 @@
   },
   "idempotency_records": {
     "class": "IdempotencyRecord",
-    "file": "com/edam/common/api/IdempotencyRecord.java",
+    "file": "src/main/java/com/edam/common/api/IdempotencyRecord.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -487,8 +445,7 @@
         "field": "keyHash",
         "column": "idempotency_key",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "200",
         "precision": null
       },
@@ -496,8 +453,7 @@
         "field": "operationType",
         "column": "operation_type",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "120",
         "precision": null
       },
@@ -505,8 +461,7 @@
         "field": "actorId",
         "column": "actor_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -514,8 +469,7 @@
         "field": "requestHash",
         "column": "request_hash",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "64",
         "precision": null
       },
@@ -523,8 +477,7 @@
         "field": "responseSnapshot",
         "column": "response_snapshot",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -532,8 +485,7 @@
         "field": "status",
         "column": "processing_status",
         "jtype": "Status",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "20",
         "precision": null
       },
@@ -541,8 +493,7 @@
         "field": "responseStatus",
         "column": "response_status",
         "jtype": "Integer",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -550,8 +501,7 @@
         "field": "expiresAt",
         "column": "expires_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -559,8 +509,7 @@
         "field": "createdAt",
         "column": "created_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       }
@@ -568,14 +517,13 @@
   },
   "audit_events": {
     "class": "AuditEvent",
-    "file": "com/edam/common/audit/AuditEvent.java",
+    "file": "src/main/java/com/edam/common/audit/AuditEvent.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -583,8 +531,7 @@
         "field": "entityType",
         "column": "entity_type",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "100",
         "precision": null
       },
@@ -592,8 +539,7 @@
         "field": "entityId",
         "column": "entity_id",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "100",
         "precision": null
       },
@@ -601,8 +547,7 @@
         "field": "action",
         "column": "action",
         "jtype": "AuditAction",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "60",
         "precision": null
       },
@@ -610,8 +555,7 @@
         "field": "oldValues",
         "column": "old_values",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -619,8 +563,7 @@
         "field": "newValues",
         "column": "new_values",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -628,8 +571,7 @@
         "field": "performedBy",
         "column": "performed_by",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -637,8 +579,7 @@
         "field": "performedByUsername",
         "column": "performed_by_username",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "100",
         "precision": null
       },
@@ -646,8 +587,7 @@
         "field": "ipAddress",
         "column": "ip_address",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "64",
         "precision": null
       },
@@ -655,8 +595,7 @@
         "field": "userAgent",
         "column": "user_agent",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "500",
         "precision": null
       },
@@ -664,8 +603,7 @@
         "field": "correlationId",
         "column": "correlation_id",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "64",
         "precision": null
       },
@@ -673,8 +611,7 @@
         "field": "createdAt",
         "column": "created_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       }
@@ -682,14 +619,13 @@
   },
   "comm_email_templates": {
     "class": "EmailTemplate",
-    "file": "com/edam/communication/model/EmailTemplate.java",
+    "file": "src/main/java/com/edam/communication/model/EmailTemplate.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -697,8 +633,7 @@
         "field": "code",
         "column": "code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "80",
         "precision": null
       },
@@ -706,8 +641,7 @@
         "field": "displayName",
         "column": "display_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "200",
         "precision": null
       },
@@ -715,8 +649,7 @@
         "field": "description",
         "column": "description",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": "TEXT",
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -724,8 +657,7 @@
         "field": "eventCode",
         "column": "event_code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "80",
         "precision": null
       },
@@ -733,8 +665,7 @@
         "field": "subject",
         "column": "subject",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "500",
         "precision": null
       },
@@ -742,8 +673,7 @@
         "field": "htmlBody",
         "column": "html_body",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": "TEXT",
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -751,8 +681,7 @@
         "field": "textBody",
         "column": "text_body",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": "TEXT",
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -760,8 +689,7 @@
         "field": "createdBy",
         "column": "created_by",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -769,8 +697,7 @@
         "field": "updatedBy",
         "column": "updated_by",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -778,8 +705,7 @@
         "field": "createdAt",
         "column": "created_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -787,8 +713,7 @@
         "field": "updatedAt",
         "column": "updated_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -796,8 +721,7 @@
         "field": "version",
         "column": "version",
         "jtype": "long",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       }
@@ -805,14 +729,13 @@
   },
   "comm_email_template_versions": {
     "class": "EmailTemplateVersion",
-    "file": "com/edam/communication/model/EmailTemplateVersion.java",
+    "file": "src/main/java/com/edam/communication/model/EmailTemplateVersion.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -820,8 +743,7 @@
         "field": "templateId",
         "column": "template_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -829,8 +751,7 @@
         "field": "versionNumber",
         "column": "version_number",
         "jtype": "int",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -838,8 +759,7 @@
         "field": "subject",
         "column": "subject",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "500",
         "precision": null
       },
@@ -847,8 +767,7 @@
         "field": "htmlBody",
         "column": "html_body",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": "TEXT",
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -856,8 +775,7 @@
         "field": "textBody",
         "column": "text_body",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": "TEXT",
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -865,8 +783,7 @@
         "field": "locale",
         "column": "locale",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "16",
         "precision": null
       },
@@ -874,8 +791,7 @@
         "field": "changeNote",
         "column": "change_note",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": "TEXT",
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -883,8 +799,7 @@
         "field": "createdBy",
         "column": "created_by",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -892,8 +807,7 @@
         "field": "createdAt",
         "column": "created_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       }
@@ -901,14 +815,13 @@
   },
   "comm_notifications": {
     "class": "Notification",
-    "file": "com/edam/communication/model/Notification.java",
+    "file": "src/main/java/com/edam/communication/model/Notification.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -916,8 +829,7 @@
         "field": "userId",
         "column": "user_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -925,8 +837,7 @@
         "field": "eventCode",
         "column": "event_code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "80",
         "precision": null
       },
@@ -934,8 +845,7 @@
         "field": "title",
         "column": "title",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "500",
         "precision": null
       },
@@ -943,8 +853,7 @@
         "field": "body",
         "column": "body",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": "TEXT",
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -952,8 +861,7 @@
         "field": "payloadJson",
         "column": "payload_json",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": "TEXT",
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -961,8 +869,7 @@
         "field": "read",
         "column": "is_read",
         "jtype": "boolean",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -970,8 +877,7 @@
         "field": "readAt",
         "column": "read_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -979,8 +885,7 @@
         "field": "createdAt",
         "column": "created_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       }
@@ -988,14 +893,13 @@
   },
   "comm_notification_event_configs": {
     "class": "NotificationEventConfig",
-    "file": "com/edam/communication/model/NotificationEventConfig.java",
+    "file": "src/main/java/com/edam/communication/model/NotificationEventConfig.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1003,8 +907,7 @@
         "field": "eventCode",
         "column": "event_code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "80",
         "precision": null
       },
@@ -1012,8 +915,7 @@
         "field": "emailTemplateId",
         "column": "email_template_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1021,8 +923,7 @@
         "field": "recipientGroups",
         "column": "recipient_groups",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": "TEXT",
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1030,8 +931,7 @@
         "field": "updatedBy",
         "column": "updated_by",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1039,8 +939,7 @@
         "field": "updatedAt",
         "column": "updated_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1048,8 +947,7 @@
         "field": "version",
         "column": "version",
         "jtype": "long",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       }
@@ -1057,14 +955,13 @@
   },
   "comm_notification_outbox": {
     "class": "NotificationOutbox",
-    "file": "com/edam/communication/model/NotificationOutbox.java",
+    "file": "src/main/java/com/edam/communication/model/NotificationOutbox.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1072,8 +969,7 @@
         "field": "idempotencyKey",
         "column": "idempotency_key",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "120",
         "precision": null
       },
@@ -1081,8 +977,7 @@
         "field": "eventCode",
         "column": "event_code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "80",
         "precision": null
       },
@@ -1090,8 +985,7 @@
         "field": "channel",
         "column": "channel",
         "jtype": "Channel",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "16",
         "precision": null
       },
@@ -1099,8 +993,7 @@
         "field": "userId",
         "column": "user_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1108,8 +1001,7 @@
         "field": "recipientEmail",
         "column": "recipient_email",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "255",
         "precision": null
       },
@@ -1117,8 +1009,7 @@
         "field": "templateVersionId",
         "column": "template_version_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1126,8 +1017,7 @@
         "field": "subject",
         "column": "subject",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "500",
         "precision": null
       },
@@ -1135,8 +1025,7 @@
         "field": "bodyHtml",
         "column": "body_html",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": "TEXT",
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1144,8 +1033,7 @@
         "field": "bodyText",
         "column": "body_text",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": "TEXT",
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1153,8 +1041,7 @@
         "field": "payloadJson",
         "column": "payload_json",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": "TEXT",
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1162,8 +1049,7 @@
         "field": "nextAttemptAt",
         "column": "next_attempt_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1171,8 +1057,7 @@
         "field": "lastAttemptAt",
         "column": "last_attempt_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1180,8 +1065,7 @@
         "field": "lastError",
         "column": "last_error",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": "TEXT",
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1189,8 +1073,7 @@
         "field": "lockedBy",
         "column": "locked_by",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "100",
         "precision": null
       },
@@ -1198,8 +1081,7 @@
         "field": "lockedAt",
         "column": "locked_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1207,8 +1089,7 @@
         "field": "sentAt",
         "column": "sent_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1216,8 +1097,7 @@
         "field": "createdAt",
         "column": "created_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       }
@@ -1225,14 +1105,13 @@
   },
   "comm_notification_preferences": {
     "class": "NotificationPreference",
-    "file": "com/edam/communication/model/NotificationPreference.java",
+    "file": "src/main/java/com/edam/communication/model/NotificationPreference.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1240,8 +1119,7 @@
         "field": "userId",
         "column": "user_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1249,8 +1127,7 @@
         "field": "updatedAt",
         "column": "updated_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       }
@@ -1258,14 +1135,13 @@
   },
   "comm_notification_preference_events": {
     "class": "NotificationPreferenceEvent",
-    "file": "com/edam/communication/model/NotificationPreferenceEvent.java",
+    "file": "src/main/java/com/edam/communication/model/NotificationPreferenceEvent.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1273,8 +1149,7 @@
         "field": "preferenceId",
         "column": "preference_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1282,8 +1157,7 @@
         "field": "eventCode",
         "column": "event_code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "80",
         "precision": null
       }
@@ -1291,14 +1165,13 @@
   },
   "comm_smtp_configuration": {
     "class": "SmtpConfiguration",
-    "file": "com/edam/communication/model/SmtpConfiguration.java",
+    "file": "src/main/java/com/edam/communication/model/SmtpConfiguration.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1306,8 +1179,7 @@
         "field": "host",
         "column": "host",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "255",
         "precision": null
       },
@@ -1315,8 +1187,7 @@
         "field": "port",
         "column": "port",
         "jtype": "int",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1324,8 +1195,7 @@
         "field": "username",
         "column": "username",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "255",
         "precision": null
       },
@@ -1333,8 +1203,7 @@
         "field": "encryptedPassword",
         "column": "encrypted_password",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1342,8 +1211,7 @@
         "field": "fromEmail",
         "column": "from_email",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "255",
         "precision": null
       },
@@ -1351,8 +1219,7 @@
         "field": "fromDisplayName",
         "column": "from_display_name",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "255",
         "precision": null
       },
@@ -1360,8 +1227,7 @@
         "field": "replyTo",
         "column": "reply_to",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "255",
         "precision": null
       },
@@ -1369,8 +1235,7 @@
         "field": "lastTestAt",
         "column": "last_test_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1378,8 +1243,7 @@
         "field": "lastTestSuccess",
         "column": "last_test_success",
         "jtype": "Boolean",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1387,8 +1251,7 @@
         "field": "lastTestMessage",
         "column": "last_test_message",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1396,8 +1259,7 @@
         "field": "createdAt",
         "column": "created_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1405,8 +1267,7 @@
         "field": "updatedAt",
         "column": "updated_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1414,8 +1275,7 @@
         "field": "version",
         "column": "version",
         "jtype": "long",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       }
@@ -1423,14 +1283,13 @@
   },
   "comm_smtp_test_history": {
     "class": "SmtpTestHistory",
-    "file": "com/edam/communication/model/SmtpTestHistory.java",
+    "file": "src/main/java/com/edam/communication/model/SmtpTestHistory.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1438,8 +1297,7 @@
         "field": "smtpConfigId",
         "column": "smtp_config_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1447,8 +1305,7 @@
         "field": "recipient",
         "column": "recipient",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "255",
         "precision": null
       },
@@ -1456,8 +1313,7 @@
         "field": "success",
         "column": "success",
         "jtype": "boolean",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1465,8 +1321,7 @@
         "field": "diagnostic",
         "column": "diagnostic",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": "TEXT",
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1474,8 +1329,7 @@
         "field": "sentAt",
         "column": "sent_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       }
@@ -1483,14 +1337,13 @@
   },
   "application_settings": {
     "class": "ApplicationSetting",
-    "file": "com/edam/configuration/model/ApplicationSetting.java",
+    "file": "src/main/java/com/edam/configuration/model/ApplicationSetting.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1498,8 +1351,7 @@
         "field": "key",
         "column": "setting_key",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "150",
         "precision": null
       },
@@ -1507,8 +1359,7 @@
         "field": "displayName",
         "column": "display_name",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "200",
         "precision": null
       },
@@ -1516,8 +1367,7 @@
         "field": "description",
         "column": "description",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1525,8 +1375,7 @@
         "field": "valueJson",
         "column": "setting_value",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": "jsonb",
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1534,8 +1383,7 @@
         "field": "defaultValueJson",
         "column": "default_value",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": "jsonb",
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1543,8 +1391,7 @@
         "field": "createdBy",
         "column": "created_by",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "100",
         "precision": null
       }
@@ -1552,14 +1399,13 @@
   },
   "feature_flags": {
     "class": "FeatureFlag",
-    "file": "com/edam/configuration/model/FeatureFlag.java",
+    "file": "src/main/java/com/edam/configuration/model/FeatureFlag.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1567,8 +1413,7 @@
         "field": "featureKey",
         "column": "feature_key",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "100",
         "precision": null
       },
@@ -1576,8 +1421,7 @@
         "field": "displayName",
         "column": "display_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "150",
         "precision": null
       },
@@ -1585,8 +1429,7 @@
         "field": "description",
         "column": "description",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1594,8 +1437,7 @@
         "field": "configurationJson",
         "column": "configuration",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": "jsonb",
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1603,8 +1445,7 @@
         "field": "createdBy",
         "column": "created_by",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "100",
         "precision": null
       }
@@ -1612,14 +1453,13 @@
   },
   "branding_themes": {
     "class": "BrandingTheme",
-    "file": "com/edam/configuration/model/BrandingTheme.java",
+    "file": "src/main/java/com/edam/configuration/model/BrandingTheme.java",
     "cols": [
       {
         "field": "themeName",
         "column": "theme_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "100",
         "precision": null
       },
@@ -1627,8 +1467,7 @@
         "field": "description",
         "column": "description",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1636,8 +1475,7 @@
         "field": "primaryColor",
         "column": "primary_color",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "9",
         "precision": null
       },
@@ -1645,8 +1483,7 @@
         "field": "secondaryColor",
         "column": "secondary_color",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "9",
         "precision": null
       },
@@ -1654,8 +1491,7 @@
         "field": "accentColor",
         "column": "accent_color",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "9",
         "precision": null
       },
@@ -1663,8 +1499,7 @@
         "field": "backgroundColor",
         "column": "background_color",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "9",
         "precision": null
       },
@@ -1672,8 +1507,7 @@
         "field": "surfaceColor",
         "column": "surface_color",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "9",
         "precision": null
       },
@@ -1681,8 +1515,7 @@
         "field": "textColor",
         "column": "text_color",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "9",
         "precision": null
       },
@@ -1690,8 +1523,7 @@
         "field": "headingColor",
         "column": "heading_color",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "9",
         "precision": null
       },
@@ -1699,8 +1531,7 @@
         "field": "navBgColor",
         "column": "nav_bg_color",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "9",
         "precision": null
       },
@@ -1708,8 +1539,7 @@
         "field": "navTextColor",
         "column": "nav_text_color",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "9",
         "precision": null
       },
@@ -1717,8 +1547,7 @@
         "field": "buttonPrimaryColor",
         "column": "button_primary_color",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "9",
         "precision": null
       },
@@ -1726,8 +1555,7 @@
         "field": "buttonPrimaryText",
         "column": "button_primary_text",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "9",
         "precision": null
       },
@@ -1735,8 +1563,7 @@
         "field": "successColor",
         "column": "success_color",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "9",
         "precision": null
       },
@@ -1744,8 +1571,7 @@
         "field": "warningColor",
         "column": "warning_color",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "9",
         "precision": null
       },
@@ -1753,8 +1579,7 @@
         "field": "errorColor",
         "column": "error_color",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "9",
         "precision": null
       },
@@ -1762,8 +1587,7 @@
         "field": "infoColor",
         "column": "info_color",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "9",
         "precision": null
       }
@@ -1771,14 +1595,13 @@
   },
   "theme_tokens": {
     "class": "ThemeToken",
-    "file": "com/edam/configuration/model/ThemeToken.java",
+    "file": "src/main/java/com/edam/configuration/model/ThemeToken.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1786,8 +1609,7 @@
         "field": "tokenKey",
         "column": "token_key",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "100",
         "precision": null
       },
@@ -1795,8 +1617,7 @@
         "field": "tokenValue",
         "column": "token_value",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "500",
         "precision": null
       },
@@ -1804,21 +1625,20 @@
         "field": "theme",
         "column": "theme_id",
         "jtype": "BrandingTheme",
-        "nullable": "true",
-        "join": true
+        "join": true,
+        "nullable": false
       }
     ]
   },
   "delegation_approver_steps": {
     "class": "DelegationApproverStep",
-    "file": "com/edam/delegation/model/DelegationApproverStep.java",
+    "file": "src/main/java/com/edam/delegation/model/DelegationApproverStep.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1826,8 +1646,7 @@
         "field": "stepOrder",
         "column": "step_order",
         "jtype": "short",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1835,8 +1654,7 @@
         "field": "approverType",
         "column": "approver_type",
         "jtype": "ApproverType",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "40",
         "precision": null
       },
@@ -1844,8 +1662,7 @@
         "field": "requiredRoleId",
         "column": "required_role_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1853,8 +1670,7 @@
         "field": "departmentScope",
         "column": "department_scope",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "64",
         "precision": null
       },
@@ -1862,21 +1678,20 @@
         "field": "delegationRule",
         "column": "delegation_rule_id",
         "jtype": "DelegationRule",
-        "nullable": "true",
-        "join": true
+        "join": true,
+        "nullable": false
       }
     ]
   },
   "expense_delegation_rules": {
     "class": "DelegationRule",
-    "file": "com/edam/delegation/model/DelegationRule.java",
+    "file": "src/main/java/com/edam/delegation/model/DelegationRule.java",
     "cols": [
       {
         "field": "categoryId",
         "column": "category_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1884,8 +1699,7 @@
         "field": "subcategoryId",
         "column": "subcategory_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1893,8 +1707,7 @@
         "field": "natureId",
         "column": "nature_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1902,8 +1715,7 @@
         "field": "requestTypeId",
         "column": "request_type_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -1911,8 +1723,7 @@
         "field": "maximumAmount",
         "column": "maximum_amount",
         "jtype": "BigDecimal",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": "19"
       },
@@ -1920,8 +1731,7 @@
         "field": "currencyId",
         "column": "currency_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1929,8 +1739,7 @@
         "field": "effectiveFrom",
         "column": "effective_from",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1938,8 +1747,7 @@
         "field": "effectiveTo",
         "column": "effective_to",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -1947,14 +1755,13 @@
   },
   "doc_scan_events": {
     "class": "DocumentScanEvent",
-    "file": "com/edam/documents/model/DocumentScanEvent.java",
+    "file": "src/main/java/com/edam/documents/model/DocumentScanEvent.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1962,8 +1769,7 @@
         "field": "mediaAssetId",
         "column": "media_asset_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -1971,8 +1777,7 @@
         "field": "scanStatus",
         "column": "scan_status",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "32",
         "precision": null
       },
@@ -1980,8 +1785,7 @@
         "field": "scanner",
         "column": "scanner",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "60",
         "precision": null
       },
@@ -1989,8 +1793,7 @@
         "field": "scannerVersion",
         "column": "scanner_version",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "60",
         "precision": null
       },
@@ -1998,8 +1801,7 @@
         "field": "threatName",
         "column": "threat_name",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "255",
         "precision": null
       },
@@ -2007,8 +1809,7 @@
         "field": "scanFinishedAt",
         "column": "scan_finished_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2016,8 +1817,7 @@
         "field": "detail",
         "column": "detail",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -2025,14 +1825,13 @@
   },
   "media_assets": {
     "class": "MediaAsset",
-    "file": "com/edam/documents/model/MediaAsset.java",
+    "file": "src/main/java/com/edam/documents/model/MediaAsset.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2040,8 +1839,7 @@
         "field": "originalFileName",
         "column": "original_file_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "255",
         "precision": null
       },
@@ -2049,8 +1847,7 @@
         "field": "storedFileName",
         "column": "stored_file_name",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "255",
         "precision": null
       },
@@ -2058,8 +1855,7 @@
         "field": "storageProvider",
         "column": "storage_provider",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "32",
         "precision": null
       },
@@ -2067,8 +1863,7 @@
         "field": "storageReference",
         "column": "storage_reference",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "500",
         "precision": null
       },
@@ -2076,8 +1871,7 @@
         "field": "publicId",
         "column": "public_id",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "500",
         "precision": null
       },
@@ -2085,8 +1879,7 @@
         "field": "assetId",
         "column": "asset_id",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "100",
         "precision": null
       },
@@ -2094,8 +1887,7 @@
         "field": "secureUrl",
         "column": "secure_url",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2103,8 +1895,7 @@
         "field": "resourceType",
         "column": "resource_type",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "32",
         "precision": null
       },
@@ -2112,8 +1903,7 @@
         "field": "fileFormat",
         "column": "file_format",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "32",
         "precision": null
       },
@@ -2121,8 +1911,7 @@
         "field": "mimeType",
         "column": "mime_type",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "150",
         "precision": null
       },
@@ -2130,8 +1919,7 @@
         "field": "fileSize",
         "column": "file_size",
         "jtype": "long",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2139,8 +1927,7 @@
         "field": "checksum",
         "column": "checksum",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "64",
         "precision": null
       },
@@ -2148,8 +1935,7 @@
         "field": "description",
         "column": "description",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2157,8 +1943,7 @@
         "field": "scannedAt",
         "column": "scanned_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2166,8 +1951,7 @@
         "field": "uploadedBy",
         "column": "uploaded_by",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2175,8 +1959,7 @@
         "field": "deletedAt",
         "column": "deleted_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -2184,14 +1967,13 @@
   },
   "expense_categories": {
     "class": "ExpenseCategory",
-    "file": "com/edam/expenseconfiguration/model/ExpenseCategory.java",
+    "file": "src/main/java/com/edam/expenseconfiguration/model/ExpenseCategory.java",
     "cols": [
       {
         "field": "code",
         "column": "category_code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "64",
         "precision": null
       },
@@ -2199,8 +1981,7 @@
         "field": "name",
         "column": "category_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "200",
         "precision": null
       },
@@ -2208,8 +1989,7 @@
         "field": "description",
         "column": "description",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -2217,14 +1997,13 @@
   },
   "expense_natures": {
     "class": "ExpenseNature",
-    "file": "com/edam/expenseconfiguration/model/ExpenseNature.java",
+    "file": "src/main/java/com/edam/expenseconfiguration/model/ExpenseNature.java",
     "cols": [
       {
         "field": "code",
         "column": "nature_code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "64",
         "precision": null
       },
@@ -2232,8 +2011,7 @@
         "field": "name",
         "column": "nature_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "200",
         "precision": null
       },
@@ -2241,8 +2019,7 @@
         "field": "description",
         "column": "description",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -2250,14 +2027,13 @@
   },
   "expense_request_types": {
     "class": "ExpenseRequestType",
-    "file": "com/edam/expenseconfiguration/model/ExpenseRequestType.java",
+    "file": "src/main/java/com/edam/expenseconfiguration/model/ExpenseRequestType.java",
     "cols": [
       {
         "field": "code",
         "column": "type_code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "64",
         "precision": null
       },
@@ -2265,8 +2041,7 @@
         "field": "name",
         "column": "type_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "200",
         "precision": null
       },
@@ -2274,8 +2049,7 @@
         "field": "description",
         "column": "description",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -2283,14 +2057,13 @@
   },
   "expense_subcategories": {
     "class": "ExpenseSubcategory",
-    "file": "com/edam/expenseconfiguration/model/ExpenseSubcategory.java",
+    "file": "src/main/java/com/edam/expenseconfiguration/model/ExpenseSubcategory.java",
     "cols": [
       {
         "field": "categoryId",
         "column": "category_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2298,8 +2071,7 @@
         "field": "code",
         "column": "subcategory_code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "64",
         "precision": null
       },
@@ -2307,8 +2079,7 @@
         "field": "name",
         "column": "subcategory_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "200",
         "precision": null
       },
@@ -2316,8 +2087,7 @@
         "field": "description",
         "column": "description",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -2325,14 +2095,13 @@
   },
   "capex_budget_summaries": {
     "class": "CapexBudgetSummary",
-    "file": "com/edam/expenserequest/model/CapexBudgetSummary.java",
+    "file": "src/main/java/com/edam/expenserequest/model/CapexBudgetSummary.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2340,8 +2109,7 @@
         "field": "budgetReference",
         "column": "budget_reference",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "150",
         "precision": null
       },
@@ -2349,8 +2117,7 @@
         "field": "allocatedAmount",
         "column": "allocated_amount",
         "jtype": "BigDecimal",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": "19"
       },
@@ -2358,8 +2125,7 @@
         "field": "consumedAmount",
         "column": "consumed_amount",
         "jtype": "BigDecimal",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": "19"
       },
@@ -2367,8 +2133,7 @@
         "field": "availableAmount",
         "column": "available_amount",
         "jtype": "BigDecimal",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": "19"
       },
@@ -2376,21 +2141,20 @@
         "field": "request",
         "column": "expense_request_id",
         "jtype": "ExpenseRequest",
-        "nullable": "true",
-        "join": true
+        "join": true,
+        "nullable": false
       }
     ]
   },
   "capex_request_details": {
     "class": "CapexRequestDetail",
-    "file": "com/edam/expenserequest/model/CapexRequestDetail.java",
+    "file": "src/main/java/com/edam/expenserequest/model/CapexRequestDetail.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2398,8 +2162,7 @@
         "field": "requestType",
         "column": "request_type",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "50",
         "precision": null
       },
@@ -2407,8 +2170,7 @@
         "field": "staId",
         "column": "sta_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2416,8 +2178,7 @@
         "field": "invoiceTotal",
         "column": "invoice_total",
         "jtype": "BigDecimal",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": "19"
       },
@@ -2425,8 +2186,7 @@
         "field": "approvalAmount",
         "column": "approval_amount",
         "jtype": "BigDecimal",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": "19"
       },
@@ -2434,8 +2194,7 @@
         "field": "totalCharges",
         "column": "total_charges",
         "jtype": "BigDecimal",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": "19"
       },
@@ -2443,8 +2202,7 @@
         "field": "budgetAmount",
         "column": "budget_amount",
         "jtype": "BigDecimal",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": "19"
       },
@@ -2452,8 +2210,7 @@
         "field": "unbudgetedReason",
         "column": "unbudgeted_reason",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "500",
         "precision": null
       },
@@ -2461,8 +2218,7 @@
         "field": "overBudgetReason",
         "column": "over_budget_reason",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "500",
         "precision": null
       },
@@ -2470,8 +2226,7 @@
         "field": "classification",
         "column": "classification",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "100",
         "precision": null
       },
@@ -2479,8 +2234,7 @@
         "field": "warrantyStartDate",
         "column": "warranty_start_date",
         "jtype": "LocalDate",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2488,8 +2242,7 @@
         "field": "warrantyEndDate",
         "column": "warranty_end_date",
         "jtype": "LocalDate",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2497,8 +2250,7 @@
         "field": "version",
         "column": "version",
         "jtype": "long",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2506,21 +2258,20 @@
         "field": "request",
         "column": "expense_request_id",
         "jtype": "ExpenseRequest",
-        "nullable": "true",
-        "join": true
+        "join": true,
+        "nullable": false
       }
     ]
   },
   "capex_sta_details": {
     "class": "CapexStaDetail",
-    "file": "com/edam/expenserequest/model/CapexStaDetail.java",
+    "file": "src/main/java/com/edam/expenserequest/model/CapexStaDetail.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2528,8 +2279,7 @@
         "field": "taxAuthorityId",
         "column": "tax_authority_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2537,8 +2287,7 @@
         "field": "staReference",
         "column": "sta_reference",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "150",
         "precision": null
       },
@@ -2546,8 +2295,7 @@
         "field": "taxAmount",
         "column": "tax_amount",
         "jtype": "BigDecimal",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": "19"
       },
@@ -2555,8 +2303,7 @@
         "field": "description",
         "column": "description",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2564,21 +2311,20 @@
         "field": "request",
         "column": "expense_request_id",
         "jtype": "ExpenseRequest",
-        "nullable": "true",
-        "join": true
+        "join": true,
+        "nullable": false
       }
     ]
   },
   "expense_allocations": {
     "class": "ExpenseAllocation",
-    "file": "com/edam/expenserequest/model/ExpenseAllocation.java",
+    "file": "src/main/java/com/edam/expenserequest/model/ExpenseAllocation.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2586,8 +2332,7 @@
         "field": "departmentId",
         "column": "department_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2595,8 +2340,7 @@
         "field": "branchId",
         "column": "branch_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2604,8 +2348,7 @@
         "field": "costCenter",
         "column": "cost_center",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "100",
         "precision": null
       },
@@ -2613,8 +2356,7 @@
         "field": "allocationAmount",
         "column": "allocation_amount",
         "jtype": "BigDecimal",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": "19"
       },
@@ -2622,8 +2364,7 @@
         "field": "allocationPercentage",
         "column": "allocation_percentage",
         "jtype": "BigDecimal",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": "9"
       },
@@ -2631,21 +2372,20 @@
         "field": "request",
         "column": "expense_request_id",
         "jtype": "ExpenseRequest",
-        "nullable": "true",
-        "join": true
+        "join": true,
+        "nullable": false
       }
     ]
   },
   "expense_invoices": {
     "class": "ExpenseInvoice",
-    "file": "com/edam/expenserequest/model/ExpenseInvoice.java",
+    "file": "src/main/java/com/edam/expenserequest/model/ExpenseInvoice.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2653,8 +2393,7 @@
         "field": "invoiceNumber",
         "column": "invoice_number",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "100",
         "precision": null
       },
@@ -2662,8 +2401,7 @@
         "field": "invoiceDate",
         "column": "invoice_date",
         "jtype": "LocalDate",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2671,8 +2409,7 @@
         "field": "invoiceAmount",
         "column": "invoice_amount",
         "jtype": "BigDecimal",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": "19"
       },
@@ -2680,8 +2417,7 @@
         "field": "currencyId",
         "column": "currency_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2689,8 +2425,7 @@
         "field": "vendorId",
         "column": "vendor_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2698,8 +2433,7 @@
         "field": "mediaAssetId",
         "column": "media_asset_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2707,21 +2441,20 @@
         "field": "request",
         "column": "expense_request_id",
         "jtype": "ExpenseRequest",
-        "nullable": "true",
-        "join": true
+        "join": true,
+        "nullable": false
       }
     ]
   },
   "expense_previous_summaries": {
     "class": "ExpensePreviousSummary",
-    "file": "com/edam/expenserequest/model/ExpensePreviousSummary.java",
+    "file": "src/main/java/com/edam/expenserequest/model/ExpensePreviousSummary.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2729,8 +2462,7 @@
         "field": "period",
         "column": "period",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "40",
         "precision": null
       },
@@ -2738,8 +2470,7 @@
         "field": "previousAmount",
         "column": "previous_amount",
         "jtype": "BigDecimal",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": "19"
       },
@@ -2747,8 +2478,7 @@
         "field": "approvedAmount",
         "column": "approved_amount",
         "jtype": "BigDecimal",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": "19"
       },
@@ -2756,8 +2486,7 @@
         "field": "description",
         "column": "description",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2765,21 +2494,20 @@
         "field": "request",
         "column": "expense_request_id",
         "jtype": "ExpenseRequest",
-        "nullable": "true",
-        "join": true
+        "join": true,
+        "nullable": false
       }
     ]
   },
   "expense_quotations": {
     "class": "ExpenseQuotation",
-    "file": "com/edam/expenserequest/model/ExpenseQuotation.java",
+    "file": "src/main/java/com/edam/expenserequest/model/ExpenseQuotation.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2787,8 +2515,7 @@
         "field": "vendorId",
         "column": "vendor_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2796,8 +2523,7 @@
         "field": "quotationNumber",
         "column": "quotation_number",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "100",
         "precision": null
       },
@@ -2805,8 +2531,7 @@
         "field": "quotationDate",
         "column": "quotation_date",
         "jtype": "LocalDate",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2814,8 +2539,7 @@
         "field": "quotationAmount",
         "column": "quotation_amount",
         "jtype": "BigDecimal",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": "19"
       },
@@ -2823,8 +2547,7 @@
         "field": "currencyId",
         "column": "currency_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2832,8 +2555,7 @@
         "field": "mediaAssetId",
         "column": "media_asset_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2841,21 +2563,20 @@
         "field": "request",
         "column": "expense_request_id",
         "jtype": "ExpenseRequest",
-        "nullable": "true",
-        "join": true
+        "join": true,
+        "nullable": false
       }
     ]
   },
   "expense_requests": {
     "class": "ExpenseRequest",
-    "file": "com/edam/expenserequest/model/ExpenseRequest.java",
+    "file": "src/main/java/com/edam/expenserequest/model/ExpenseRequest.java",
     "cols": [
       {
         "field": "requestNumber",
         "column": "request_number",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "100",
         "precision": null
       },
@@ -2863,8 +2584,7 @@
         "field": "requestTypeId",
         "column": "request_type_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2872,8 +2592,7 @@
         "field": "expenseCategoryId",
         "column": "expense_category_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2881,8 +2600,7 @@
         "field": "expenseSubcategoryId",
         "column": "expense_subcategory_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2890,8 +2608,7 @@
         "field": "expenseNatureId",
         "column": "expense_nature_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2899,8 +2616,7 @@
         "field": "requestedBy",
         "column": "requested_by",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2908,8 +2624,7 @@
         "field": "departmentId",
         "column": "department_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2917,8 +2632,7 @@
         "field": "branchId",
         "column": "branch_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2926,8 +2640,7 @@
         "field": "currencyId",
         "column": "currency_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -2935,8 +2648,7 @@
         "field": "requestedAmount",
         "column": "requested_amount",
         "jtype": "BigDecimal",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": "19"
       },
@@ -2944,8 +2656,7 @@
         "field": "baseCurrencyAmount",
         "column": "base_currency_amount",
         "jtype": "BigDecimal",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": "19"
       },
@@ -2953,8 +2664,7 @@
         "field": "exchangeRateId",
         "column": "exchange_rate_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2962,8 +2672,7 @@
         "field": "justification",
         "column": "justification",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2971,8 +2680,7 @@
         "field": "currentWorkflowInstanceId",
         "column": "current_workflow_instance_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2980,8 +2688,7 @@
         "field": "submittedAt",
         "column": "submitted_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2989,8 +2696,7 @@
         "field": "cancelledAt",
         "column": "cancelled_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -2998,8 +2704,7 @@
         "field": "cancelledBy",
         "column": "cancelled_by",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3007,8 +2712,7 @@
         "field": "cancelReason",
         "column": "cancel_reason",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "500",
         "precision": null
       }
@@ -3016,14 +2720,13 @@
   },
   "expense_request_items": {
     "class": "ExpenseRequestItem",
-    "file": "com/edam/expenserequest/model/ExpenseRequestItem.java",
+    "file": "src/main/java/com/edam/expenserequest/model/ExpenseRequestItem.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3031,8 +2734,7 @@
         "field": "itemDescription",
         "column": "item_description",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "500",
         "precision": null
       },
@@ -3040,8 +2742,7 @@
         "field": "quantity",
         "column": "quantity",
         "jtype": "BigDecimal",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": "19"
       },
@@ -3049,8 +2750,7 @@
         "field": "unitPrice",
         "column": "unit_price",
         "jtype": "BigDecimal",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": "19"
       },
@@ -3058,8 +2758,7 @@
         "field": "totalAmount",
         "column": "total_amount",
         "jtype": "BigDecimal",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": "19"
       },
@@ -3067,8 +2766,7 @@
         "field": "warrantyDate",
         "column": "warranty_date",
         "jtype": "LocalDate",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3076,21 +2774,20 @@
         "field": "request",
         "column": "expense_request_id",
         "jtype": "ExpenseRequest",
-        "nullable": "true",
-        "join": true
+        "join": true,
+        "nullable": false
       }
     ]
   },
   "opex_request_details": {
     "class": "OpexRequestDetail",
-    "file": "com/edam/expenserequest/model/OpexRequestDetail.java",
+    "file": "src/main/java/com/edam/expenserequest/model/OpexRequestDetail.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3098,8 +2795,7 @@
         "field": "recurring",
         "column": "is_recurring",
         "jtype": "boolean",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3107,8 +2803,7 @@
         "field": "recurrenceFrequency",
         "column": "recurrence_frequency",
         "jtype": "RecurrenceFrequency",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "50",
         "precision": null
       },
@@ -3116,8 +2811,7 @@
         "field": "nonRecurringJustification",
         "column": "non_recurring_justification",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3125,8 +2819,7 @@
         "field": "accruedAmount",
         "column": "accrued_amount",
         "jtype": "BigDecimal",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": "19"
       },
@@ -3134,8 +2827,7 @@
         "field": "previouslyApprovedAmount",
         "column": "previously_approved_amount",
         "jtype": "BigDecimal",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": "19"
       },
@@ -3143,8 +2835,7 @@
         "field": "ytdAmount",
         "column": "ytd_amount",
         "jtype": "BigDecimal",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": "19"
       },
@@ -3152,8 +2843,7 @@
         "field": "mtdAmount",
         "column": "mtd_amount",
         "jtype": "BigDecimal",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": "19"
       },
@@ -3161,8 +2851,7 @@
         "field": "paymentTerms",
         "column": "payment_terms",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3170,8 +2859,7 @@
         "field": "budgetAvailable",
         "column": "budget_available",
         "jtype": "BigDecimal",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": "19"
       },
@@ -3179,8 +2867,7 @@
         "field": "budgetReference",
         "column": "budget_reference",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "150",
         "precision": null
       },
@@ -3188,8 +2875,7 @@
         "field": "version",
         "column": "version",
         "jtype": "long",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3197,21 +2883,20 @@
         "field": "request",
         "column": "expense_request_id",
         "jtype": "ExpenseRequest",
-        "nullable": "true",
-        "join": true
+        "join": true,
+        "nullable": false
       }
     ]
   },
   "request_documents": {
     "class": "RequestDocument",
-    "file": "com/edam/expenserequest/model/RequestDocument.java",
+    "file": "src/main/java/com/edam/expenserequest/model/RequestDocument.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3219,8 +2904,7 @@
         "field": "expenseRequestId",
         "column": "expense_request_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3228,8 +2912,7 @@
         "field": "mediaAssetId",
         "column": "media_asset_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3237,8 +2920,7 @@
         "field": "documentType",
         "column": "document_type",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "60",
         "precision": null
       },
@@ -3246,8 +2928,7 @@
         "field": "mandatory",
         "column": "is_mandatory",
         "jtype": "boolean",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3255,8 +2936,7 @@
         "field": "requiredByRule",
         "column": "required_by_rule",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "150",
         "precision": null
       },
@@ -3264,8 +2944,7 @@
         "field": "uploadedBy",
         "column": "uploaded_by",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3273,8 +2952,7 @@
         "field": "description",
         "column": "description",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3282,8 +2960,7 @@
         "field": "uploadedAt",
         "column": "uploaded_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       }
@@ -3291,14 +2968,13 @@
   },
   "installation_state": {
     "class": "InstallationState",
-    "file": "com/edam/identity/model/InstallationState.java",
+    "file": "src/main/java/com/edam/identity/model/InstallationState.java",
     "cols": [
       {
         "field": "bootstrapped",
         "column": "bootstrapped",
         "jtype": "boolean",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3306,8 +2982,7 @@
         "field": "bootstrappedAt",
         "column": "bootstrapped_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3315,8 +2990,7 @@
         "field": "bootstrappedBy",
         "column": "bootstrapped_by",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3324,8 +2998,7 @@
         "field": "bootstrapAttempts",
         "column": "bootstrap_attempts",
         "jtype": "int",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3333,8 +3006,7 @@
         "field": "lastFailedAttemptAt",
         "column": "last_failed_attempt_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -3342,14 +3014,13 @@
   },
   "login_attempts": {
     "class": "LoginAttempt",
-    "file": "com/edam/identity/model/LoginAttempt.java",
+    "file": "src/main/java/com/edam/identity/model/LoginAttempt.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3357,8 +3028,7 @@
         "field": "username",
         "column": "username",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "100",
         "precision": null
       },
@@ -3366,8 +3036,7 @@
         "field": "ipAddress",
         "column": "ip_address",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "64",
         "precision": null
       },
@@ -3375,8 +3044,7 @@
         "field": "success",
         "column": "success",
         "jtype": "boolean",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3384,8 +3052,7 @@
         "field": "failureReason",
         "column": "failure_reason",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "200",
         "precision": null
       },
@@ -3393,8 +3060,7 @@
         "field": "attemptedAt",
         "column": "attempted_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       }
@@ -3402,14 +3068,13 @@
   },
   "password_reset_tokens": {
     "class": "PasswordResetToken",
-    "file": "com/edam/identity/model/PasswordResetToken.java",
+    "file": "src/main/java/com/edam/identity/model/PasswordResetToken.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3417,8 +3082,7 @@
         "field": "userId",
         "column": "user_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3426,8 +3090,7 @@
         "field": "tokenHash",
         "column": "token_hash",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "64",
         "precision": null
       },
@@ -3435,8 +3098,7 @@
         "field": "createdAt",
         "column": "created_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3444,8 +3106,7 @@
         "field": "expiresAt",
         "column": "expires_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3453,8 +3114,7 @@
         "field": "usedAt",
         "column": "used_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -3462,14 +3122,13 @@
   },
   "integration_configs": {
     "class": "IntegrationConfig",
-    "file": "com/edam/integrations/model/IntegrationConfig.java",
+    "file": "src/main/java/com/edam/integrations/model/IntegrationConfig.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3477,8 +3136,7 @@
         "field": "code",
         "column": "integration_code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "64",
         "precision": null
       },
@@ -3486,8 +3144,7 @@
         "field": "name",
         "column": "integration_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "200",
         "precision": null
       },
@@ -3495,8 +3152,7 @@
         "field": "providerType",
         "column": "integration_type",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "40",
         "precision": null
       },
@@ -3504,8 +3160,7 @@
         "field": "description",
         "column": "description",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "1000",
         "precision": null
       },
@@ -3513,8 +3168,7 @@
         "field": "endpointUrl",
         "column": "endpoint_url",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "500",
         "precision": null
       },
@@ -3522,8 +3176,7 @@
         "field": "secretReference",
         "column": "secret_reference",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "300",
         "precision": null
       },
@@ -3531,8 +3184,7 @@
         "field": "encryptedSecret",
         "column": "encrypted_secret",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3540,8 +3192,7 @@
         "field": "configurationJson",
         "column": "configuration",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": "jsonb",
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3549,8 +3200,7 @@
         "field": "lastTestAt",
         "column": "last_test_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3558,8 +3208,7 @@
         "field": "lastTestSuccess",
         "column": "last_test_success",
         "jtype": "Boolean",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3567,8 +3216,7 @@
         "field": "lastTestMessage",
         "column": "last_test_message",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "500",
         "precision": null
       },
@@ -3576,8 +3224,7 @@
         "field": "lastTestDurationMs",
         "column": "last_test_duration_ms",
         "jtype": "Integer",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3585,8 +3232,7 @@
         "field": "connectionCheckedAt",
         "column": "connection_checked_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3594,8 +3240,7 @@
         "field": "createdAt",
         "column": "created_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3603,8 +3248,7 @@
         "field": "createdBy",
         "column": "created_by",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "100",
         "precision": null
       },
@@ -3612,8 +3256,7 @@
         "field": "updatedAt",
         "column": "updated_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3621,8 +3264,7 @@
         "field": "updatedBy",
         "column": "updated_by",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "100",
         "precision": null
       },
@@ -3630,8 +3272,7 @@
         "field": "version",
         "column": "version",
         "jtype": "long",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       }
@@ -3639,14 +3280,13 @@
   },
   "integration_executions": {
     "class": "IntegrationExecution",
-    "file": "com/edam/integrations/model/IntegrationExecution.java",
+    "file": "src/main/java/com/edam/integrations/model/IntegrationExecution.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3654,8 +3294,7 @@
         "field": "integrationConfigId",
         "column": "integration_config_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3663,8 +3302,7 @@
         "field": "operationType",
         "column": "operation_type",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "60",
         "precision": null
       },
@@ -3672,8 +3310,7 @@
         "field": "idempotencyKey",
         "column": "idempotency_key",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "200",
         "precision": null
       },
@@ -3681,8 +3318,7 @@
         "field": "externalReference",
         "column": "external_reference",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "300",
         "precision": null
       },
@@ -3690,8 +3326,7 @@
         "field": "claimedBy",
         "column": "claimed_by",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "100",
         "precision": null
       },
@@ -3699,8 +3334,7 @@
         "field": "claimedAt",
         "column": "claimed_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3708,8 +3342,7 @@
         "field": "claimExpiresAt",
         "column": "claim_expires_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3717,8 +3350,7 @@
         "field": "startedAt",
         "column": "started_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3726,8 +3358,7 @@
         "field": "completedAt",
         "column": "completed_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3735,8 +3366,7 @@
         "field": "nextRetryAt",
         "column": "next_retry_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3744,8 +3374,7 @@
         "field": "requestMetadata",
         "column": "request_metadata",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": "jsonb",
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3753,8 +3382,7 @@
         "field": "responseMetadata",
         "column": "response_metadata",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": "jsonb",
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3762,8 +3390,7 @@
         "field": "errorCode",
         "column": "error_code",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "60",
         "precision": null
       },
@@ -3771,8 +3398,7 @@
         "field": "errorMessage",
         "column": "error_message",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "1000",
         "precision": null
       },
@@ -3780,8 +3406,7 @@
         "field": "triggeredBy",
         "column": "triggered_by",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3789,8 +3414,7 @@
         "field": "createdAt",
         "column": "created_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3798,8 +3422,7 @@
         "field": "updatedAt",
         "column": "updated_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3807,8 +3430,7 @@
         "field": "version",
         "column": "version",
         "jtype": "long",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       }
@@ -3816,14 +3438,13 @@
   },
   "currencies": {
     "class": "Currency",
-    "file": "com/edam/masterdata/model/Currency.java",
+    "file": "src/main/java/com/edam/masterdata/model/Currency.java",
     "cols": [
       {
         "field": "code",
         "column": "currency_code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "3",
         "precision": null
       },
@@ -3831,8 +3452,7 @@
         "field": "name",
         "column": "currency_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "100",
         "precision": null
       },
@@ -3840,8 +3460,7 @@
         "field": "symbol",
         "column": "symbol",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "10",
         "precision": null
       }
@@ -3849,14 +3468,13 @@
   },
   "exchange_rates": {
     "class": "ExchangeRate",
-    "file": "com/edam/masterdata/model/ExchangeRate.java",
+    "file": "src/main/java/com/edam/masterdata/model/ExchangeRate.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3864,8 +3482,7 @@
         "field": "fromCurrencyId",
         "column": "from_currency_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3873,8 +3490,7 @@
         "field": "toCurrencyId",
         "column": "to_currency_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3882,8 +3498,7 @@
         "field": "rate",
         "column": "exchange_rate",
         "jtype": "BigDecimal",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": "19"
       },
@@ -3891,8 +3506,7 @@
         "field": "effectiveFrom",
         "column": "effective_from",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -3900,8 +3514,7 @@
         "field": "effectiveTo",
         "column": "effective_to",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3909,8 +3522,7 @@
         "field": "createdBy",
         "column": "created_by",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -3918,8 +3530,7 @@
         "field": "createdAt",
         "column": "created_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       }
@@ -3927,14 +3538,13 @@
   },
   "tax_authorities": {
     "class": "TaxAuthority",
-    "file": "com/edam/masterdata/model/TaxAuthority.java",
+    "file": "src/main/java/com/edam/masterdata/model/TaxAuthority.java",
     "cols": [
       {
         "field": "name",
         "column": "authority_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "200",
         "precision": null
       },
@@ -3942,8 +3552,7 @@
         "field": "code",
         "column": "authority_code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "64",
         "precision": null
       },
@@ -3951,8 +3560,7 @@
         "field": "description",
         "column": "description",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -3960,14 +3568,13 @@
   },
   "vendors": {
     "class": "Vendor",
-    "file": "com/edam/masterdata/model/Vendor.java",
+    "file": "src/main/java/com/edam/masterdata/model/Vendor.java",
     "cols": [
       {
         "field": "code",
         "column": "vendor_code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "64",
         "precision": null
       },
@@ -3975,8 +3582,7 @@
         "field": "name",
         "column": "vendor_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "300",
         "precision": null
       },
@@ -3984,8 +3590,7 @@
         "field": "taxNumber",
         "column": "tax_number",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "64",
         "precision": null
       },
@@ -3993,8 +3598,7 @@
         "field": "contactPerson",
         "column": "contact_person",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "200",
         "precision": null
       },
@@ -4002,8 +3606,7 @@
         "field": "email",
         "column": "email",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "255",
         "precision": null
       },
@@ -4011,8 +3614,7 @@
         "field": "phone",
         "column": "phone",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "50",
         "precision": null
       },
@@ -4020,8 +3622,7 @@
         "field": "address",
         "column": "address",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -4029,14 +3630,13 @@
   },
   "branches": {
     "class": "Branch",
-    "file": "com/edam/organization/model/Branch.java",
+    "file": "src/main/java/com/edam/organization/model/Branch.java",
     "cols": [
       {
         "field": "organizationUnitId",
         "column": "organization_unit_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4044,8 +3644,7 @@
         "field": "code",
         "column": "branch_code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "64",
         "precision": null
       },
@@ -4053,8 +3652,7 @@
         "field": "name",
         "column": "branch_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "200",
         "precision": null
       },
@@ -4062,8 +3660,7 @@
         "field": "address",
         "column": "address",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -4071,14 +3668,13 @@
   },
   "departments": {
     "class": "Department",
-    "file": "com/edam/organization/model/Department.java",
+    "file": "src/main/java/com/edam/organization/model/Department.java",
     "cols": [
       {
         "field": "organizationUnitId",
         "column": "organization_unit_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4086,8 +3682,7 @@
         "field": "code",
         "column": "department_code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "64",
         "precision": null
       },
@@ -4095,8 +3690,7 @@
         "field": "name",
         "column": "department_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "200",
         "precision": null
       },
@@ -4104,8 +3698,7 @@
         "field": "headUserId",
         "column": "head_user_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -4113,14 +3706,13 @@
   },
   "organization_profile": {
     "class": "OrganizationProfile",
-    "file": "com/edam/organization/model/OrganizationProfile.java",
+    "file": "src/main/java/com/edam/organization/model/OrganizationProfile.java",
     "cols": [
       {
         "field": "organizationName",
         "column": "organization_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "200",
         "precision": null
       },
@@ -4128,8 +3720,7 @@
         "field": "displayName",
         "column": "display_name",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "200",
         "precision": null
       },
@@ -4137,8 +3728,7 @@
         "field": "legalName",
         "column": "legal_name",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "300",
         "precision": null
       },
@@ -4146,8 +3736,7 @@
         "field": "organizationCode",
         "column": "organization_code",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "60",
         "precision": null
       },
@@ -4155,8 +3744,7 @@
         "field": "contactEmail",
         "column": "contact_email",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "255",
         "precision": null
       },
@@ -4164,8 +3752,7 @@
         "field": "contactPhone",
         "column": "contact_phone",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "40",
         "precision": null
       },
@@ -4173,8 +3760,7 @@
         "field": "website",
         "column": "website",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "255",
         "precision": null
       },
@@ -4182,8 +3768,7 @@
         "field": "addressLine1",
         "column": "address_line1",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "300",
         "precision": null
       },
@@ -4191,8 +3776,7 @@
         "field": "addressLine2",
         "column": "address_line2",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "300",
         "precision": null
       },
@@ -4200,8 +3784,7 @@
         "field": "addressCity",
         "column": "address_city",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "120",
         "precision": null
       },
@@ -4209,8 +3792,7 @@
         "field": "addressState",
         "column": "address_state",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "120",
         "precision": null
       },
@@ -4218,8 +3800,7 @@
         "field": "addressPostalCode",
         "column": "address_postal_code",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "30",
         "precision": null
       },
@@ -4227,8 +3808,7 @@
         "field": "addressCountry",
         "column": "address_country",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "100",
         "precision": null
       },
@@ -4236,8 +3816,7 @@
         "field": "supportEmail",
         "column": "support_email",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "255",
         "precision": null
       },
@@ -4245,8 +3824,7 @@
         "field": "logoAssetId",
         "column": "logo_asset_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -4254,8 +3832,7 @@
         "field": "faviconAssetId",
         "column": "favicon_asset_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -4263,8 +3840,7 @@
         "field": "defaultCurrencyId",
         "column": "default_currency_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -4272,14 +3848,13 @@
   },
   "organization_units": {
     "class": "OrganizationUnit",
-    "file": "com/edam/organization/model/OrganizationUnit.java",
+    "file": "src/main/java/com/edam/organization/model/OrganizationUnit.java",
     "cols": [
       {
         "field": "parentUnitId",
         "column": "parent_unit_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -4287,8 +3862,7 @@
         "field": "unitTypeId",
         "column": "unit_type_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4296,8 +3870,7 @@
         "field": "code",
         "column": "code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "64",
         "precision": null
       },
@@ -4305,8 +3878,7 @@
         "field": "name",
         "column": "name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "200",
         "precision": null
       },
@@ -4314,8 +3886,7 @@
         "field": "description",
         "column": "description",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -4323,14 +3894,13 @@
   },
   "organization_unit_types": {
     "class": "OrganizationUnitType",
-    "file": "com/edam/organization/model/OrganizationUnitType.java",
+    "file": "src/main/java/com/edam/organization/model/OrganizationUnitType.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4338,8 +3908,7 @@
         "field": "code",
         "column": "code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "50",
         "precision": null
       },
@@ -4347,8 +3916,7 @@
         "field": "name",
         "column": "name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "100",
         "precision": null
       },
@@ -4356,8 +3924,7 @@
         "field": "description",
         "column": "description",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -4365,14 +3932,13 @@
   },
   "permissions": {
     "class": "Permission",
-    "file": "com/edam/rolemanagement/model/Permission.java",
+    "file": "src/main/java/com/edam/rolemanagement/model/Permission.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4380,8 +3946,7 @@
         "field": "code",
         "column": "code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "150",
         "precision": null
       },
@@ -4389,8 +3954,7 @@
         "field": "module",
         "column": "module",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "100",
         "precision": null
       },
@@ -4398,8 +3962,7 @@
         "field": "description",
         "column": "description",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -4407,8 +3970,7 @@
         "field": "createdAt",
         "column": "created_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       }
@@ -4416,14 +3978,13 @@
   },
   "roles": {
     "class": "Role",
-    "file": "com/edam/rolemanagement/model/Role.java",
+    "file": "src/main/java/com/edam/rolemanagement/model/Role.java",
     "cols": [
       {
         "field": "name",
         "column": "name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "100",
         "precision": null
       },
@@ -4431,8 +3992,7 @@
         "field": "code",
         "column": "code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "100",
         "precision": null
       },
@@ -4440,8 +4000,7 @@
         "field": "description",
         "column": "description",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -4449,8 +4008,7 @@
         "field": "systemRole",
         "column": "is_system_role",
         "jtype": "boolean",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       }
@@ -4458,14 +4016,13 @@
   },
   "user_roles": {
     "class": "UserRole",
-    "file": "com/edam/rolemanagement/model/UserRole.java",
+    "file": "src/main/java/com/edam/rolemanagement/model/UserRole.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4473,8 +4030,7 @@
         "field": "userId",
         "column": "user_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4482,8 +4038,7 @@
         "field": "roleId",
         "column": "role_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4491,8 +4046,7 @@
         "field": "assignedBy",
         "column": "assigned_by",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -4500,8 +4054,7 @@
         "field": "assignedAt",
         "column": "assigned_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4509,8 +4062,7 @@
         "field": "expiresAt",
         "column": "expires_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -4518,14 +4070,13 @@
   },
   "users": {
     "class": "User",
-    "file": "com/edam/usermanagement/model/User.java",
+    "file": "src/main/java/com/edam/usermanagement/model/User.java",
     "cols": [
       {
         "field": "employeeCode",
         "column": "employee_code",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "50",
         "precision": null
       },
@@ -4533,8 +4084,7 @@
         "field": "firstName",
         "column": "first_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "100",
         "precision": null
       },
@@ -4542,8 +4092,7 @@
         "field": "lastName",
         "column": "last_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "100",
         "precision": null
       },
@@ -4551,8 +4100,7 @@
         "field": "email",
         "column": "email",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "255",
         "precision": null
       },
@@ -4560,8 +4108,7 @@
         "field": "username",
         "column": "username",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "100",
         "precision": null
       },
@@ -4569,8 +4116,7 @@
         "field": "passwordHash",
         "column": "password_hash",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "255",
         "precision": null
       },
@@ -4578,8 +4124,7 @@
         "field": "departmentId",
         "column": "department_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -4587,8 +4132,7 @@
         "field": "branchId",
         "column": "branch_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -4596,8 +4140,7 @@
         "field": "designation",
         "column": "designation",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "150",
         "precision": null
       },
@@ -4605,8 +4148,7 @@
         "field": "managerId",
         "column": "manager_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -4614,8 +4156,7 @@
         "field": "lastLoginAt",
         "column": "last_login_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -4623,8 +4164,7 @@
         "field": "failedLoginCount",
         "column": "failed_login_count",
         "jtype": "int",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4632,8 +4172,7 @@
         "field": "lockedUntil",
         "column": "locked_until",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -4641,8 +4180,7 @@
         "field": "passwordChangedAt",
         "column": "password_changed_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -4650,14 +4188,13 @@
   },
   "user_data_scopes": {
     "class": "UserDataScope",
-    "file": "com/edam/usermanagement/model/UserDataScope.java",
+    "file": "src/main/java/com/edam/usermanagement/model/UserDataScope.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4665,8 +4202,7 @@
         "field": "userId",
         "column": "user_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4674,8 +4210,7 @@
         "field": "scopeReferenceId",
         "column": "scope_reference_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -4683,8 +4218,7 @@
         "field": "createdAt",
         "column": "created_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4692,8 +4226,7 @@
         "field": "createdBy",
         "column": "created_by",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "100",
         "precision": null
       }
@@ -4701,14 +4234,13 @@
   },
   "workflow_actions": {
     "class": "WorkflowAction",
-    "file": "com/edam/workflow/model/WorkflowAction.java",
+    "file": "src/main/java/com/edam/workflow/model/WorkflowAction.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4716,8 +4248,7 @@
         "field": "workflowTaskId",
         "column": "workflow_task_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4725,8 +4256,7 @@
         "field": "actionCode",
         "column": "action_code",
         "jtype": "ActionCode",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "40",
         "precision": null
       },
@@ -4734,8 +4264,7 @@
         "field": "performedBy",
         "column": "performed_by",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4743,8 +4272,7 @@
         "field": "remarks",
         "column": "remarks",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "2000",
         "precision": null
       },
@@ -4752,8 +4280,7 @@
         "field": "previousStateId",
         "column": "previous_state_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -4761,8 +4288,7 @@
         "field": "nextStateId",
         "column": "next_state_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -4770,8 +4296,7 @@
         "field": "actionAt",
         "column": "action_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4779,8 +4304,7 @@
         "field": "correlationId",
         "column": "correlation_id",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": "64",
         "precision": null
       }
@@ -4788,14 +4312,13 @@
   },
   "workflow_states": {
     "class": "WorkflowState",
-    "file": "com/edam/workflow/model/WorkflowState.java",
+    "file": "src/main/java/com/edam/workflow/model/WorkflowState.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4803,8 +4326,7 @@
         "field": "stateCode",
         "column": "state_code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "64",
         "precision": null
       },
@@ -4812,8 +4334,7 @@
         "field": "stateName",
         "column": "state_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "150",
         "precision": null
       },
@@ -4821,8 +4342,7 @@
         "field": "stateType",
         "column": "state_type",
         "jtype": "StateType",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "20",
         "precision": null
       },
@@ -4830,8 +4350,7 @@
         "field": "initial",
         "column": "is_initial",
         "jtype": "boolean",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4839,8 +4358,7 @@
         "field": "terminal",
         "column": "is_terminal",
         "jtype": "boolean",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4848,21 +4366,20 @@
         "field": "workflowVersion",
         "column": "workflow_version_id",
         "jtype": "WorkflowVersion",
-        "nullable": "true",
-        "join": true
+        "join": true,
+        "nullable": false
       }
     ]
   },
   "workflow_definitions": {
     "class": "WorkflowDefinition",
-    "file": "com/edam/workflow/model/WorkflowDefinition.java",
+    "file": "src/main/java/com/edam/workflow/model/WorkflowDefinition.java",
     "cols": [
       {
         "field": "code",
         "column": "workflow_code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "64",
         "precision": null
       },
@@ -4870,8 +4387,7 @@
         "field": "name",
         "column": "workflow_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "200",
         "precision": null
       },
@@ -4879,8 +4395,7 @@
         "field": "description",
         "column": "description",
         "jtype": "String",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -4888,8 +4403,7 @@
         "field": "requestTypeId",
         "column": "request_type_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -4897,14 +4411,13 @@
   },
   "workflow_instances": {
     "class": "WorkflowInstance",
-    "file": "com/edam/workflow/model/WorkflowInstance.java",
+    "file": "src/main/java/com/edam/workflow/model/WorkflowInstance.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4912,8 +4425,7 @@
         "field": "workflowDefinitionId",
         "column": "workflow_definition_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4921,8 +4433,7 @@
         "field": "workflowVersionId",
         "column": "workflow_version_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4930,8 +4441,7 @@
         "field": "expenseRequestId",
         "column": "expense_request_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4939,8 +4449,7 @@
         "field": "currentStateId",
         "column": "current_state_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -4948,8 +4457,7 @@
         "field": "startedAt",
         "column": "started_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4957,8 +4465,7 @@
         "field": "startedBy",
         "column": "started_by",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -4966,8 +4473,7 @@
         "field": "completedAt",
         "column": "completed_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
@@ -4975,14 +4481,13 @@
   },
   "workflow_steps": {
     "class": "WorkflowStep",
-    "file": "com/edam/workflow/model/WorkflowStep.java",
+    "file": "src/main/java/com/edam/workflow/model/WorkflowStep.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -4990,8 +4495,7 @@
         "field": "stepCode",
         "column": "step_code",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "64",
         "precision": null
       },
@@ -4999,8 +4503,7 @@
         "field": "stepName",
         "column": "step_name",
         "jtype": "String",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "150",
         "precision": null
       },
@@ -5008,8 +4511,7 @@
         "field": "stepOrder",
         "column": "step_order",
         "jtype": "short",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -5017,21 +4519,20 @@
         "field": "workflowVersion",
         "column": "workflow_version_id",
         "jtype": "WorkflowVersion",
-        "nullable": "true",
-        "join": true
+        "join": true,
+        "nullable": false
       }
     ]
   },
   "workflow_step_approvers": {
     "class": "WorkflowStepApprover",
-    "file": "com/edam/workflow/model/WorkflowStepApprover.java",
+    "file": "src/main/java/com/edam/workflow/model/WorkflowStepApprover.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -5039,8 +4540,7 @@
         "field": "approverType",
         "column": "approver_type",
         "jtype": "ApproverType",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "40",
         "precision": null
       },
@@ -5048,8 +4548,7 @@
         "field": "roleId",
         "column": "role_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -5057,8 +4556,7 @@
         "field": "userId",
         "column": "user_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -5066,8 +4564,7 @@
         "field": "departmentId",
         "column": "department_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -5075,8 +4572,7 @@
         "field": "committeeLevelId",
         "column": "committee_level_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -5084,8 +4580,7 @@
         "field": "createdAt",
         "column": "created_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -5093,21 +4588,20 @@
         "field": "workflowStep",
         "column": "workflow_step_id",
         "jtype": "WorkflowStep",
-        "nullable": "true",
-        "join": true
+        "join": true,
+        "nullable": false
       }
     ]
   },
   "workflow_tasks": {
     "class": "WorkflowTask",
-    "file": "com/edam/workflow/model/WorkflowTask.java",
+    "file": "src/main/java/com/edam/workflow/model/WorkflowTask.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -5115,8 +4609,7 @@
         "field": "workflowInstanceId",
         "column": "workflow_instance_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -5124,8 +4617,7 @@
         "field": "workflowStepId",
         "column": "workflow_step_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -5133,8 +4625,7 @@
         "field": "assignedUserId",
         "column": "assigned_user_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -5142,8 +4633,7 @@
         "field": "assignedRoleId",
         "column": "assigned_role_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -5151,8 +4641,7 @@
         "field": "assignedAt",
         "column": "assigned_at",
         "jtype": "Instant",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -5160,8 +4649,7 @@
         "field": "dueAt",
         "column": "due_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -5169,8 +4657,7 @@
         "field": "completedAt",
         "column": "completed_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -5178,8 +4665,7 @@
         "field": "version",
         "column": "version",
         "jtype": "long",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       }
@@ -5187,14 +4673,13 @@
   },
   "workflow_transitions": {
     "class": "WorkflowTransition",
-    "file": "com/edam/workflow/model/WorkflowTransition.java",
+    "file": "src/main/java/com/edam/workflow/model/WorkflowTransition.java",
     "cols": [
       {
         "field": "id",
         "column": "id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -5202,8 +4687,7 @@
         "field": "fromStateId",
         "column": "from_state_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -5211,8 +4695,7 @@
         "field": "toStateId",
         "column": "to_state_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -5220,8 +4703,7 @@
         "field": "actionCode",
         "column": "action_code",
         "jtype": "ActionCode",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": "40",
         "precision": null
       },
@@ -5229,8 +4711,7 @@
         "field": "conditionRuleId",
         "column": "condition_rule_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -5238,21 +4719,20 @@
         "field": "workflowVersion",
         "column": "workflow_version_id",
         "jtype": "WorkflowVersion",
-        "nullable": "true",
-        "join": true
+        "join": true,
+        "nullable": false
       }
     ]
   },
   "workflow_versions": {
     "class": "WorkflowVersion",
-    "file": "com/edam/workflow/model/WorkflowVersion.java",
+    "file": "src/main/java/com/edam/workflow/model/WorkflowVersion.java",
     "cols": [
       {
         "field": "workflowDefinitionId",
         "column": "workflow_definition_id",
         "jtype": "UUID",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -5260,8 +4740,7 @@
         "field": "versionNumber",
         "column": "version_number",
         "jtype": "int",
-        "nullable": "false",
-        "coldef": null,
+        "nullable": false,
         "length": null,
         "precision": null
       },
@@ -5269,8 +4748,7 @@
         "field": "effectiveFrom",
         "column": "effective_from",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -5278,8 +4756,7 @@
         "field": "effectiveTo",
         "column": "effective_to",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -5287,8 +4764,7 @@
         "field": "publishedBy",
         "column": "published_by",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -5296,8 +4772,7 @@
         "field": "publishedAt",
         "column": "published_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -5305,8 +4780,7 @@
         "field": "retiredBy",
         "column": "retired_by",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -5314,8 +4788,7 @@
         "field": "retiredAt",
         "column": "retired_at",
         "jtype": "Instant",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       },
@@ -5323,8 +4796,7 @@
         "field": "supersededByVersionId",
         "column": "superseded_by_version_id",
         "jtype": "UUID",
-        "nullable": "true",
-        "coldef": null,
+        "nullable": true,
         "length": null,
         "precision": null
       }
