@@ -96,88 +96,19 @@ public class ReportingService {
 			Map.entry("baseCurrencyAmount", "r.base_currency_amount"),
 			Map.entry("requestedAmount", "r.requested_amount"));
 
-	private static final String DEFAULT_SORT_COL = "r.submitted_at";
-
-	/** Columns the CSV/Excel register export emits (whitelist). Names match the SQL column aliases used in REGISTER_SELECT. */
+	/** Columns the CSV/Excel register export emits (whitelist). Names match the SQL column aliases used in {@link ReportingJdbcRepository#REGISTER_SELECT}. */
 	public static final List<String> REGISTER_COLUMNS = List.of(
 			"request_number", "current_status_code", "expense_type", "requester_name", "department_name",
 			"branch_name", "category_name", "subcategory_name", "currency_code",
 			"requested_amount", "base_currency_amount", "submitted_at", "decided_at",
 			"decision_age_seconds", "last_actor_name");
 
-	/**
-	 * FROM/JOIN fragment for dashboard aggregate queries (joins only what is referenced
-	 * by the filter predicates and group-bys).
-	 */
-	private static final String DASHBOARD_FROM = """
-			   from expense_requests r
-			   left join expense_categories ec on ec.id = r.expense_category_id
-			   left join currencies c on c.id = r.currency_id
-			""";
-
-	/**
-	 * FROM/JOIN fragment used by the register count query. Must expose every alias referenced
-	 * by whereClause(dashboard=false) — at the moment that's {@code r}, {@code ec} (expenseType
-	 * filter) and {@code c} (currency filter). Keep this in sync with REGISTER_SELECT.
-	 */
-	private static final String REGISTER_COUNT_FROM = """
-			   from expense_requests r
-			   left join expense_categories ec on ec.id = r.expense_category_id
-			   left join currencies c on c.id = r.currency_id
-			""";
-
-	/**
-	 * Register projection: 1:1 with expense_requests rows. All LEFT JOINs guarantee no row
-	 * multiplication: users/departments/branches/categories/subcategories/currencies are all
-	 * many-to-one from r, and the decision lateral returns at most one row per request.
-	 *
-	 * <p>Decision resolution: we LEFT JOIN LATERAL to the most recent APPROVE or REJECT
-	 * workflow_action on the request's current workflow instance. REVERT / FORWARD / ESCALATE
-	 * are intermediate routing actions and never count as the final decision. CANCELLED
-	 * requests carry no terminal workflow action, so decided_at/last_actor remain NULL for
-	 * them (status itself communicates the outcome). decision_age_seconds is computed in SQL
-	 * as EXTRACT(EPOCH FROM (decided_at - submitted_at)) when both timestamps exist, else NULL;
-	 * it is normalised to 0 in the mapper for the primitive field.
-	 */
-	static final String REGISTER_SELECT = """
-			select r.id,
-			       r.request_number,
-			       r.current_status_code,
-			       coalesce(ec.expense_type, 'OPEX')::text as expense_type,
-			       (coalesce(u.first_name,'') || case when u.first_name is not null and u.last_name is not null then ' ' else '' end || coalesce(u.last_name,'')) as requester_name,
-			       r.requested_by,
-			       d.department_name,
-			       b.branch_name,
-			       ec.category_name,
-			       esc.subcategory_name,
-			       c.currency_code,
-			       r.requested_amount,
-			       r.base_currency_amount,
-			       r.submitted_at,
-			       dec.action_at as decided_at,
-			       case when dec.action_at is not null and r.submitted_at is not null
-			            then extract(epoch from (dec.action_at - r.submitted_at))::bigint
-			            else null end as decision_age_seconds,
-			       (coalesce(ua.first_name,'') || case when ua.first_name is not null and ua.last_name is not null then ' ' else '' end || coalesce(ua.last_name,'')) as last_actor_name
-			  from expense_requests r
-			  left join users u on u.id = r.requested_by
-			  left join departments d on d.id = r.department_id
-			  left join branches b on b.id = r.branch_id
-			  left join expense_categories ec on ec.id = r.expense_category_id
-			  left join expense_subcategories esc on esc.id = r.expense_subcategory_id
-			  left join currencies c on c.id = r.currency_id
-			  left join lateral (
-			      select wa.action_at, wa.performed_by
-			        from workflow_instances wi
-			        join workflow_tasks     wt  on wt.workflow_instance_id = wi.id
-			        join workflow_actions   wa  on wa.workflow_task_id   = wt.id
-			       where wi.id = r.current_workflow_instance_id
-			         and wa.action_code in ('APPROVE','REJECT')
-			       order by wa.action_at desc, wa.id desc
-			       limit 1
-			  ) dec on true
-			  left join users ua on ua.id = dec.performed_by
-			""";
+	// SQL fragments live in ReportingJdbcRepository; the service only composes WHERE/ORDER BY
+	// clauses against those fragments and never issues JDBC calls directly.
+	private static final String DEFAULT_SORT_COL = ReportingJdbcRepository.DEFAULT_SORT_COL;
+	private static final String DASHBOARD_FROM = ReportingJdbcRepository.DASHBOARD_FROM;
+	private static final String REGISTER_COUNT_FROM = ReportingJdbcRepository.REGISTER_COUNT_FROM;
+	static final String REGISTER_SELECT = ReportingJdbcRepository.REGISTER_SELECT;
 
 	private final DepartmentRepository departments;
 	private final BranchRepository branches;
