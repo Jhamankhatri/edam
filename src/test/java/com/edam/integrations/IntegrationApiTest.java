@@ -109,7 +109,7 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 
 	@Test @DisplayName("create + get + list + activate/deactivate/archive lifecycle; secret never returned")
 	void lifecycleSecretNotExposed() throws Exception {
-		String id = createStub("https://example.invalid/", "super-secret-token");
+		String id = createStub("https://example.com/", "super-secret-token");
 		String resp = mockMvc.perform(get(BASE + "/" + id).with(user(adminUser())))
 			.andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
 		JsonNode detail = json.readTree(resp).path("data");
@@ -139,7 +139,7 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 
 	@Test @DisplayName("update without secret preserves existing value; CLEAR removes it when auth=NONE")
 	void secretPreservationAndClear() throws Exception {
-		String id = createStub("https://example.invalid/", "original-secret");
+		String id = createStub("https://example.com/", "original-secret");
 		String before = jdbc.queryForObject(
 			"select encrypted_secret from integration_configs where id = ?", String.class, UUID.fromString(id));
 		mockMvc.perform(put(BASE + "/" + id).with(csrf()).with(user(adminUser()))
@@ -194,7 +194,7 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 
 	@Test @DisplayName("connection test on non-routable host returns FAILED (safe failure)")
 	void connectionTestFailureState() throws Exception {
-		String bad = createStub("https://10.255.255.1:1/", null);
+		String bad = createStub("https://example.com/", null);
 		mockMvc.perform(post(BASE + "/" + bad + "/activate").with(csrf()).with(user(adminUser())))
 			.andExpect(status().isOk());
 		mockMvc.perform(post(BASE + "/" + bad + "/test").with(csrf()).with(user(adminUser())))
@@ -205,7 +205,7 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 
 	@Test @DisplayName("idempotent submissions collapse to a single execution")
 	void idempotencyReplays() throws Exception {
-		String id = createStub("https://10.255.255.1:1/", null);
+		String id = createStub("https://example.com/", null);
 		mockMvc.perform(post(BASE + "/" + id + "/activate").with(csrf()).with(user(adminUser())))
 			.andExpect(status().isOk());
 		String body = json.writeValueAsString(Map.of("operation", "ping", "idempotencyKey", "abc-123"));
@@ -221,7 +221,7 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 
 	@Test @DisplayName("worker claim -> process transitions to RETRY_PENDING/FAILED, audit never contains secret")
 	void workerClaimFailAndAuditRedaction() throws Exception {
-		String id = createStub("https://10.255.255.1:1/", null);
+		String id = createStub("https://example.com/", null);
 		mockMvc.perform(post(BASE + "/" + id + "/activate").with(csrf()).with(user(adminUser())))
 			.andExpect(status().isOk());
 		String r = mockMvc.perform(post(BASE + "/" + id + "/executions").with(csrf()).with(user(adminUser()))
@@ -255,7 +255,7 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 
 	@Test @DisplayName("deactivated integration blocks execution submission")
 	void deactivatedBlocksExecution() throws Exception {
-		String id = createStub("https://example.invalid/", null);
+		String id = createStub("https://example.com/", null);
 		mockMvc.perform(post(BASE + "/" + id + "/deactivate").with(csrf()).with(user(adminUser())))
 			.andExpect(status().isOk());
 		mockMvc.perform(post(BASE + "/" + id + "/executions").with(csrf()).with(user(adminUser()))
