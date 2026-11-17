@@ -20,8 +20,8 @@ import com.edam.integrations.repository.IntegrationExecutionRepository;
 import com.edam.integrations.service.adapters.*;
 import com.edam.integrations.support.DiagnosticRedactor;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
+import tools.jackson.databind.json.JsonMapper;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
@@ -53,7 +53,7 @@ public class IntegrationExecutionWorker {
 	private final IntegrationAdapterRegistry adapters;
 	private final IntegrationSecretCrypto crypto;
 	private final AuditRecorder audit;
-	private final ObjectMapper json;
+	private final JsonMapper json;
 	private final IntegrationExecutionWorker self;
 	private final boolean enabled;
 	private String workerId;
@@ -63,7 +63,7 @@ public class IntegrationExecutionWorker {
 			IntegrationAdapterRegistry adapters,
 			IntegrationSecretCrypto crypto,
 			AuditRecorder audit,
-			ObjectMapper json,
+			JsonMapper json,
 			@Lazy IntegrationExecutionWorker self,
 			@Value("${edam.integrations.worker.enabled:true}") boolean enabled) {
 		this.executions = executions;

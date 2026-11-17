@@ -24,10 +24,10 @@ import com.edam.integrations.repository.IntegrationExecutionRepository;
 import com.edam.integrations.service.adapters.*;
 import com.edam.integrations.support.DiagnosticRedactor;
 import com.edam.integrations.support.SafeDestination;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.json.JsonMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -55,14 +55,14 @@ public class IntegrationService {
 	private final IntegrationAdapterRegistry adapters;
 	private final IntegrationSecretCrypto crypto;
 	private final AuditRecorder audit;
-	private final ObjectMapper json;
+	private final JsonMapper json;
 
 	public IntegrationService(IntegrationConfigRepository configs,
 			IntegrationExecutionRepository executions,
 			IntegrationAdapterRegistry adapters,
 			IntegrationSecretCrypto crypto,
 			AuditRecorder audit,
-			ObjectMapper json) {
+			JsonMapper json) {
 		this.configs = configs;
 		this.executions = executions;
 		this.adapters = adapters;
