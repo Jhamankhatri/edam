@@ -9,6 +9,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import com.edam.businessrules.dto.RuleDtos;
+import com.edam.businessrules.model.RuleVersionStatus;
 import com.edam.common.exception.BusinessException;
 import com.edam.common.security.DataScope;
 import com.edam.common.security.EdamPrincipal;
