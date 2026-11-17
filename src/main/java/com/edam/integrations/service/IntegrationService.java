@@ -32,6 +32,7 @@ import org.slf4j.LoggerFactory;
 import tools.jackson.databind.json.JsonMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -58,19 +59,22 @@ public class IntegrationService {
 	private final IntegrationSecretCrypto crypto;
 	private final AuditRecorder audit;
 	private final JsonMapper json;
+	private final IntegrationService self;
 
 	public IntegrationService(IntegrationConfigRepository configs,
 			IntegrationExecutionRepository executions,
 			IntegrationAdapterRegistry adapters,
 			IntegrationSecretCrypto crypto,
 			AuditRecorder audit,
-			JsonMapper json) {
+			JsonMapper json,
+			@Lazy IntegrationService self) {
 		this.configs = configs;
 		this.executions = executions;
 		this.adapters = adapters;
 		this.crypto = crypto;
 		this.audit = audit;
 		this.json = json;
+		this.self = self;
 	}
 
 	// ----------------------------------------------------------------------------------
@@ -310,22 +314,59 @@ public class IntegrationService {
 		e.setNextRetryAt(Instant.now());
 		Map<String, Object> safeMeta = DiagnosticRedactor.sanitizeMetadata(req.requestMetadata());
 		e.setRequestMetadata(writeJson(safeMeta));
+		// Insert in a nested REQUIRES_NEW transaction so a unique-key collision rolls back
+		// only that insert and leaves the outer transaction usable to look up the winner.
+		// Catching DataIntegrityViolationException in the same TX cannot recover once the
+		// connection's TX has been marked rollback-only (Spring translates the constraint
+		// error after the statement fails), hence the nested transaction via self-proxy.
+		IntegrationExecution persisted;
 		try {
-			executions.save(e);
+			persisted = self.insertExecution(e, idemKey != null);
 		} catch (DataIntegrityViolationException dup) {
 			// Another concurrent request with the same idempotency key beat us to insert;
-			// replay the existing row rather than surfacing a constraint error to the caller.
-			// Only honoured when a key was supplied (duplicate null-key inserts are legitimate
-			// separate executions — see V27 ux_integration_executions_idempotency_key).
+			// replay the existing row rather than surfacing a constraint error. Only honoured
+			// when a key was supplied (duplicate null-key inserts are legitimate separate
+			// executions — see V27 ux_integration_executions_idempotency_key).
 			if (idemKey == null) throw dup;
 			return executions.findByIdempotencyKeyAndIntegrationConfigIdAndOperationType(
 					idemKey, configId, req.operation())
 				.map(this::toExecSummary)
 				.orElseThrow(() -> dup);
 		}
-		audit.record(AuditAction.CREATE, "IntegrationExecution", e.getId(),
+		// If insert returned null (only possible on a keyed concurrent insert where the nested
+		// TX rolled back), the winner must now be visible in the outer TX.
+		if (persisted == null) {
+			return executions.findByIdempotencyKeyAndIntegrationConfigIdAndOperationType(
+					idemKey, configId, req.operation())
+				.map(this::toExecSummary)
+			.orElseThrow(() -> new BusinessException(ErrorCode.CONCURRENT_MODIFICATION,
+				"Concurrent execution insert collided but no winning row was found."));
+		}
+		audit.record(AuditAction.CREATE, "IntegrationExecution", persisted.getId(),
 			"Enqueued operation=" + req.operation() + " integration=" + c.getCode());
-		return toExecSummary(e);
+		return toExecSummary(persisted);
+	}
+
+	/**
+	 * Insert a new execution row in its own transaction so a unique-key collision rolls back
+	 * only this TX and never marks the caller's TX rollback-only. Returns {@code null} when
+	 * {@code keyed} is true and the insert collided with a concurrent winner — the caller then
+	 * re-queries for the winner. For null-key inserts ({@code keyed=false}) a collision is a
+	 * real error and the exception propagates.
+	 */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public IntegrationExecution insertExecution(IntegrationExecution e, boolean keyed) {
+		try {
+			// Force the insert (and unique-index check) to happen inside this nested TX by
+			// flushing immediately; otherwise the INSERT is deferred to commit and any
+			// DataIntegrityViolationException would surface outside our try/catch.
+			IntegrationExecution saved = executions.saveAndFlush(e);
+			return saved;
+		} catch (DataIntegrityViolationException dup) {
+			if (!keyed) throw dup;
+			return null;
+		}
+	}
 	}
 
 	@Transactional

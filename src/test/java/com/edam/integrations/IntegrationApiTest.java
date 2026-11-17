@@ -242,6 +242,41 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 		assertThat(id1).isNotEqualTo(id2);
 	}
 
+	@Test @DisplayName("concurrent same-key submissions collapse to one execution (REQUIRES_NEW insert)")
+	void concurrentSameKeyCollapses() throws Exception {
+		String id = createStub("https://example.com/", null);
+		mockMvc.perform(post(BASE + "/" + id + "/activate").with(csrf()).with(user(adminUser())))
+			.andExpect(status().isOk());
+		String key = "concurrent-" + UUID.randomUUID();
+		String body = json.writeValueAsString(Map.of("operation", "ping", "idempotencyKey", key));
+		final int threads = 8;
+		java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+		java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(threads);
+		java.util.List<java.util.concurrent.Future<String>> futures = new java.util.ArrayList<>();
+		for (int i = 0; i < threads; i++) {
+			futures.add(pool.submit(() -> {
+				start.await();
+				return mockMvc.perform(post(BASE + "/" + id + "/executions")
+						.with(csrf()).with(user(adminUser()))
+						.contentType(MediaType.APPLICATION_JSON).content(body))
+					.andExpect(status().isOk())
+					.andReturn().getResponse().getContentAsString();
+			}));
+		}
+		start.countDown();
+		java.util.Set<String> returnedIds = new java.util.HashSet<>();
+		for (var f : futures) returnedIds.add(json.readTree(f.get()).path("data").path("id").asText());
+		pool.shutdown();
+		// Exactly one execution row must exist for this (config, op, key) regardless of
+		// how many POSTs won the race; all responses must replay the same winner.
+		assertThat(returnedIds).hasSize(1);
+		long rows = jdbc.queryForObject(
+			"select count(*) from integration_executions "
+			+ "where integration_config_id = ? and operation_type = 'ping' and idempotency_key = ?",
+			Long.class, UUID.fromString(id), key);
+		assertThat(rows).isEqualTo(1);
+	}
+
 	@Test @DisplayName("worker claim -> process transitions to RETRY_PENDING/FAILED, audit never contains secret")
 	void workerClaimFailAndAuditRedaction() throws Exception {
 		String uniqueSecret = "worker-secret-" + UUID.randomUUID();
