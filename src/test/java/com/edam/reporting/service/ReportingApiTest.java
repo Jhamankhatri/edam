@@ -709,13 +709,13 @@ class ReportingApiTest extends AbstractPostgreSqlIntegrationTest {
 				.content("{\"format\":\"EXCEL\",\"filter\":{\"requesterId\":\"" + this.requesterA.getId() + "\"}}"))
 			.andExpect(status().isOk());
 
-		Integer csvAudits = this.reporting.jdbc().query(
+		Integer csvAudits = this.jdbc.query(
 				"select count(*) from audit_events where performed_by = ? and action = 'EXPORT' "
 				+ "and new_values::text like '%\"reason\"%' and new_values::text like '%CSV%' "
 				+ "and created_at > now() - interval '5 minutes'",
 				ps -> ps.setObject(1, this.admin.getId()),
 				rs -> { rs.next(); return rs.getInt(1); });
-		Integer xlAudits = this.reporting.jdbc().query(
+		Integer xlAudits = this.jdbc.query(
 				"select count(*) from audit_events where performed_by = ? and action = 'EXPORT' "
 				+ "and new_values::text like '%\"reason\"%' and new_values::text like '%EXCEL%' "
 				+ "and created_at > now() - interval '5 minutes'",
