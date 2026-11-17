@@ -154,6 +154,8 @@ public final class Permissions {
 
 	public static final String INTEGRATION_VIEW = "integration:view";
 	public static final String INTEGRATION_MANAGE = "integration:manage";
+	public static final String INTEGRATION_EXECUTE = "integration:execute";
+	public static final String INTEGRATION_TEST = "integration:test";
 
 	/**
 	 * Every catalogue code.
@@ -223,6 +225,8 @@ public final class Permissions {
 		codes.add(DASHBOARD_MANAGE);
 		codes.add(INTEGRATION_VIEW);
 		codes.add(INTEGRATION_MANAGE);
+		codes.add(INTEGRATION_EXECUTE);
+		codes.add(INTEGRATION_TEST);
 		return Set.copyOf(codes);
 	}
 
