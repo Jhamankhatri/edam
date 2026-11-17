@@ -557,7 +557,7 @@ None.
 | 500 | `EDAM-9001 INTERNAL_ERROR` | Unexpected failure; quote `correlationId` to support.
 
 
-## APL-001 — GET /exceeding-limit-rules
+## APL-007 — GET /exceeding-limit-rules
 
 - **Module:** Approval Limits
 - **Purpose:** `list` on `/exceeding-limit-rules`.
@@ -587,7 +587,7 @@ None.
 | 500 | `EDAM-9001 INTERNAL_ERROR` | Unexpected failure; quote `correlationId` to support.
 
 
-## APL-002 — GET /exceeding-limit-rules/{id}
+## APL-008 — GET /exceeding-limit-rules/{id}
 
 - **Module:** Approval Limits
 - **Purpose:** Fetch `{id}` by id.
@@ -623,7 +623,7 @@ None.
 | 500 | `EDAM-9001 INTERNAL_ERROR` | Unexpected failure; quote `correlationId` to support.
 
 
-## APL-003 — POST /exceeding-limit-rules
+## APL-009 — POST /exceeding-limit-rules
 
 - **Module:** Approval Limits
 - **Purpose:** Create a new `exceeding-limit-rules`.
@@ -671,7 +671,7 @@ None.
 | 500 | `EDAM-9001 INTERNAL_ERROR` | Unexpected failure; quote `correlationId` to support.
 
 
-## APL-004 — PUT /exceeding-limit-rules/{id}
+## APL-010 — PUT /exceeding-limit-rules/{id}
 
 - **Module:** Approval Limits
 - **Purpose:** Update an existing `{id}`.
@@ -725,7 +725,7 @@ None.
 | 500 | `EDAM-9001 INTERNAL_ERROR` | Unexpected failure; quote `correlationId` to support.
 
 
-## APL-005 — POST /exceeding-limit-rules/{id}/activation
+## APL-011 — POST /exceeding-limit-rules/{id}/activation
 
 - **Module:** Approval Limits
 - **Purpose:** `setActive` on `/exceeding-limit-rules/{id}/activation`.
@@ -769,7 +769,7 @@ None.
 | 500 | `EDAM-9001 INTERNAL_ERROR` | Unexpected failure; quote `correlationId` to support.
 
 
-## APL-006 — GET /exceeding-limit-rules/evaluation
+## APL-012 — GET /exceeding-limit-rules/evaluation
 
 - **Module:** Approval Limits
 - **Purpose:** `evaluate` on `/exceeding-limit-rules/evaluation`.
@@ -808,7 +808,7 @@ None.
 | 500 | `EDAM-9001 INTERNAL_ERROR` | Unexpected failure; quote `correlationId` to support.
 
 
-## APL-001 — GET /recommending-authorities
+## APL-013 — GET /recommending-authorities
 
 - **Module:** Approval Limits
 - **Purpose:** `list` on `/recommending-authorities`.
@@ -838,7 +838,7 @@ None.
 | 500 | `EDAM-9001 INTERNAL_ERROR` | Unexpected failure; quote `correlationId` to support.
 
 
-## APL-002 — GET /recommending-authorities/{id}
+## APL-014 — GET /recommending-authorities/{id}
 
 - **Module:** Approval Limits
 - **Purpose:** Fetch `{id}` by id.
@@ -874,7 +874,7 @@ None.
 | 500 | `EDAM-9001 INTERNAL_ERROR` | Unexpected failure; quote `correlationId` to support.
 
 
-## APL-003 — POST /recommending-authorities
+## APL-015 — POST /recommending-authorities
 
 - **Module:** Approval Limits
 - **Purpose:** Create a new `recommending-authorities`.
@@ -924,7 +924,7 @@ None.
 | 500 | `EDAM-9001 INTERNAL_ERROR` | Unexpected failure; quote `correlationId` to support.
 
 
-## APL-004 — PUT /recommending-authorities/{id}
+## APL-016 — PUT /recommending-authorities/{id}
 
 - **Module:** Approval Limits
 - **Purpose:** Update an existing `{id}`.
@@ -980,7 +980,7 @@ None.
 | 500 | `EDAM-9001 INTERNAL_ERROR` | Unexpected failure; quote `correlationId` to support.
 
 
-## APL-005 — POST /recommending-authorities/{id}/activation
+## APL-017 — POST /recommending-authorities/{id}/activation
 
 - **Module:** Approval Limits
 - **Purpose:** `setActive` on `/recommending-authorities/{id}/activation`.
@@ -1024,7 +1024,7 @@ None.
 | 500 | `EDAM-9001 INTERNAL_ERROR` | Unexpected failure; quote `correlationId` to support.
 
 
-## APL-006 — GET /recommending-authorities/resolved
+## APL-018 — GET /recommending-authorities/resolved
 
 - **Module:** Approval Limits
 - **Purpose:** `resolved` on `/recommending-authorities/resolved`.
@@ -1126,7 +1126,7 @@ None.
 | 500 | `EDAM-9001 INTERNAL_ERROR` | Unexpected failure; quote `correlationId` to support.
 
 
-## AUD-001 — GET /expense-requests/{id}/activity
+## AUD-003 — GET /expense-requests/{id}/activity
 
 - **Module:** Audit
 - **Purpose:** Fetch `activity` by id.

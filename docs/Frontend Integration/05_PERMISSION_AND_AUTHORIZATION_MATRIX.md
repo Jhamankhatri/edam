@@ -77,7 +77,6 @@ There are **60 permission codes** in Phase 4J, plus the two special access level
 | `integration:test` | Dry-run/test an integration configuration. | POST `/integrations/{id}/test` | Integrations |
 
 ## 5.3 Public endpoints (no session, no permission)
-- `GET /api/v1/info`
 - `GET /api/v1/auth/csrf`
 - `POST /api/v1/auth/login` (CSRF still required as a header)
 - `POST /api/v1/auth/logout` (CSRF required; uses an existing session if present)

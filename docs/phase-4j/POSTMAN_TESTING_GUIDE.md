@@ -19,7 +19,7 @@ EDAM uses Spring Security **session cookies** (HttpOnly `JSESSIONID`) plus doubl
 
 Every request that is not explicitly `@PublicEndpoint` returns **401** without a session. Every mutating request that omits or sends a stale CSRF token returns **403**. This is expected behaviour — it is the contract, not a bug.
 
-> The `/api/v1/info` endpoint is public and returns `{"application":"edam","version":"…","status":"UP"}`; it is useful as a deployment smoke check.
+> `/actuator/health` is the public deployment smoke check (`{"status":"UP"}`; no DB/host detail in prod). `/api/v1/system/info` returns `{"application":"edam","version":"…","status":"UP"}` after authentication (it returns 401 anonymously).
 
 ## 3. Response envelope
 All API responses follow the `ApiResponse<T>` envelope:

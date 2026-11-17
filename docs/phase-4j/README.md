@@ -68,7 +68,7 @@ EDAM is a modular-monolith Spring Boot / PostgreSQL backend providing configurab
 - Authentication is **session-cookie based** (HttpOnly `JSESSIONID`); there is no JWT.
 - CSRF uses double-submit cookie `XSRF-TOKEN`; clients must read it and return it as the `X-XSRF-TOKEN` header on every mutating request.
 - Bootstrap (`POST /api/v1/auth/bootstrap`) is the only account-creation path before the first administrator exists; it requires a one-time `EDAM_BOOTSTRAP_TOKEN` environment variable.
-- A public `/api/v1/info` endpoint returns application name/version/status and is reachable before sign-in.
+- A public `/actuator/health` endpoint returns `{"status":"UP"}` (no DB/host detail in prod) for deployment smoke. The full application-metadata endpoint `GET /api/v1/system/info` is authenticated (returns 401 anonymously) and returns name/version/status after login.
 
 See `FRONTEND_MASTER_INTEGRATION_GUIDE.md` §Authentication for the full sequence diagram.
 

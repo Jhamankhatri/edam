@@ -38,7 +38,7 @@ CSRF rotation: after login, logout and privilege changes, read `XSRF-TOKEN` agai
 ### Key unauthenticated endpoints
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/v1/info` | App name, version, status (pre-login deployment smoke) |
+| GET | `/actuator/health` | Deployment smoke `{status:"UP"}` (public; no DB/host detail in prod). Authenticated `GET /api/v1/system/info` returns app name/version/status after login. |
 | GET | `/api/v1/auth/csrf` | Obtain CSRF token + establish session |
 | GET | `/api/v1/auth/installation` | Returns `{installed:boolean}`; if `false`, show the bootstrap wizard |
 | POST | `/api/v1/auth/bootstrap` | First-administrator bootstrap (requires `installationToken` = `EDAM_BOOTSTRAP_TOKEN`) |
@@ -80,7 +80,7 @@ The screens below are the complete set implied by the existing backend. Route pa
 
 | Screen | Route | API calls | Notes |
 |---|---|---|---|
-| Splash / deployment health | `/` or `/health` | `GET /api/v1/info` | If info is not reachable, show "EDAM is starting…" with correlation id on error. |
+| Splash / deployment health | `/` | `GET /actuator/health` then (post-login) `GET /api/v1/system/info` | If `/actuator/health` is not reachable, show "EDAM is starting…"; surface correlation id on error. |
 | Login | `/login` | `GET /auth/csrf` → `GET /configuration/public/configuration` → `POST /auth/login` → `GET /auth/me` | Apply public theme tokens. Show lock-out message after too many failures (HTTP 429 / errorCode `LOGIN_ATTEMPTS_EXCEEDED`). |
 | Bootstrap wizard (first-run only) | `/bootstrap` | `GET /auth/installation` → `POST /auth/bootstrap` | Only reachable when `installed === false`. Ask for installation token, admin username, display name, password. On success, auto-login (same cookies) and go to app shell. |
 | Forgot password | `/forgot-password` | `POST /auth/forgot-password` | Generic success message even when username unknown (user enumeration defense). |

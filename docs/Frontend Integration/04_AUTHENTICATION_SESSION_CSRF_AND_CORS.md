@@ -108,8 +108,13 @@ Call this **immediately before every mutating request** (do not cache it across 
 - Failure after installation: 403 `EDAM-2010 INSTALLATION_ALREADY_COMPLETED`.
 - After successful bootstrap the operator should unset `EDAM_BOOTSTRAP_TOKEN`.
 
-### SYS-001 `GET /api/v1/info` — public
-- Returns `{ application: "edam", version: string, status: "UP" }`; usable as a pre-login smoke check.
+### SYS-001 `GET /actuator/health` — public
+- Returns `{ "status": "UP" }`; usable as a pre-login deployment smoke check. In prod the response contains no component detail (no DB or host information).
+- `GET /actuator/info` is also public and returns build/version metadata if configured.
+
+### SYS-002 `GET /api/v1/system/info` — authenticated
+- Returns `{ application: "edam", version: string, status: "UP" }` (application metadata). Available after login (deny-by-default — returns 401 anonymously); intended for post-login shell display.
+
 
 ## 4.5 Authenticated GETs
 - Send no extra headers beyond what the browser adds (`Cookie: JSESSIONID=…; XSRF-TOKEN=…` is sent automatically because we use `credentials: 'include'`).

@@ -9886,23 +9886,63 @@
       "name": "99 - System/Info",
       "item": [
         {
-          "name": "GET /info",
+          "name": "GET /actuator/health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ],
+              "variable": []
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function(){ pm.response.to.have.status(200); });",
+                  "pm.test('health is UP', function(){ pm.expect(pm.response.json().status).to.eql('UP'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /system/info",
           "request": {
             "method": "GET",
             "header": [
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/info",
+              "raw": "{{baseUrl}}/api/v1/system/info",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "v1",
+                "system",
                 "info"
               ],
               "variable": [

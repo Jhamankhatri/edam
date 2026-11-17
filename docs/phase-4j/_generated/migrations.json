@@ -2,33 +2,33 @@
   {
     "file": "V10__business_rules_audit_notifications.sql",
     "creates": [
-      "audit_events",
-      "email_provider_configs",
       "notifications",
+      "audit_event_details",
+      "business_rule_sets",
       "notification_deliveries",
       "business_rules",
+      "notification_outbox",
+      "audit_events",
+      "notification_templates",
       "business_rule_versions",
       "notification_preferences",
-      "notification_outbox",
-      "business_rule_sets",
-      "notification_templates",
-      "audit_event_details"
+      "email_provider_configs"
     ],
     "alters": []
   },
   {
     "file": "V11__reporting_integrations_reliability.sql",
     "creates": [
-      "scheduled_jobs",
-      "report_definitions",
-      "integration_sync_runs",
       "integration_sync_records",
+      "dashboard_definitions",
       "idempotency_records",
-      "dashboard_widgets",
       "system_error_events",
       "user_dashboard_preferences",
+      "integration_sync_runs",
+      "scheduled_jobs",
+      "report_definitions",
       "integration_configs",
-      "dashboard_definitions"
+      "dashboard_widgets"
     ],
     "alters": []
   },
@@ -63,9 +63,9 @@
     "creates": [],
     "alters": [
       "recommending_authorities",
+      "request_documents",
       "exceeding_limit_rules",
       "department_approval_limits",
-      "request_documents",
       "expense_requests"
     ]
   },
@@ -73,8 +73,8 @@
     "file": "V17__workflow_configuration_and_approval_support.sql",
     "creates": [],
     "alters": [
-      "workflow_transitions",
-      "workflow_versions"
+      "workflow_versions",
+      "workflow_transitions"
     ]
   },
   {
@@ -102,11 +102,11 @@
     "file": "V20__phase4b_branding_themes_settings_featureflags.sql",
     "creates": [],
     "alters": [
-      "theme_tokens",
-      "branding_themes",
+      "feature_flags",
       "application_settings",
+      "theme_tokens",
       "organization_profile",
-      "feature_flags"
+      "branding_themes"
     ]
   },
   {
@@ -122,15 +122,15 @@
   {
     "file": "V22__phase4d_communication_management.sql",
     "creates": [
-      "comm_email_templates",
-      "comm_notifications",
       "comm_notification_preference_events",
-      "comm_notification_outbox",
-      "comm_smtp_configuration",
-      "comm_notification_event_configs",
+      "comm_notification_preferences",
+      "comm_notifications",
       "comm_email_template_versions",
+      "comm_email_templates",
       "comm_smtp_test_history",
-      "comm_notification_preferences"
+      "comm_notification_event_configs",
+      "comm_notification_outbox",
+      "comm_smtp_configuration"
     ],
     "alters": []
   },
@@ -175,28 +175,28 @@
   {
     "file": "V3__configuration_and_audit.sql",
     "creates": [
-      "delegation_rule",
-      "permission_definition",
-      "department_head_limit",
-      "role_permission",
-      "committee_level",
-      "expense_subcategory",
-      "user_membership",
-      "currency",
-      "committee_level_member",
-      "recommending_authority",
-      "delegation_rule_authority",
-      "audit_event",
-      "exceeding_limit",
-      "delegation_rule_approver",
       "user_membership_role",
+      "expense_subcategory",
+      "currency",
+      "user_membership",
+      "delegation_rule_approver",
+      "audit_event",
+      "role_permission",
+      "recommending_authority",
       "committee_member",
+      "committee_level_member",
+      "delegation_rule",
       "expense_category",
-      "role"
+      "role",
+      "permission_definition",
+      "exceeding_limit",
+      "department_head_limit",
+      "committee_level",
+      "delegation_rule_authority"
     ],
     "alters": [
-      "committee_level",
-      "institution"
+      "institution",
+      "committee_level"
     ]
   },
   {
@@ -208,15 +208,15 @@
     "file": "V4__request_spine_and_feature_flags.sql",
     "creates": [
       "request_history_entry",
-      "institution_feature_flag",
-      "department",
-      "expense_request_currency_snapshot",
-      "approval_task",
       "workflow_version",
+      "department",
+      "institution_feature_flag",
+      "approval_task",
+      "workflow_definition",
       "document",
       "expense_request",
-      "idempotency_record",
-      "workflow_definition"
+      "expense_request_currency_snapshot",
+      "idempotency_record"
     ],
     "alters": [
       "institution"
@@ -225,32 +225,32 @@
   {
     "file": "V5__access_management.sql",
     "creates": [
-      "role_permissions",
-      "user_sessions",
-      "roles",
-      "users",
-      "user_data_scopes",
-      "user_roles",
       "permissions",
+      "role_permissions",
+      "user_roles",
+      "roles",
       "login_attempts",
-      "password_reset_tokens"
+      "user_data_scopes",
+      "password_reset_tokens",
+      "user_sessions",
+      "users"
     ],
     "alters": []
   },
   {
     "file": "V6__product_configuration_and_organization.sql",
     "creates": [
-      "organization_unit_types",
-      "theme_tokens",
-      "branding_themes",
-      "application_settings",
-      "media_assets",
-      "organization_units",
-      "system_parameters",
-      "organization_profile",
       "feature_flags",
+      "media_assets",
+      "application_settings",
       "departments",
-      "branches"
+      "theme_tokens",
+      "organization_units",
+      "branches",
+      "organization_profile",
+      "branding_themes",
+      "organization_unit_types",
+      "system_parameters"
     ],
     "alters": [
       "users"
@@ -259,43 +259,43 @@
   {
     "file": "V7__financial_master_data_and_expense_configuration.sql",
     "creates": [
-      "expense_natures",
       "recommending_authorities",
-      "expense_delegation_rules",
-      "exceeding_limit_rules",
-      "vendors",
-      "expense_request_types",
-      "department_approval_limits",
-      "exchange_rates",
-      "currencies",
-      "tax_authorities",
       "expense_subcategories",
       "expense_categories",
-      "delegation_approver_steps"
+      "exchange_rates",
+      "tax_authorities",
+      "expense_delegation_rules",
+      "delegation_approver_steps",
+      "exceeding_limit_rules",
+      "department_approval_limits",
+      "expense_request_types",
+      "currencies",
+      "expense_natures",
+      "vendors"
     ],
     "alters": [
+      "organization_profile",
       "expense_delegation_rules",
-      "exchange_rates",
-      "organization_profile"
+      "exchange_rates"
     ]
   },
   {
     "file": "V8__committees_and_workflow_engine.sql",
     "creates": [
+      "workflow_versions",
+      "workflow_tasks",
+      "expense_committees",
       "workflow_steps",
-      "committee_level_members",
-      "workflow_definitions",
-      "workflow_step_approvers",
-      "workflow_states",
-      "committee_levels",
       "committee_members",
       "workflow_transitions",
+      "workflow_step_approvers",
+      "committee_level_members",
+      "workflow_states",
       "workflow_actions",
-      "workflow_tasks",
-      "workflow_instances",
+      "workflow_definitions",
       "workflow_events",
-      "expense_committees",
-      "workflow_versions"
+      "workflow_instances",
+      "committee_levels"
     ],
     "alters": [
       "committee_levels"
@@ -304,22 +304,22 @@
   {
     "file": "V9__expense_requests.sql",
     "creates": [
+      "expense_allocations",
+      "request_documents",
+      "expense_previous_summaries",
       "capex_budget_summaries",
-      "opex_request_details",
+      "expense_requests",
+      "expense_quotations",
+      "expense_request_items",
+      "expense_invoices",
       "capex_sta_details",
       "capex_request_details",
-      "expense_previous_summaries",
-      "expense_quotations",
-      "expense_invoices",
-      "request_documents",
-      "expense_requests",
-      "expense_allocations",
-      "expense_request_items"
+      "opex_request_details"
     ],
     "alters": [
       "capex_request_details",
-      "expense_requests",
-      "workflow_instances"
+      "workflow_instances",
+      "expense_requests"
     ]
   }
 ]

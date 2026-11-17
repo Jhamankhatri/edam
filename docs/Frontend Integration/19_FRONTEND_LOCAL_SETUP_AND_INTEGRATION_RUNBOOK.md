@@ -36,7 +36,7 @@ docker run -d --name edam-pg \
    ```
    On Windows PowerShell use `$env:EDAM_BOOTSTRAP_TOKEN="..."`.
 4. Run: `./mvnw spring-boot:run -Dspring-boot.run.profiles=local` (or just `spring-boot:run` if you put config in `application.yml`).
-5. Wait for: "Started EdamApplication in …" and `curl http://localhost:8080/api/v1/info` returning `{"success":true,"data":{"application":"edam",...}}`.
+5. Wait for: "Started EdamApplication in …"; `curl http://localhost:8080/actuator/health` returns `{"status":"UP"}`; `curl -i http://localhost:8080/api/v1/auth/csrf` returns 200 and sets the `XSRF-TOKEN` cookie. After login, `curl -b JSESSIONID=... http://localhost:8080/api/v1/system/info` returns the application metadata envelope.
 
 ## 19.4 Frontend dev-server proxy
 In the Vite config:
@@ -63,7 +63,7 @@ With a proxy the frontend is same-origin with the API at runtime; cookies flow a
 3. Import the collection + environment into Postman; select the environment.
 
 ## 19.6 Safe first-run sequence (mirrors Scenario S1 in `POSTMAN_SCENARIO_MATRIX.md`)
-1. `GET /api/v1/info` → `status: UP`.
+1. `GET /api/v1/system/info` → `status: UP`.
 2. `GET /api/v1/auth/installation` → `bootstrapped: false`.
 3. `GET /api/v1/auth/csrf` → cookies set.
 4. `POST /api/v1/auth/bootstrap` (with `X-EDAM-Bootstrap-Token` header).
@@ -87,7 +87,7 @@ Once those exist you can walk S9 (OPEX submit→approve→complete) end to end.
 ## 19.8 Common integration errors
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Every authenticated request returns 401 | No session cookie (didn't call `/auth/csrf` then `/auth/login`, or proxy is stripping cookies) | Ensure `credentials: 'include'`; proxy uses `changeOrigin:true`; `withCredentials` is true for axios clients. |
+| Every authenticated request returns 401 | No session cookie (didn't call `/auth/csrf` then `/auth/login`, or proxy is stripping cookies) | Ensure `credentials: 'include'`; proxy uses `changeOrigin:true`; `withCredentials` is true for axios clients. Note: `/api/v1/system/info` is authenticated (deny-by-default); the public smoke endpoint is `/actuator/health`. |
 | POST/PUT returns 403 with "Could not verify the provided CSRF token" | CSRF header missing or stale | Re-read `XSRF-TOKEN` cookie before every mutation; after login re-read because of rotation. |
 | CORS error in the browser console | `edam.cors.allowed-origins` does not include your Vite origin, or you're calling the API directly without the proxy | Add the origin to `edam.cors.allowed-origins`, or use the proxy. |
 | Submit returns 409 "No published workflow for request type" | No published workflow | Publish a workflow via the workflow admin endpoints/UI. |

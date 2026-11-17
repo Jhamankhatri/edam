@@ -11,8 +11,34 @@ MIG = RES / "db/migration"
 
 HTTP_ANNOTS = ["GetMapping","PostMapping","PutMapping","DeleteMapping","PatchMapping"]
 PERM_RE = re.compile(r"@EdamPermission\(\s*Permissions\.([A-Z_]+)")
-PUB_ENDPOINT_RE = re.compile(r"@(?:com\.edam\.common\.security\.)?PublicEndpoint")
 AUTH_ENDPOINT_RE = re.compile(r"@(?:com\.edam\.common\.security\.)?AuthenticatedEndpoint")
+
+# Authoritative public paths from SecurityConfig.publicMatchers. Paths ending in "/**" match all sub-paths.
+# These are the only paths exempt from the Spring Security "anyRequest().authenticated()" rule.
+PUBLIC_PATHS = [
+    "/error",
+    "/v3/api-docs",
+    "/v3/api-docs/**",
+    "/swagger-ui.html",
+    "/swagger-ui/**",
+    "/actuator/health",
+    "/actuator/health/**",
+    "/actuator/info",
+    "/api/v1/auth/login",
+    "/api/v1/auth/logout",
+    "/api/v1/auth/csrf",
+    "/api/v1/auth/installation",
+    "/api/v1/auth/bootstrap",
+    "/api/v1/auth/forgot-password",
+    "/api/v1/auth/reset-password",
+    "/api/v1/public/configuration",
+]
+
+def _path_matches(full_path: str, pattern: str) -> bool:
+    if pattern.endswith("/**"):
+        prefix = pattern[:-3]
+        return full_path == prefix or full_path.startswith(prefix + "/")
+    return full_path == pattern
 
 def strip_comments(s):
     s = re.sub(r"//[^\n]*", "", s)
@@ -117,8 +143,25 @@ for jf in java_files(SRC / "com/edam"):
     if "DevUserController" in str(jf): continue
     m_ctrl = re.search(r'@RestController\b', text_noc)
     if not m_ctrl: continue
-    rm = re.search(r'@RequestMapping\(path\s*=\s*ApiPaths\.V1\s*\+\s*"([^"]+)"', text_noc)
-    base_route = rm.group(1) if rm else ""
+    # Match @RequestMapping that sets a base route. Accept the path on one or more lines and
+    # with either the imported or fully-qualified ApiPaths.V1 reference.
+    rm = re.search(
+        r'@RequestMapping\((?:[^)]*?)path\s*=\s*(?:com\.edam\.common\.api\.)?ApiPaths\.V1\s*\+\s*"([^"]+)"',
+        text_noc, re.S)
+    base_route = ""
+    if rm:
+        base_route = rm.group(1)
+    else:
+        m_v1only = re.search(
+            r'@RequestMapping\(\s*path\s*=\s*(?:com\.edam\.common\.api\.)?ApiPaths\.V1\b',
+            text_noc)
+        if m_v1only:
+            base_route = ""
+        else:
+            m_literal = re.search(r'@RequestMapping\(\s*path\s*=\s*"(/api/v1[^"]*)"', text_noc)
+            if m_literal:
+                literal = m_literal.group(1)
+                base_route = literal.replace("/api/v1", "")
     cls_m = re.search(r'class\s+(\w+)', text_noc)
     if not cls_m: continue
     cls = cls_m.group(1)
@@ -201,8 +244,10 @@ for jf in java_files(SRC / "com/edam"):
                 ann_text = " ".join(ann_lines)
                 pm = PERM_RE.search(ann_text)
                 perm = pm.group(1) if pm else None
-                is_pub = bool(PUB_ENDPOINT_RE.search(ann_text))
-                is_auth = bool(AUTH_ENDPOINT_RE.search(ann_text))
+                has_auth_ann = bool(AUTH_ENDPOINT_RE.search(ann_text))
+                full_path = "/api/v1" + path
+                is_pub = any(_path_matches(full_path, pat) for pat in PUBLIC_PATHS)
+                is_auth = has_auth_ann and not is_pub and perm is None
                 method = ann.upper().replace("MAPPING","")
                 endpoints.append({
                     "method":method,"path":path,"methodName":method_name,

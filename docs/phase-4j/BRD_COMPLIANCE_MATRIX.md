@@ -53,7 +53,7 @@
 | AC-11 | Optimistic locking prevents concurrent edits | ✅ | `@Version` on critical entities; `CONCURRENT_MODIFICATION` → 409 | |
 | AC-12 | Multi-tenant isolation seam (not full tenancy) | 🟡 | `EdamPrincipal.institutionRoles`; data scopes; ADR-0002 | OD-20: actual multi-tenant schema not implemented. |
 | AC-13 | Institution branding (name/logo/colors) configurable without code change | ✅ | `branding_themes` + `theme_tokens`; public `/configuration/theme`; logo via asset upload | No arbitrary CSS/JS allowed. |
-| AC-14 | Health check endpoint | ✅ | `/actuator/health` (prod: status-only), public `/api/v1/info` | No DB/host details leaked in prod. |
+| AC-14 | Health check endpoint | ✅ | `/actuator/health` (prod: status-only; public) and `/api/v1/system/info` (authenticated; returns app name/version/status) | No DB/host details leaked in prod. |
 
 ## 4. Technical & security requirements
 

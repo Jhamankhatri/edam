@@ -3,7 +3,7 @@
 This document describes the frontend integration sequence per module. Detailed request/response contracts are in §02; permission codes in §05; pagination conventions in §14.
 
 ## 6.1 Authentication & bootstrap (`/auth/*`)
-1. On app load: `GET /api/v1/info` → smoke; `GET /api/v1/auth/installation` → choose login vs bootstrap.
+1. On app load: `GET /actuator/health` → smoke (status=UP means backend reachable); then `GET /api/v1/auth/installation` → choose login vs bootstrap. Once authenticated, `GET /api/v1/system/info` provides application name/version for the shell.
 2. If not bootstrapped: render Bootstrap Wizard → `POST /api/v1/auth/csrf` then `POST /api/v1/auth/bootstrap` with `X-EDAM-Bootstrap-Token` header. Success authenticates as the new admin.
 3. If bootstrapped: `GET /api/v1/auth/csrf` (to ensure XSRF cookie), then `GET /api/v1/public/configuration` for the branding safe-subset, then show the login form.
 4. Login: `POST /api/v1/auth/login`; re-read XSRF cookie; `GET /api/v1/auth/me` to load principal, permissions, data scopes.

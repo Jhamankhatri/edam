@@ -4,7 +4,14 @@ Open decisions are preserved verbatim in `docs/phase-4j/open-decisions.md` and `
 
 **Settled architecture decision (must not be revisited):** every bank runs an independent EDAM deployment and PostgreSQL database. There is no bank/tenant switcher, no cross-bank access and no multi-tenant selector in the UI.
 
-## 17.1 Blockers that must not be silently "designed around"
+## 17.1 Settled architectural decisions (NOT open)
+
+These are recorded here because earlier phase documents marked them "open"; they are **settled** for v1 and must not be revisited by the frontend.
+
+| ID | Decision | Settled behaviour | Frontend must do |
+|---|---|---|---|
+
+## 17.2 Open product decisions that the frontend must not silently "design around"
 
 | ID | Issue | Actual backend behaviour today | Frontend impact | Frontend may proceed? | Owner |
 |---|---|---|---|---|---|
@@ -26,11 +33,10 @@ Open decisions are preserved verbatim in `docs/phase-4j/open-decisions.md` and `
 | OD-17 | EC member-pool vs committee table reconciliation | Committees/levels/members modelled; legacy "EC pool" tables are not present. | Use committees/levels as the source of truth; do not render a separate "EC pool" screen. | Yes. | Business + DBA |
 | OD-18 | Legacy data migration | Not started. | N/A — out of scope for the React MVP. | N/A. | IT |
 | OD-19 | NFR/SLA numeric targets | Foundation is NFR-neutral. | No performance SLA UI or SLO dashboards in v1. | Yes. | Business + IT + InfoSec |
-| OD-20 | Multi-tenant isolation model | Seam-only (ADR-0002/0008); single-instance per institution is the deployment model. | **Do not build a tenant picker or bank switcher.** See settled decision above. | Yes. | InfoSec + IT |
 | OD-21 | CAPEX allowed-department list and Department Head fallback are configuration | Configuration flags with conservative defaults. | Respect configuration flags; do not hard-code allowed departments. | Yes. | Business owner |
 | OD-22 | Print/PDF, XLSX, export formats and configuration-log retention | CSV export implemented; XLSX/PDF/print not implemented. | Only expose CSV export; hide/disable PDF/print buttons. | Yes (CSV only). | Business owner |
 
-## 17.2 Production blockers (configure before go-live)
+## 17.3 Production blockers (configure before go-live)
 1. **PostgreSQL 15+** with backups and PITR.
 2. **HTTPS reverse proxy** with proper `X-Forwarded-Proto` and CORS exact-origin for the React host.
 3. **SMTP server** (forgot-password, approvals, notifications).
@@ -40,7 +46,7 @@ Open decisions are preserved verbatim in `docs/phase-4j/open-decisions.md` and `
 7. **Workflow published for every request type** (OPEX, CAPEX) before submit is enabled for end-users.
 8. **Role matrix** created per the institution's SoD policy (OD-12).
 
-## 17.3 Features that should NOT appear in v1 UI
+## 17.4 Features that should NOT appear in v1 UI
 - JWT/bearer-token login screen.
 - Bank/tenant switcher.
 - Print/PDF, XLSX export (wait for backend support).

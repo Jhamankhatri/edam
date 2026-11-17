@@ -9,7 +9,7 @@ Audience: the system administrator(s) who install, configure and maintain EDAM. 
 1. Provision a PostgreSQL 15+ database.
 2. Configure environment variables (see `production-readiness.md`): `EDAM_DB_URL`, `EDAM_DB_USERNAME`, `EDAM_DB_PASSWORD`, `EDAM_BOOTSTRAP_TOKEN` (one-time), `EDAM_MAIL_MASTER_KEY` and `edam.cors.allowed-origins` at minimum.
 3. Deploy the executable WAR (`java -jar edam.war` or deploy to a servlet container).
-4. Confirm `GET https://<host>/api/v1/info` returns `{"application":"edam","status":"UP","version":"…"}`.
+4. Confirm `GET https://<host>/actuator/health` returns `{"status":"UP"}` (public smoke probe). After signing in, `GET https://<host>/api/v1/system/info` returns `{"success":true,"data":{"application":"edam","status":"UP","version":"…"},...}`.
 5. Confirm `GET /api/v1/auth/installation` returns `{"installed":false}`.
 
 ## 2. First-administrator bootstrap

@@ -11,7 +11,8 @@ Each row maps a React screen action to its backend API. **Status** values:
 
 | Screen | User action | Method & path | Permission | Request DTO | Response DTO | Status |
 |---|---|---|---|---|---|---|
-| **App bootstrap / splash** | Check health | `GET /api/v1/info` | public | — | `{application,version,status}` | ✅ |
+| **App bootstrap / splash** | Check reachability | `GET /actuator/health` | public | — | `{status:"UP"}` | ✅ |
+| **App shell (post-login)** | Application meta | `GET /api/v1/system/info` | authenticated | — | `{application,version,status}` | ✅ |
 | **Bootstrap wizard** | Check installation | `GET /api/v1/auth/installation` | public | — | `InstallationStatusResponse` | ✅ |
 | **Bootstrap wizard** | Submit first admin | `POST /api/v1/auth/bootstrap` (+ header `X-EDAM-Bootstrap-Token`) | public | `BootstrapRequest` | `BootstrapResponse` | ✅ |
 | **Login** | Load branding | `GET /api/v1/public/configuration` | public | — | `PublicConfigurationResponse` | ✅ |

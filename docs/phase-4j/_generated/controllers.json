@@ -1097,12 +1097,12 @@
   },
   "EmailTemplateController": {
     "class": "EmailTemplateController",
-    "basePath": "",
+    "basePath": "/communication/email-templates",
     "file": "src/main/java/com/edam/communication/controller/EmailTemplateController.java",
     "endpoints": [
       {
         "method": "GET",
-        "path": "/",
+        "path": "/communication/email-templates",
         "methodName": "list",
         "permission": "NOTIFICATION_TEMPLATE_MANAGE",
         "public": false,
@@ -1119,7 +1119,7 @@
       },
       {
         "method": "GET",
-        "path": "/{id}",
+        "path": "/communication/email-templates/{id}",
         "methodName": "get",
         "permission": "NOTIFICATION_TEMPLATE_MANAGE",
         "public": false,
@@ -1143,7 +1143,7 @@
       },
       {
         "method": "POST",
-        "path": "/",
+        "path": "/communication/email-templates",
         "methodName": "create",
         "permission": "NOTIFICATION_TEMPLATE_MANAGE",
         "public": false,
@@ -1167,7 +1167,7 @@
       },
       {
         "method": "POST",
-        "path": "/{id}/versions",
+        "path": "/communication/email-templates/{id}/versions",
         "methodName": "newVersion",
         "permission": "NOTIFICATION_TEMPLATE_MANAGE",
         "public": false,
@@ -1198,7 +1198,7 @@
       },
       {
         "method": "GET",
-        "path": "/{id}/versions",
+        "path": "/communication/email-templates/{id}/versions",
         "methodName": "history",
         "permission": "NOTIFICATION_TEMPLATE_MANAGE",
         "public": false,
@@ -1222,7 +1222,7 @@
       },
       {
         "method": "PUT",
-        "path": "/{id}/active",
+        "path": "/communication/email-templates/{id}/active",
         "methodName": "setActive",
         "permission": "NOTIFICATION_TEMPLATE_MANAGE",
         "public": false,
@@ -1240,7 +1240,7 @@
       },
       {
         "method": "POST",
-        "path": "/{id}/preview",
+        "path": "/communication/email-templates/{id}/preview",
         "methodName": "preview",
         "permission": "NOTIFICATION_TEMPLATE_MANAGE",
         "public": false,
@@ -1260,12 +1260,12 @@
   },
   "NotificationEventConfigController": {
     "class": "NotificationEventConfigController",
-    "basePath": "",
+    "basePath": "/communication/events",
     "file": "src/main/java/com/edam/communication/controller/NotificationEventConfigController.java",
     "endpoints": [
       {
         "method": "GET",
-        "path": "/",
+        "path": "/communication/events",
         "methodName": "list",
         "permission": "NOTIFICATION_TEMPLATE_MANAGE",
         "public": false,
@@ -1282,7 +1282,7 @@
       },
       {
         "method": "PUT",
-        "path": "/{eventCode}",
+        "path": "/communication/events/{eventCode}",
         "methodName": "update",
         "permission": "NOTIFICATION_TEMPLATE_MANAGE",
         "public": false,
@@ -1315,12 +1315,12 @@
   },
   "NotificationInboxController": {
     "class": "NotificationInboxController",
-    "basePath": "",
+    "basePath": "/notifications",
     "file": "src/main/java/com/edam/communication/controller/NotificationInboxController.java",
     "endpoints": [
       {
         "method": "GET",
-        "path": "/",
+        "path": "/notifications",
         "methodName": "list",
         "permission": "NOTIFICATION_VIEW",
         "public": false,
@@ -1330,7 +1330,7 @@
       },
       {
         "method": "GET",
-        "path": "/unread-count",
+        "path": "/notifications/unread-count",
         "methodName": "unreadCount",
         "permission": "NOTIFICATION_VIEW",
         "public": false,
@@ -1347,7 +1347,7 @@
       },
       {
         "method": "POST",
-        "path": "/{id}/read",
+        "path": "/notifications/{id}/read",
         "methodName": "markRead",
         "permission": "NOTIFICATION_VIEW",
         "public": false,
@@ -1371,7 +1371,7 @@
       },
       {
         "method": "POST",
-        "path": "/read-all",
+        "path": "/notifications/read-all",
         "methodName": "markAllRead",
         "permission": "NOTIFICATION_VIEW",
         "public": false,
@@ -1390,12 +1390,12 @@
   },
   "SmtpConfigurationController": {
     "class": "SmtpConfigurationController",
-    "basePath": "",
+    "basePath": "/communication/smtp",
     "file": "src/main/java/com/edam/communication/controller/SmtpConfigurationController.java",
     "endpoints": [
       {
         "method": "GET",
-        "path": "/",
+        "path": "/communication/smtp",
         "methodName": "get",
         "permission": "EMAIL_CONFIGURATION_MANAGE",
         "public": false,
@@ -1412,7 +1412,7 @@
       },
       {
         "method": "POST",
-        "path": "/",
+        "path": "/communication/smtp",
         "methodName": "save",
         "permission": "EMAIL_CONFIGURATION_MANAGE",
         "public": false,
@@ -1436,7 +1436,7 @@
       },
       {
         "method": "DELETE",
-        "path": "/active",
+        "path": "/communication/smtp/active",
         "methodName": "deactivate",
         "permission": "EMAIL_CONFIGURATION_MANAGE",
         "public": false,
@@ -1453,7 +1453,7 @@
       },
       {
         "method": "POST",
-        "path": "/test",
+        "path": "/communication/smtp/test",
         "methodName": "test",
         "permission": "EMAIL_CONFIGURATION_MANAGE",
         "public": false,
@@ -4605,15 +4605,15 @@
   },
   "SystemController": {
     "class": "SystemController",
-    "basePath": "",
+    "basePath": "/system",
     "file": "src/main/java/com/edam/web/SystemController.java",
     "endpoints": [
       {
         "method": "GET",
-        "path": "/info",
+        "path": "/system/info",
         "methodName": "info",
         "permission": null,
-        "public": true,
+        "public": false,
         "authenticated": false,
         "params": [
           {

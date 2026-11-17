@@ -13,7 +13,8 @@ This manual tells QA engineers how to validate the EDAM backend end-to-end. It c
 
 | # | Action | Expected |
 |---|---|---|
-| 1.1 | `GET /api/v1/info` | 200, `{application:"edam", status:"UP"}` |
+| 1.1 | `GET /actuator/health` | 200, `{"status":"UP"}` (public; no DB/host detail in prod) |
+| 1.1b | `GET /api/v1/system/info` (authenticated) | 200 when logged in, 401 anonymously; `{application:"edam",version:"…",status:"UP"}` |
 | 1.2 | `GET /api/v1/auth/csrf` | 200; response sets `XSRF-TOKEN` and `JSESSIONID` cookies |
 | 1.3 | Without a session, hit any business endpoint (e.g. `GET /api/v1/users`) | 401 |
 | 1.4 | Mutating endpoint without `X-XSRF-TOKEN` (use an authenticated session but omit header) | 403 CSRF error |
