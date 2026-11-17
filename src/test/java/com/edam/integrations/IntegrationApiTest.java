@@ -262,8 +262,8 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 				start.await();
 				// Hit the service directly to avoid MockMvc/CSRF thread-safety noise; each
 				// call opens its own transaction via Spring's proxy (same as the HTTP path).
-				return UUID.fromString(service.submitExecution(adminUser(), configId,
-					new ExecuteRequest("ping", key, Map.of())).id());
+				return service.submitExecution(adminUser(), configId,
+					new ExecuteRequest("ping", key, Map.of())).id();
 			}));
 		}
 		start.countDown();
