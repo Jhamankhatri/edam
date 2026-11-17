@@ -34,7 +34,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -47,7 +46,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@Transactional
 class BusinessRulesIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 
 	private static final String BASE = "/api/v1/business-rules";
@@ -93,13 +91,14 @@ class BusinessRulesIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 	@Test
 	@DisplayName("create rule set, upsert rule, publish produces immutable PUBLISHED version")
 	void lifecycleCreateUpsertPublish() throws Exception {
-		// Create
+		// Create (unique suffix avoids cross-test UK collisions when running without @Transactional rollback)
+		String uniq = "EXP_" + UUID.randomUUID().toString().substring(0, 8).replace("-", "A");
 		MvcResult created = this.mockMvc.perform(post(BASE)
 				.with(csrf()).with(user(adminPrincipal()))
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"code\":\"EXP_APPROVAL\",\"name\":\"Expense Approval\",\"module\":\"EXPENSE\"}"))
+				.content("{\"code\":\"" + uniq + "\",\"name\":\"Expense Approval\",\"module\":\"EXPENSE\"}"))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.data.code").value("EXP_APPROVAL"))
+			.andExpect(jsonPath("$.data.code").value(uniq))
 			.andReturn();
 		String setId = data(created).path("id").asText();
 
