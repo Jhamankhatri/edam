@@ -77,11 +77,16 @@ public class IntegrationService {
 
 	@Transactional(readOnly = true)
 	public List<ProviderCatalogueEntry> providerCatalogue() {
-		return adapters.catalogue().stream().map(m -> new ProviderCatalogueEntry(
+		return adapters.catalogue().stream().map(this::toCatalogueEntry).toList();
+	}
+
+	@SuppressWarnings("unchecked")
+	private ProviderCatalogueEntry toCatalogueEntry(Map<String, Object> m) {
+		return new ProviderCatalogueEntry(
 				(String) m.get("type"), (String) m.get("name"),
-				@SuppressWarnings("unchecked") List<String> m.get("authModes"),
-				@SuppressWarnings("unchecked") List<String> m.get("operations"),
-				(Boolean) m.get("requiresEndpointUrl"))).toList();
+				(List<String>) m.get("authModes"),
+				(List<String>) m.get("operations"),
+				(Boolean) m.get("requiresEndpointUrl"));
 	}
 
 	// ----------------------------------------------------------------------------------
