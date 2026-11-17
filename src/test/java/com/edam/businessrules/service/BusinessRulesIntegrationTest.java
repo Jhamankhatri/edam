@@ -265,22 +265,28 @@ class BusinessRulesIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 		String code = "CNC_" + UUID.randomUUID().toString().substring(0, 6).replace("-", "A").toUpperCase();
 		var summary = service.createRuleSet(new RuleDtos.CreateRuleSetRequest(code, "Concurrency", "EXPENSE", null), adminPrincipal());
 		UUID setId = summary.id();
+		// getRuleSet returns DRAFT when it exists; use it to obtain v1.
 		RuleDtos.RuleVersionDetail d = service.getRuleSet(setId);
+		assertThat(d.status()).isEqualTo(RuleVersionStatus.DRAFT);
 		service.upsertRule(d.id(), new RuleDtos.RuleUpsertRequest(null, "R", "R",
 				Map.of("field", "amount", "op", "gt", "value", 0),
 				Map.of("type", "WARN"), 1, true), adminPrincipal());
 		var pub1 = service.publish(setId, new RuleDtos.PublishRequest(null), adminPrincipal());
 		assertThat(pub1.status()).isEqualTo(RuleVersionStatus.PUBLISHED);
-		// Cannot publish again without a new draft (no DRAFT exists after publish).
+		// After publish, getRuleSet returns PUBLISHED (no draft exists yet).
+		assertThat(service.getRuleSet(setId).status()).isEqualTo(RuleVersionStatus.PUBLISHED);
+		// Cannot publish again without a new draft.
 		assertThatThrownBy(() -> service.publish(setId, new RuleDtos.PublishRequest(null), adminPrincipal()))
 			.isInstanceOf(BusinessException.class);
 		// New draft: publish retires v1 and promotes v2 — invariant holds via partial unique index.
 		var v2 = service.newDraft(setId, adminPrincipal());
+		assertThat(v2.status()).isEqualTo(RuleVersionStatus.DRAFT);
 		service.upsertRule(v2.id(), new RuleDtos.RuleUpsertRequest(null, "R2", "R2",
 				Map.of("field", "amount", "op", "gt", "value", 1),
 				Map.of("type", "WARN"), 1, true), adminPrincipal());
 		var pub2 = service.publish(setId, new RuleDtos.PublishRequest(null), adminPrincipal());
 		assertThat(pub2.versionNumber()).isEqualTo(2);
+		assertThat(pub2.status()).isEqualTo(RuleVersionStatus.PUBLISHED);
 	}
 
 	@Test

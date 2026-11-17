@@ -164,6 +164,9 @@ public class BusinessRuleService {
 		}
 		BusinessRuleVersion v = s.draftVersion();
 		this.sets.save(s);
+		// Re-load the newly-created draft with rules joined so toDetail sees an initialized collection.
+		v = this.versions.findByIdWithRules(v.getId())
+				.orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "New draft disappeared"));
 		this.audit.record(AuditAction.CREATE, "BusinessRuleVersion", v.getId(),
 				"new draft v" + v.getVersionNumber() + " on " + s.getCode());
 		return toDetail(v, true);
