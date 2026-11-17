@@ -1,0 +1,242 @@
+[
+  {
+    "const": "ORGANIZATION_VIEW",
+    "code": "organization:view"
+  },
+  {
+    "const": "ORGANIZATION_MANAGE",
+    "code": "organization:manage"
+  },
+  {
+    "const": "CONFIGURATION_VIEW",
+    "code": "configuration:view"
+  },
+  {
+    "const": "CONFIGURATION_MANAGE",
+    "code": "configuration:manage"
+  },
+  {
+    "const": "SYSTEM_ADMINISTER",
+    "code": "system:administer"
+  },
+  {
+    "const": "USER_VIEW",
+    "code": "user:view"
+  },
+  {
+    "const": "USER_MANAGE",
+    "code": "user:manage"
+  },
+  {
+    "const": "ROLE_VIEW",
+    "code": "role:view"
+  },
+  {
+    "const": "ROLE_MANAGE",
+    "code": "role:manage"
+  },
+  {
+    "const": "USER_ROLE_ASSIGN",
+    "code": "user-role:assign"
+  },
+  {
+    "const": "DATA_SCOPE_MANAGE",
+    "code": "data-scope:manage"
+  },
+  {
+    "const": "CURRENCY_VIEW",
+    "code": "currency:view"
+  },
+  {
+    "const": "CURRENCY_MANAGE",
+    "code": "currency:manage"
+  },
+  {
+    "const": "VENDOR_VIEW",
+    "code": "vendor:view"
+  },
+  {
+    "const": "VENDOR_MANAGE",
+    "code": "vendor:manage"
+  },
+  {
+    "const": "TAX_AUTHORITY_MANAGE",
+    "code": "tax-authority:manage"
+  },
+  {
+    "const": "EXPENSE_CONFIGURATION_VIEW",
+    "code": "expense-configuration:view"
+  },
+  {
+    "const": "EXPENSE_CONFIGURATION_MANAGE",
+    "code": "expense-configuration:manage"
+  },
+  {
+    "const": "DELEGATION_VIEW",
+    "code": "delegation:view"
+  },
+  {
+    "const": "DELEGATION_MANAGE",
+    "code": "delegation:manage"
+  },
+  {
+    "const": "APPROVAL_LIMIT_VIEW",
+    "code": "approval-limit:view"
+  },
+  {
+    "const": "APPROVAL_LIMIT_MANAGE",
+    "code": "approval-limit:manage"
+  },
+  {
+    "const": "RECOMMENDING_AUTHORITY_VIEW",
+    "code": "recommending-authority:view"
+  },
+  {
+    "const": "RECOMMENDING_AUTHORITY_MANAGE",
+    "code": "recommending-authority:manage"
+  },
+  {
+    "const": "EXCEEDING_LIMIT_VIEW",
+    "code": "exceeding-limit:view"
+  },
+  {
+    "const": "EXCEEDING_LIMIT_MANAGE",
+    "code": "exceeding-limit:manage"
+  },
+  {
+    "const": "COMMITTEE_VIEW",
+    "code": "committee:view"
+  },
+  {
+    "const": "COMMITTEE_MANAGE",
+    "code": "committee:manage"
+  },
+  {
+    "const": "REQUEST_CREATE",
+    "code": "request:create"
+  },
+  {
+    "const": "REQUEST_VIEW_OWN",
+    "code": "request:view-own"
+  },
+  {
+    "const": "REQUEST_VIEW_SCOPE",
+    "code": "request:view-scope"
+  },
+  {
+    "const": "REQUEST_VIEW_ALL",
+    "code": "request:view-all"
+  },
+  {
+    "const": "REQUEST_EDIT",
+    "code": "request:edit"
+  },
+  {
+    "const": "REQUEST_SUBMIT",
+    "code": "request:submit"
+  },
+  {
+    "const": "REQUEST_CANCEL",
+    "code": "request:cancel"
+  },
+  {
+    "const": "REQUEST_REVERSE",
+    "code": "request:reverse"
+  },
+  {
+    "const": "REQUEST_EXPORT",
+    "code": "request:export"
+  },
+  {
+    "const": "DOCUMENT_UPLOAD",
+    "code": "document:upload"
+  },
+  {
+    "const": "DOCUMENT_DOWNLOAD",
+    "code": "document:download"
+  },
+  {
+    "const": "DOCUMENT_DELETE",
+    "code": "document:delete"
+  },
+  {
+    "const": "APPROVAL_VIEW",
+    "code": "approval:view"
+  },
+  {
+    "const": "APPROVAL_ACT",
+    "code": "approval:act"
+  },
+  {
+    "const": "WORKFLOW_VIEW",
+    "code": "workflow:view"
+  },
+  {
+    "const": "WORKFLOW_MANAGE",
+    "code": "workflow:manage"
+  },
+  {
+    "const": "WORKFLOW_PUBLISH",
+    "code": "workflow:publish"
+  },
+  {
+    "const": "RULE_VIEW",
+    "code": "rule:view"
+  },
+  {
+    "const": "RULE_MANAGE",
+    "code": "rule:manage"
+  },
+  {
+    "const": "RULE_PUBLISH",
+    "code": "rule:publish"
+  },
+  {
+    "const": "AUDIT_VIEW",
+    "code": "audit:view"
+  },
+  {
+    "const": "AUDIT_EXPORT",
+    "code": "audit:export"
+  },
+  {
+    "const": "NOTIFICATION_VIEW",
+    "code": "notification:view"
+  },
+  {
+    "const": "EMAIL_CONFIGURATION_MANAGE",
+    "code": "email-configuration:manage"
+  },
+  {
+    "const": "NOTIFICATION_TEMPLATE_MANAGE",
+    "code": "notification-template:manage"
+  },
+  {
+    "const": "REPORT_VIEW",
+    "code": "report:view"
+  },
+  {
+    "const": "REPORT_EXPORT",
+    "code": "report:export"
+  },
+  {
+    "const": "DASHBOARD_MANAGE",
+    "code": "dashboard:manage"
+  },
+  {
+    "const": "INTEGRATION_VIEW",
+    "code": "integration:view"
+  },
+  {
+    "const": "INTEGRATION_MANAGE",
+    "code": "integration:manage"
+  },
+  {
+    "const": "INTEGRATION_EXECUTE",
+    "code": "integration:execute"
+  },
+  {
+    "const": "INTEGRATION_TEST",
+    "code": "integration:test"
+  }
+]

@@ -1,0 +1,5101 @@
+{
+  "ApprovalLimitController": {
+    "class": "ApprovalLimitController",
+    "basePath": "/approval-limits",
+    "file": "src/main/java/com/edam/approvallimits/controller/ApprovalLimitController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/approval-limits",
+        "methodName": "list",
+        "permission": "APPROVAL_LIMIT_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/approval-limits/{id}",
+        "methodName": "get",
+        "permission": "APPROVAL_LIMIT_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/approval-limits",
+        "methodName": "create",
+        "permission": "APPROVAL_LIMIT_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "SaveApprovalLimitRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/approval-limits/{id}",
+        "methodName": "update",
+        "permission": "APPROVAL_LIMIT_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "SaveApprovalLimitRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/approval-limits/{id}/activation",
+        "methodName": "setActive",
+        "permission": "APPROVAL_LIMIT_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "active",
+            "type": "boolean",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/approval-limits/authority-check",
+        "methodName": "checkAuthority",
+        "permission": "APPROVAL_LIMIT_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "AuthorityCheckRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  },
+  "ExceedingLimitRuleController": {
+    "class": "ExceedingLimitRuleController",
+    "basePath": "/exceeding-limit-rules",
+    "file": "src/main/java/com/edam/approvallimits/controller/ExceedingLimitRuleController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/exceeding-limit-rules",
+        "methodName": "list",
+        "permission": "EXCEEDING_LIMIT_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/exceeding-limit-rules/{id}",
+        "methodName": "get",
+        "permission": "EXCEEDING_LIMIT_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/exceeding-limit-rules",
+        "methodName": "create",
+        "permission": "EXCEEDING_LIMIT_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "SaveExceedingLimitRuleRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/exceeding-limit-rules/{id}",
+        "methodName": "update",
+        "permission": "EXCEEDING_LIMIT_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "SaveExceedingLimitRuleRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/exceeding-limit-rules/{id}/activation",
+        "methodName": "setActive",
+        "permission": "EXCEEDING_LIMIT_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "active",
+            "type": "boolean",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/exceeding-limit-rules/evaluation",
+        "methodName": "evaluate",
+        "permission": "EXCEEDING_LIMIT_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "expenseType",
+            "type": "String",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "natureId",
+            "type": "UUID",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "currencyId",
+            "type": "UUID",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "amount",
+            "type": "BigDecimal",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  },
+  "RecommendingAuthorityController": {
+    "class": "RecommendingAuthorityController",
+    "basePath": "/recommending-authorities",
+    "file": "src/main/java/com/edam/approvallimits/controller/RecommendingAuthorityController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/recommending-authorities",
+        "methodName": "list",
+        "permission": "RECOMMENDING_AUTHORITY_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/recommending-authorities/{id}",
+        "methodName": "get",
+        "permission": "RECOMMENDING_AUTHORITY_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/recommending-authorities",
+        "methodName": "create",
+        "permission": "RECOMMENDING_AUTHORITY_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "SaveRecommendingAuthorityRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/recommending-authorities/{id}",
+        "methodName": "update",
+        "permission": "RECOMMENDING_AUTHORITY_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "SaveRecommendingAuthorityRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/recommending-authorities/{id}/activation",
+        "methodName": "setActive",
+        "permission": "RECOMMENDING_AUTHORITY_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "active",
+            "type": "boolean",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/recommending-authorities/resolved",
+        "methodName": "resolved",
+        "permission": "RECOMMENDING_AUTHORITY_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "departmentId",
+            "type": "UUID",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  },
+  "AuditController": {
+    "class": "AuditController",
+    "basePath": "/audit-events",
+    "file": "src/main/java/com/edam/audit/controller/AuditController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/audit-events",
+        "methodName": "search",
+        "permission": "AUDIT_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/audit-events/{id}",
+        "methodName": "get",
+        "permission": "AUDIT_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  },
+  "RequestTimelineController": {
+    "class": "RequestTimelineController",
+    "basePath": "/expense-requests",
+    "file": "src/main/java/com/edam/audit/controller/RequestTimelineController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/expense-requests/{id}/activity",
+        "methodName": "timeline",
+        "permission": "REQUEST_VIEW_OWN",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  },
+  "BusinessRuleController": {
+    "class": "BusinessRuleController",
+    "basePath": "/business-rules",
+    "file": "src/main/java/com/edam/businessrules/controller/BusinessRuleController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/business-rules",
+        "methodName": "list",
+        "permission": "RULE_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/business-rules/{id}",
+        "methodName": "get",
+        "permission": "RULE_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/business-rules",
+        "methodName": "create",
+        "permission": "RULE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "RuleDtos.CreateRuleSetRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/business-rules/{id}",
+        "methodName": "update",
+        "permission": "RULE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "RuleDtos.UpdateRuleSetRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/business-rules/{id}/drafts",
+        "methodName": "newDraft",
+        "permission": "RULE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/business-rules/{id}/publish",
+        "methodName": "publish",
+        "permission": "RULE_PUBLISH",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/business-rules/{id}/retire",
+        "methodName": "retire",
+        "permission": "RULE_PUBLISH",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/business-rules/versions/{versionId}/rules",
+        "methodName": "upsertRule",
+        "permission": "RULE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "versionId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "RuleDtos.RuleUpsertRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "DELETE",
+        "path": "/business-rules/rules/{ruleId}",
+        "methodName": "deleteRule",
+        "permission": "RULE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "ruleId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  },
+  "CommitteeController": {
+    "class": "CommitteeController",
+    "basePath": "/committees",
+    "file": "src/main/java/com/edam/committee/controller/CommitteeController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/committees",
+        "methodName": "list",
+        "permission": "COMMITTEE_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/committees/{id}",
+        "methodName": "get",
+        "permission": "COMMITTEE_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/committees",
+        "methodName": "create",
+        "permission": "COMMITTEE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "SaveCommitteeRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/committees/{id}",
+        "methodName": "rename",
+        "permission": "COMMITTEE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "SaveCommitteeRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/committees/{id}/deactivate",
+        "methodName": "deactivate",
+        "permission": "COMMITTEE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/committees/{id}/members",
+        "methodName": "addMember",
+        "permission": "COMMITTEE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "AddMemberRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/committees/{id}/members/{memberId}/end",
+        "methodName": "endMembership",
+        "permission": "COMMITTEE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "memberId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/committees/{id}/levels",
+        "methodName": "addLevel",
+        "permission": "COMMITTEE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "CommitteeLevelRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/committees/{id}/levels/{levelId}/deactivate",
+        "methodName": "deactivateLevel",
+        "permission": "COMMITTEE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "levelId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/committees/coverage",
+        "methodName": "coverage",
+        "permission": "COMMITTEE_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "currencyId",
+            "type": "UUID",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "amount",
+            "type": "BigDecimal",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  },
+  "EmailTemplateController": {
+    "class": "EmailTemplateController",
+    "basePath": "/communication/email-templates",
+    "file": "src/main/java/com/edam/communication/controller/EmailTemplateController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/communication/email-templates",
+        "methodName": "list",
+        "permission": "NOTIFICATION_TEMPLATE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/communication/email-templates/{id}",
+        "methodName": "get",
+        "permission": "NOTIFICATION_TEMPLATE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/communication/email-templates",
+        "methodName": "create",
+        "permission": "NOTIFICATION_TEMPLATE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "TemplateUpsertRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/communication/email-templates/{id}/versions",
+        "methodName": "newVersion",
+        "permission": "NOTIFICATION_TEMPLATE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "TemplateUpsertRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/communication/email-templates/{id}/versions",
+        "methodName": "history",
+        "permission": "NOTIFICATION_TEMPLATE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/communication/email-templates/{id}/active",
+        "methodName": "setActive",
+        "permission": "NOTIFICATION_TEMPLATE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/communication/email-templates/{id}/preview",
+        "methodName": "preview",
+        "permission": "NOTIFICATION_TEMPLATE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  },
+  "NotificationEventConfigController": {
+    "class": "NotificationEventConfigController",
+    "basePath": "/communication/events",
+    "file": "src/main/java/com/edam/communication/controller/NotificationEventConfigController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/communication/events",
+        "methodName": "list",
+        "permission": "NOTIFICATION_TEMPLATE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/communication/events/{eventCode}",
+        "methodName": "update",
+        "permission": "NOTIFICATION_TEMPLATE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "eventCode",
+            "type": "String",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "EventConfigRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  },
+  "NotificationInboxController": {
+    "class": "NotificationInboxController",
+    "basePath": "/notifications",
+    "file": "src/main/java/com/edam/communication/controller/NotificationInboxController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/notifications",
+        "methodName": "list",
+        "permission": "NOTIFICATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/notifications/unread-count",
+        "methodName": "unreadCount",
+        "permission": "NOTIFICATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/notifications/{id}/read",
+        "methodName": "markRead",
+        "permission": "NOTIFICATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/notifications/read-all",
+        "methodName": "markAllRead",
+        "permission": "NOTIFICATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  },
+  "SmtpConfigurationController": {
+    "class": "SmtpConfigurationController",
+    "basePath": "/communication/smtp",
+    "file": "src/main/java/com/edam/communication/controller/SmtpConfigurationController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/communication/smtp",
+        "methodName": "get",
+        "permission": "EMAIL_CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/communication/smtp",
+        "methodName": "save",
+        "permission": "EMAIL_CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "SmtpConfigurationRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "DELETE",
+        "path": "/communication/smtp/active",
+        "methodName": "deactivate",
+        "permission": "EMAIL_CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/communication/smtp/test",
+        "methodName": "test",
+        "permission": "EMAIL_CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      }
+    ]
+  },
+  "ConfigurationController": {
+    "class": "ConfigurationController",
+    "basePath": "",
+    "file": "src/main/java/com/edam/configuration/controller/ConfigurationController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/public/configuration",
+        "methodName": "publicConfiguration",
+        "permission": null,
+        "public": true,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/themes",
+        "methodName": "listThemes",
+        "permission": "CONFIGURATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/themes/active",
+        "methodName": "activeTheme",
+        "permission": "CONFIGURATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/themes/{id}",
+        "methodName": "getTheme",
+        "permission": "CONFIGURATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/themes",
+        "methodName": "createTheme",
+        "permission": "CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "SaveThemeRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/themes/{id}",
+        "methodName": "updateTheme",
+        "permission": "CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "SaveThemeRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/themes/{id}/activation",
+        "methodName": "setThemeActive",
+        "permission": "CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "active",
+            "type": "boolean",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/themes/{id}/default",
+        "methodName": "setDefaultTheme",
+        "permission": "CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/settings",
+        "methodName": "listSettings",
+        "permission": "CONFIGURATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/settings/categories/{category}",
+        "methodName": "listByCategory",
+        "permission": "CONFIGURATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "category",
+            "type": "String",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/settings/{key}",
+        "methodName": "getSetting",
+        "permission": "CONFIGURATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "key",
+            "type": "String",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/settings",
+        "methodName": "saveSetting",
+        "permission": "CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "SaveSettingRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PATCH",
+        "path": "/settings/bulk",
+        "methodName": "bulkUpdateSettings",
+        "permission": "CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "BulkSettingsUpdateRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/feature-flags",
+        "methodName": "listFlags",
+        "permission": "CONFIGURATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/feature-flags/{key}",
+        "methodName": "getFlag",
+        "permission": "CONFIGURATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "key",
+            "type": "String",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/feature-flags",
+        "methodName": "saveFlag",
+        "permission": "CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "SaveFeatureFlagRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/feature-flags/{key}/activation",
+        "methodName": "setFlagEnabled",
+        "permission": "CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "key",
+            "type": "String",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "enabled",
+            "type": "boolean",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  },
+  "DelegationMatrixController": {
+    "class": "DelegationMatrixController",
+    "basePath": "/delegation-matrix",
+    "file": "src/main/java/com/edam/delegation/controller/DelegationMatrixController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/delegation-matrix",
+        "methodName": "list",
+        "permission": "DELEGATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/delegation-matrix",
+        "methodName": "create",
+        "permission": "DELEGATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "SaveDelegationRuleRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/delegation-matrix/{id}/close",
+        "methodName": "close",
+        "permission": "DELEGATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/delegation-matrix/{id}/activation",
+        "methodName": "setActive",
+        "permission": "DELEGATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "active",
+            "type": "boolean",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/delegation-matrix/preview",
+        "methodName": "preview",
+        "permission": "DELEGATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "categoryId",
+            "type": "UUID",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  },
+  "DocumentController": {
+    "class": "DocumentController",
+    "basePath": "/documents",
+    "file": "src/main/java/com/edam/documents/controller/DocumentController.java",
+    "endpoints": [
+      {
+        "method": "POST",
+        "path": "/documents",
+        "methodName": "upload",
+        "permission": "DOCUMENT_UPLOAD",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/documents/requests/{requestId}",
+        "methodName": "listForRequest",
+        "permission": "DOCUMENT_DOWNLOAD",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "requestId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/documents/{id}",
+        "methodName": "get",
+        "permission": "DOCUMENT_DOWNLOAD",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/documents/{id}/download-url",
+        "methodName": "downloadUrl",
+        "permission": "DOCUMENT_DOWNLOAD",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/documents/{id}/scans",
+        "methodName": "scans",
+        "permission": "DOCUMENT_DOWNLOAD",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "DELETE",
+        "path": "/documents/{id}",
+        "methodName": "delete",
+        "permission": "DOCUMENT_DELETE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  },
+  "ExpenseConfigurationController": {
+    "class": "ExpenseConfigurationController",
+    "basePath": "/expense-configuration",
+    "file": "src/main/java/com/edam/expenseconfiguration/controller/ExpenseConfigurationController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/expense-configuration/categories",
+        "methodName": "categories",
+        "permission": "EXPENSE_CONFIGURATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/expense-configuration/categories",
+        "methodName": "createCategory",
+        "permission": "EXPENSE_CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "SaveCategoryRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/expense-configuration/categories/{id}",
+        "methodName": "updateCategory",
+        "permission": "EXPENSE_CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "SaveCategoryRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/expense-configuration/categories/{id}/activation",
+        "methodName": "setCategoryActive",
+        "permission": "EXPENSE_CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "active",
+            "type": "boolean",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/expense-configuration/categories/{categoryId}/subcategories",
+        "methodName": "createSubcategory",
+        "permission": "EXPENSE_CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "categoryId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "SaveSubcategoryRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/expense-configuration/subcategories/{id}",
+        "methodName": "updateSubcategory",
+        "permission": "EXPENSE_CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "SaveSubcategoryRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/expense-configuration/subcategories/{id}/activation",
+        "methodName": "setSubcategoryActive",
+        "permission": "EXPENSE_CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "active",
+            "type": "boolean",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/expense-configuration/natures",
+        "methodName": "natures",
+        "permission": "EXPENSE_CONFIGURATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/expense-configuration/natures",
+        "methodName": "createNature",
+        "permission": "EXPENSE_CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "SaveLookupRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/expense-configuration/natures/{id}/activation",
+        "methodName": "setNatureActive",
+        "permission": "EXPENSE_CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "active",
+            "type": "boolean",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/expense-configuration/request-types",
+        "methodName": "requestTypes",
+        "permission": "EXPENSE_CONFIGURATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/expense-configuration/request-types",
+        "methodName": "createRequestType",
+        "permission": "EXPENSE_CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "SaveLookupRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  },
+  "ExpenseRequestController": {
+    "class": "ExpenseRequestController",
+    "basePath": "/expense-requests",
+    "file": "src/main/java/com/edam/expenserequest/controller/ExpenseRequestController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/expense-requests",
+        "methodName": "list",
+        "permission": "REQUEST_VIEW_OWN",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/expense-requests/{id}",
+        "methodName": "get",
+        "permission": "REQUEST_VIEW_OWN",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/expense-requests",
+        "methodName": "create",
+        "permission": "REQUEST_CREATE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "CreateRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/expense-requests/{id}",
+        "methodName": "?",
+        "permission": "REQUEST_EDIT",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/expense-requests/{id}/submit",
+        "methodName": "?",
+        "permission": "REQUEST_SUBMIT",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/expense-requests/{id}/cancel",
+        "methodName": "?",
+        "permission": "REQUEST_CANCEL",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      }
+    ]
+  },
+  "AuthController": {
+    "class": "AuthController",
+    "basePath": "/auth",
+    "file": "src/main/java/com/edam/identity/controller/AuthController.java",
+    "endpoints": [
+      {
+        "method": "POST",
+        "path": "/auth/login",
+        "methodName": "login",
+        "permission": null,
+        "public": true,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "LoginRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          },
+          {
+            "name": "response",
+            "type": "HttpServletResponse",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/auth/logout",
+        "methodName": "logout",
+        "permission": null,
+        "public": true,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          },
+          {
+            "name": "response",
+            "type": "HttpServletResponse",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/auth/me",
+        "methodName": "currentUser",
+        "permission": null,
+        "public": false,
+        "authenticated": true,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/auth/csrf",
+        "methodName": "csrf",
+        "permission": null,
+        "public": true,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          },
+          {
+            "name": "response",
+            "type": "HttpServletResponse",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/auth/change-password",
+        "methodName": "changePassword",
+        "permission": null,
+        "public": false,
+        "authenticated": true,
+        "params": [
+          {
+            "name": "body",
+            "type": "ChangePasswordRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/auth/forgot-password",
+        "methodName": "forgotPassword",
+        "permission": null,
+        "public": true,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "ForgotPasswordRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/auth/reset-password",
+        "methodName": "resetPassword",
+        "permission": null,
+        "public": true,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "ResetPasswordRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/auth/installation",
+        "methodName": "installationStatus",
+        "permission": null,
+        "public": true,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/auth/bootstrap",
+        "methodName": "bootstrap",
+        "permission": null,
+        "public": true,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      }
+    ]
+  },
+  "IntegrationController": {
+    "class": "IntegrationController",
+    "basePath": "/integrations",
+    "file": "src/main/java/com/edam/integrations/controller/IntegrationController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/integrations/providers",
+        "methodName": "providers",
+        "permission": "INTEGRATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "r",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/integrations",
+        "methodName": "list",
+        "permission": "INTEGRATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "r",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/integrations/{id}",
+        "methodName": "detail",
+        "permission": "INTEGRATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "r",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/integrations",
+        "methodName": "create",
+        "permission": "INTEGRATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "req",
+            "type": "CreateIntegrationRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "r",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/integrations/{id}",
+        "methodName": "update",
+        "permission": "INTEGRATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "req",
+            "type": "UpdateIntegrationRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "r",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/integrations/{id}/activate",
+        "methodName": "activate",
+        "permission": "INTEGRATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "r",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/integrations/{id}/deactivate",
+        "methodName": "deactivate",
+        "permission": "INTEGRATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "r",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "DELETE",
+        "path": "/integrations/{id}",
+        "methodName": "archive",
+        "permission": "INTEGRATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "r",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/integrations/{id}/test",
+        "methodName": "test",
+        "permission": "INTEGRATION_TEST",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "r",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/integrations/{id}/executions",
+        "methodName": "execute",
+        "permission": "INTEGRATION_EXECUTE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "req",
+            "type": "ExecuteRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "r",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/integrations/{id}/executions",
+        "methodName": "history",
+        "permission": "INTEGRATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/integrations/executions/{execId}",
+        "methodName": "executionDetail",
+        "permission": "INTEGRATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "execId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "r",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/integrations/executions/{execId}/retry",
+        "methodName": "retry",
+        "permission": "INTEGRATION_EXECUTE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "execId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  },
+  "MasterDataController": {
+    "class": "MasterDataController",
+    "basePath": "/master-data",
+    "file": "src/main/java/com/edam/masterdata/controller/MasterDataController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/master-data/currencies",
+        "methodName": "currencies",
+        "permission": "CURRENCY_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/master-data/currencies",
+        "methodName": "createCurrency",
+        "permission": "CURRENCY_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "SaveCurrencyRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/master-data/currencies/{id}",
+        "methodName": "updateCurrency",
+        "permission": "CURRENCY_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "SaveCurrencyRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/master-data/currencies/{id}/activation",
+        "methodName": "setCurrencyActive",
+        "permission": "CURRENCY_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "active",
+            "type": "boolean",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/master-data/exchange-rates",
+        "methodName": "exchangeRates",
+        "permission": "CURRENCY_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/master-data/exchange-rates",
+        "methodName": "createRate",
+        "permission": "CURRENCY_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "SaveExchangeRateRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/master-data/exchange-rates/{id}/close",
+        "methodName": "closeRate",
+        "permission": "CURRENCY_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/master-data/vendors",
+        "methodName": "vendors",
+        "permission": "VENDOR_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/master-data/vendors/{id}",
+        "methodName": "vendor",
+        "permission": "VENDOR_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/master-data/vendors",
+        "methodName": "createVendor",
+        "permission": "VENDOR_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "SaveVendorRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/master-data/vendors/{id}",
+        "methodName": "updateVendor",
+        "permission": "VENDOR_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "SaveVendorRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/master-data/vendors/{id}/activation",
+        "methodName": "setVendorActive",
+        "permission": "VENDOR_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "active",
+            "type": "boolean",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/master-data/tax-authorities",
+        "methodName": "taxAuthorities",
+        "permission": "CURRENCY_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/master-data/tax-authorities",
+        "methodName": "createTaxAuthority",
+        "permission": "TAX_AUTHORITY_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "SaveTaxAuthorityRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/master-data/tax-authorities/{id}",
+        "methodName": "updateTaxAuthority",
+        "permission": "TAX_AUTHORITY_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "SaveTaxAuthorityRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/master-data/tax-authorities/{id}/activation",
+        "methodName": "setTaxAuthorityActive",
+        "permission": "TAX_AUTHORITY_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "active",
+            "type": "boolean",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  },
+  "OrganizationController": {
+    "class": "OrganizationController",
+    "basePath": "/organization",
+    "file": "src/main/java/com/edam/organization/controller/OrganizationController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/organization/profile",
+        "methodName": "getProfile",
+        "permission": "ORGANIZATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/organization/profile",
+        "methodName": "createProfile",
+        "permission": "CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "CreateOrganizationProfileRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PATCH",
+        "path": "/organization/profile",
+        "methodName": "updateProfile",
+        "permission": "CONFIGURATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "UpdateOrganizationProfileRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "httpRequest",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/organization/unit-types",
+        "methodName": "unitTypes",
+        "permission": "ORGANIZATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/organization/units",
+        "methodName": "units",
+        "permission": "ORGANIZATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/organization/units/tree",
+        "methodName": "tree",
+        "permission": "ORGANIZATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/organization/units",
+        "methodName": "createUnit",
+        "permission": "ORGANIZATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "CreateOrganizationUnitRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/organization/units/{id}",
+        "methodName": "updateUnit",
+        "permission": "ORGANIZATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "UpdateOrganizationUnitRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/organization/units/{id}/activation",
+        "methodName": "setUnitActive",
+        "permission": "ORGANIZATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "active",
+            "type": "boolean",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/organization/departments",
+        "methodName": "departments",
+        "permission": "ORGANIZATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/organization/departments",
+        "methodName": "createDepartment",
+        "permission": "ORGANIZATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "SaveDepartmentRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/organization/departments/{id}",
+        "methodName": "updateDepartment",
+        "permission": "ORGANIZATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "SaveDepartmentRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/organization/departments/{id}/activation",
+        "methodName": "setDepartmentActive",
+        "permission": "ORGANIZATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "active",
+            "type": "boolean",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/organization/branches",
+        "methodName": "branches",
+        "permission": "ORGANIZATION_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/organization/branches",
+        "methodName": "createBranch",
+        "permission": "ORGANIZATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "SaveBranchRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/organization/branches/{id}",
+        "methodName": "updateBranch",
+        "permission": "ORGANIZATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "SaveBranchRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/organization/branches/{id}/activation",
+        "methodName": "setBranchActive",
+        "permission": "ORGANIZATION_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "active",
+            "type": "boolean",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  },
+  "ReportingController": {
+    "class": "ReportingController",
+    "basePath": "/reporting",
+    "file": "src/main/java/com/edam/reporting/controller/ReportingController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/reporting/dashboard",
+        "methodName": "dashboard",
+        "permission": "REPORT_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/reporting/widgets",
+        "methodName": "widgetCatalogue",
+        "permission": "DASHBOARD_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/reporting/reports",
+        "methodName": "reportCatalogue",
+        "permission": "DASHBOARD_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/reporting/expense-requests/register",
+        "methodName": "register",
+        "permission": "REPORT_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/reporting/expense-requests/export",
+        "methodName": "export",
+        "permission": "REPORT_EXPORT",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "ReportingDtos.ExportRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "response",
+            "type": "HttpServletResponse",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  },
+  "RoleController": {
+    "class": "RoleController",
+    "basePath": "/roles",
+    "file": "src/main/java/com/edam/rolemanagement/controller/RoleController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/roles",
+        "methodName": "list",
+        "permission": "ROLE_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/roles/permissions",
+        "methodName": "catalogue",
+        "permission": "ROLE_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/roles/{id}",
+        "methodName": "get",
+        "permission": "ROLE_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/roles",
+        "methodName": "create",
+        "permission": "ROLE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "SaveRoleRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/roles/{id}",
+        "methodName": "update",
+        "permission": "ROLE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "SaveRoleRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/roles/{id}/activation",
+        "methodName": "setActive",
+        "permission": "ROLE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "active",
+            "type": "boolean",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/roles/{id}/permissions",
+        "methodName": "setPermissions",
+        "permission": "ROLE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "SetPermissionsRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  },
+  "UserController": {
+    "class": "UserController",
+    "basePath": "/users",
+    "file": "src/main/java/com/edam/usermanagement/controller/UserController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/users",
+        "methodName": "list",
+        "permission": "USER_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/users/search",
+        "methodName": "search",
+        "permission": "USER_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/users/{id}",
+        "methodName": "get",
+        "permission": "USER_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/users",
+        "methodName": "create",
+        "permission": "USER_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "CreateUserRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/users/{id}",
+        "methodName": "update",
+        "permission": "USER_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "UpdateUserRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/users/{id}/activation",
+        "methodName": "setActive",
+        "permission": "USER_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "active",
+            "type": "boolean",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/users/{id}/roles",
+        "methodName": "roles",
+        "permission": "USER_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/users/{id}/roles",
+        "methodName": "assignRole",
+        "permission": "USER_ROLE_ASSIGN",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "AssignRoleRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "DELETE",
+        "path": "/users/{id}/roles/{assignmentId}",
+        "methodName": "revokeRole",
+        "permission": "USER_ROLE_ASSIGN",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "assignmentId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/users/{id}/scopes",
+        "methodName": "assignScope",
+        "permission": "DATA_SCOPE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "AssignScopeRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "DELETE",
+        "path": "/users/{id}/scopes/{scopeId}",
+        "methodName": "removeScope",
+        "permission": "DATA_SCOPE_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "scopeId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/users/{id}/password-reset",
+        "methodName": "triggerPasswordReset",
+        "permission": "USER_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/users/{id}/unlock",
+        "methodName": "unlock",
+        "permission": "USER_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/users/{id}/effective-permissions",
+        "methodName": "effectivePermissions",
+        "permission": "USER_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "id",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  },
+  "SystemController": {
+    "class": "SystemController",
+    "basePath": "/system",
+    "file": "src/main/java/com/edam/web/SystemController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/system/info",
+        "methodName": "info",
+        "permission": null,
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  },
+  "ApprovalController": {
+    "class": "ApprovalController",
+    "basePath": "/approvals",
+    "file": "src/main/java/com/edam/workflow/controller/ApprovalController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/approvals",
+        "methodName": "inbox",
+        "permission": "APPROVAL_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/approvals/count",
+        "methodName": "count",
+        "permission": "APPROVAL_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/approvals/tasks/{taskId}",
+        "methodName": "caseFile",
+        "permission": "APPROVAL_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "taskId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/approvals/tasks/{taskId}/request",
+        "methodName": "requestFor",
+        "permission": "APPROVAL_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "taskId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "caller",
+            "type": "EdamPrincipal",
+            "kind": "plain",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/approvals/tasks/{taskId}/approve",
+        "methodName": "?",
+        "permission": "APPROVAL_ACT",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/approvals/tasks/{taskId}/reject",
+        "methodName": "?",
+        "permission": "APPROVAL_ACT",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/approvals/tasks/{taskId}/revert",
+        "methodName": "?",
+        "permission": "APPROVAL_ACT",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/approvals/tasks/{taskId}/forward",
+        "methodName": "?",
+        "permission": "APPROVAL_ACT",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      }
+    ]
+  },
+  "WorkflowConfigurationController": {
+    "class": "WorkflowConfigurationController",
+    "basePath": "/workflows",
+    "file": "src/main/java/com/edam/workflow/controller/WorkflowConfigurationController.java",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/workflows",
+        "methodName": "list",
+        "permission": "WORKFLOW_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/workflows",
+        "methodName": "create",
+        "permission": "WORKFLOW_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "body",
+            "type": "SaveDefinitionRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/workflows/{definitionId}",
+        "methodName": "update",
+        "permission": "WORKFLOW_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "definitionId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "SaveDefinitionRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/workflows/{definitionId}/active",
+        "methodName": "setActive",
+        "permission": "WORKFLOW_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "definitionId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "active",
+            "type": "boolean",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/workflows/{definitionId}/versions",
+        "methodName": "versions",
+        "permission": "WORKFLOW_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "definitionId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/workflows/versions/{versionId}",
+        "methodName": "version",
+        "permission": "WORKFLOW_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "versionId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "PUT",
+        "path": "/workflows/{definitionId}/draft",
+        "methodName": "saveDraft",
+        "permission": "WORKFLOW_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "definitionId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "body",
+            "type": "SaveDraftRequest",
+            "kind": "body",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/workflows/{definitionId}/draft/from-published",
+        "methodName": "clonePublished",
+        "permission": "WORKFLOW_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "definitionId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/workflows/{definitionId}/draft/from-version/{sourceVersionId}",
+        "methodName": "rollbackIntoDraft",
+        "permission": "WORKFLOW_MANAGE",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "definitionId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "sourceVersionId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/workflows/versions/compare",
+        "methodName": "compare",
+        "permission": "WORKFLOW_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "from",
+            "type": "UUID",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "to",
+            "type": "UUID",
+            "kind": "query",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "GET",
+        "path": "/workflows/versions/{versionId}/validate",
+        "methodName": "validate",
+        "permission": "WORKFLOW_VIEW",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "versionId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          },
+          {
+            "name": "request",
+            "type": "HttpServletRequest",
+            "annotations": [],
+            "implicit": true
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/workflows/versions/{versionId}/publish",
+        "methodName": "publish",
+        "permission": "WORKFLOW_PUBLISH",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "versionId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          }
+        ],
+        "returns": "?"
+      },
+      {
+        "method": "POST",
+        "path": "/workflows/versions/{versionId}/retire",
+        "methodName": "retire",
+        "permission": "WORKFLOW_PUBLISH",
+        "public": false,
+        "authenticated": false,
+        "params": [
+          {
+            "name": "versionId",
+            "type": "UUID",
+            "kind": "path",
+            "annotations": [],
+            "implicit": false
+          }
+        ],
+        "returns": "?"
+      }
+    ]
+  }
+}
