@@ -302,26 +302,19 @@ public class IntegrationService {
 			}
 		}
 
-		IntegrationExecution e = new IntegrationExecution();
-		e.setIntegrationConfigId(configId);
-		e.setOperationType(req.operation());
-		e.setIdempotencyKey(idemKey);
-		e.setStatus(ExecutionStatus.PENDING);
-		e.setAttemptCount(0);
-		e.setMaxAttempts(3);
-		e.setRetryable(true);
-		e.setTriggeredBy(caller == null ? null : caller.userId());
-		e.setNextRetryAt(Instant.now());
 		Map<String, Object> safeMeta = DiagnosticRedactor.sanitizeMetadata(req.requestMetadata());
-		e.setRequestMetadata(writeJson(safeMeta));
+		String metaJson = writeJson(safeMeta);
+		UUID triggeredBy = caller == null ? null : caller.userId();
 		// Insert in a nested REQUIRES_NEW transaction so a unique-key collision rolls back
 		// only that insert and leaves the outer transaction usable to look up the winner.
 		// Catching DataIntegrityViolationException in the same TX cannot recover once the
 		// connection's TX has been marked rollback-only (Spring translates the constraint
 		// error after the statement fails), hence the nested transaction via self-proxy.
-		IntegrationExecution persisted;
+		// The inner method builds a fresh entity inside its own persistence context so the
+		// outer PC never holds a rolled-back instance.
+		UUID newId;
 		try {
-			persisted = self.insertExecution(e, idemKey != null);
+			newId = self.tryInsertExecution(configId, req.operation(), idemKey, triggeredBy, metaJson);
 		} catch (DataIntegrityViolationException dup) {
 			// Another concurrent request with the same idempotency key beat us to insert;
 			// replay the existing row rather than surfacing a constraint error. Only honoured
@@ -333,15 +326,16 @@ public class IntegrationService {
 				.map(this::toExecSummary)
 				.orElseThrow(() -> dup);
 		}
-		// If insert returned null (only possible on a keyed concurrent insert where the nested
-		// TX rolled back), the winner must now be visible in the outer TX.
-		if (persisted == null) {
+		// Inner TX returned null (only possible on a keyed concurrent insert where the
+		// nested TX rolled back). The winner must now be visible; replay it.
+		if (newId == null) {
 			return executions.findByIdempotencyKeyAndIntegrationConfigIdAndOperationType(
 					idemKey, configId, req.operation())
 				.map(this::toExecSummary)
-			.orElseThrow(() -> new BusinessException(ErrorCode.CONCURRENT_MODIFICATION,
-				"Concurrent execution insert collided but no winning row was found."));
+				.orElseThrow(() -> new BusinessException(ErrorCode.CONCURRENT_MODIFICATION,
+					"Concurrent execution insert collided but no winning row was found."));
 		}
+		IntegrationExecution persisted = executions.findById(newId).orElseThrow();
 		audit.record(AuditAction.CREATE, "IntegrationExecution", persisted.getId(),
 			"Enqueued operation=" + req.operation() + " integration=" + c.getCode());
 		return toExecSummary(persisted);
@@ -349,19 +343,32 @@ public class IntegrationService {
 
 	/**
 	 * Insert a new execution row in its own transaction so a unique-key collision rolls back
-	 * only this TX and never marks the caller's TX rollback-only. Returns {@code null} when
-	 * {@code keyed} is true and the insert collided with a concurrent winner — the caller then
-	 * re-queries for the winner. For null-key inserts ({@code keyed=false}) a collision is a
-	 * real error and the exception propagates.
+	 * only this TX and never marks the caller's TX rollback-only. Returns the new row's id on
+	 * success, or {@code null} when {@code keyed} is true and the insert collided with a
+	 * concurrent winner — the caller then re-queries for the winner. For null-key inserts
+	 * ({@code keyed=false}) a collision propagates as an exception.
 	 */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
-	public IntegrationExecution insertExecution(IntegrationExecution e, boolean keyed) {
+	public UUID tryInsertExecution(UUID configId, String operation, String idemKey,
+			UUID triggeredBy, String metaJson) {
+		boolean keyed = idemKey != null;
+		IntegrationExecution e = new IntegrationExecution();
+		e.setIntegrationConfigId(configId);
+		e.setOperationType(operation);
+		e.setIdempotencyKey(idemKey);
+		e.setStatus(ExecutionStatus.PENDING);
+		e.setAttemptCount(0);
+		e.setMaxAttempts(3);
+		e.setRetryable(true);
+		e.setTriggeredBy(triggeredBy);
+		e.setNextRetryAt(Instant.now());
+		e.setRequestMetadata(metaJson);
 		try {
-			// Force the insert (and unique-index check) to happen inside this nested TX by
-			// flushing immediately; otherwise the INSERT is deferred to commit and any
-			// DataIntegrityViolationException would surface outside our try/catch.
+			// Force INSERT + unique-index check inside this nested TX by flushing; otherwise
+			// the statement is deferred to commit and DataIntegrityViolationException would
+			// surface outside our try/catch.
 			IntegrationExecution saved = executions.saveAndFlush(e);
-			return saved;
+			return saved.getId();
 		} catch (DataIntegrityViolationException dup) {
 			if (!keyed) throw dup;
 			return null;

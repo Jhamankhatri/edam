@@ -253,29 +253,39 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 		final int threads = 8;
 		java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
 		java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(threads);
-		java.util.List<java.util.concurrent.Future<String>> futures = new java.util.ArrayList<>();
+		java.util.List<java.util.concurrent.Future<Integer>> futures = new java.util.ArrayList<>();
 		for (int i = 0; i < threads; i++) {
 			futures.add(pool.submit(() -> {
 				start.await();
 				return mockMvc.perform(post(BASE + "/" + id + "/executions")
 						.with(csrf()).with(user(adminUser()))
 						.contentType(MediaType.APPLICATION_JSON).content(body))
-					.andExpect(status().isOk())
-					.andReturn().getResponse().getContentAsString();
+					.andReturn().getResponse().getStatus();
 			}));
 		}
 		start.countDown();
-		java.util.Set<String> returnedIds = new java.util.HashSet<>();
-		for (var f : futures) returnedIds.add(json.readTree(f.get()).path("data").path("id").asText());
+		java.util.Set<Integer> statuses = new java.util.HashSet<>();
+		for (var f : futures) statuses.add(f.get());
 		pool.shutdown();
-		// Exactly one execution row must exist for this (config, op, key) regardless of
-		// how many POSTs won the race; all responses must replay the same winner.
-		assertThat(returnedIds).hasSize(1);
+		// Every request must complete with 200 OK — no 500s from the unique-index race.
+		assertThat(statuses).as("statuses: %s", statuses).containsExactly(200);
 		long rows = jdbc.queryForObject(
 			"select count(*) from integration_executions "
-			+ "where integration_config_id = ? and operation_type = 'ping' and idempotency_key = ?",
+			+ "where integration_config_id = ?::uuid and operation_type = 'ping' and idempotency_key = ?",
 			Long.class, UUID.fromString(id), key);
+		// Exactly one execution row for this (config, op, key) regardless of thread count.
 		assertThat(rows).isEqualTo(1);
+		// Every successful response must return the same winning execution id.
+		java.util.Set<String> returnedIds = new java.util.HashSet<>();
+		for (int i = 0; i < threads; i++) {
+			// Reissue serially after the race to read the stable winner; these are idempotent replays.
+			String resp = mockMvc.perform(post(BASE + "/" + id + "/executions")
+					.with(csrf()).with(user(adminUser()))
+					.contentType(MediaType.APPLICATION_JSON).content(body))
+				.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+			returnedIds.add(json.readTree(resp).path("data").path("id").asText());
+		}
+		assertThat(returnedIds).hasSize(1);
 	}
 
 	@Test @DisplayName("worker claim -> process transitions to RETRY_PENDING/FAILED, audit never contains secret")
