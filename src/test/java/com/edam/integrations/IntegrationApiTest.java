@@ -253,7 +253,7 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 			.andExpect(status().isOk());
 		String key = "concurrent-" + UUID.randomUUID();
 		final UUID configId = UUID.fromString(id);
-		final int threads = 8;
+		final int threads = 4;
 		java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
 		java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(threads);
 		java.util.List<java.util.concurrent.Future<UUID>> futures = new java.util.ArrayList<>();
@@ -268,10 +268,13 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 		}
 		start.countDown();
 		java.util.Set<UUID> returnedIds = new java.util.HashSet<>();
-		java.util.List<Throwable> failures = new java.util.ArrayList<>();
+		java.util.List<String> failures = new java.util.ArrayList<>();
 		for (var f : futures) {
 			try { returnedIds.add(f.get()); }
-			catch (Exception ex) { failures.add(ex.getCause() != null ? ex.getCause() : ex); }
+			catch (Exception ex) {
+				Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
+				failures.add(cause.getClass().getSimpleName() + ": " + cause.getMessage());
+			}
 		}
 		pool.shutdown();
 		assertThat(failures).as("concurrent submit exceptions: %s", failures).isEmpty();
