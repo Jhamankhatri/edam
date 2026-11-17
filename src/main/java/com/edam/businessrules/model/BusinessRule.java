@@ -54,8 +54,8 @@ public class BusinessRule extends AuditableEntity {
 	public BusinessRuleVersion getRuleVersion() { return this.ruleVersion; }
 	public String getCode() { return this.code; }
 	public String getName() { return this.name; }
-	public Object getConditionDefinition() { return this.conditionDefinition; }
-	public Object getActionDefinition() { return this.actionDefinition; }
+	public String getConditionDefinition() { return this.conditionDefinition; }
+	public String getActionDefinition() { return this.actionDefinition; }
 	public int getPriority() { return this.priority; }
 	public boolean isActive() { return this.active; }
 	public long getVersion() { return this.version; }
@@ -63,8 +63,8 @@ public class BusinessRule extends AuditableEntity {
 	public void setRuleVersion(BusinessRuleVersion v) { this.ruleVersion = v; }
 	public void setCode(String c) { this.code = c; }
 	public void setName(String n) { this.name = n; }
-	public void setConditionDefinition(Object c) { this.conditionDefinition = c; }
-	public void setActionDefinition(Object a) { this.actionDefinition = a; }
+	public void setConditionDefinition(String c) { this.conditionDefinition = c; }
+	public void setActionDefinition(String a) { this.actionDefinition = a; }
 	public void setPriority(int p) { this.priority = p; }
 	public void setActive(boolean a) { this.active = a; }
 }

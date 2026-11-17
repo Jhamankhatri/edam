@@ -89,7 +89,7 @@ public class BusinessRuleVersion extends AuditableEntity {
 		this.effectiveTo = at;
 	}
 
-	public BusinessRule addRule(String code, String name, Object condition, Object action, int priority) {
+	public BusinessRule addRule(String code, String name, String condition, String action, int priority) {
 		BusinessRule r = new BusinessRule();
 		r.setRuleVersion(this);
 		r.setCode(code);
