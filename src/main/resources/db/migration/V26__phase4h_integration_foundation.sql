@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS integration_executions (
     triggered_by         UUID         REFERENCES users (id),
     created_at           TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at           TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    version              BIGINT       NOT NULL DEFAULT 0,
     CONSTRAINT ck_integration_executions_status
         CHECK (execution_status IN ('PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED', 'RETRY_PENDING', 'CANCELLED')),
     CONSTRAINT ck_integration_executions_attempts
