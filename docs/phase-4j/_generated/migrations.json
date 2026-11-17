@@ -1,0 +1,325 @@
+[
+  {
+    "file": "V10__business_rules_audit_notifications.sql",
+    "creates": [
+      "business_rule_sets",
+      "business_rule_versions",
+      "business_rules",
+      "audit_events",
+      "audit_event_details",
+      "notification_templates",
+      "notification_preferences",
+      "notifications",
+      "notification_deliveries",
+      "notification_outbox",
+      "email_provider_configs"
+    ],
+    "alters": []
+  },
+  {
+    "file": "V11__reporting_integrations_reliability.sql",
+    "creates": [
+      "report_definitions",
+      "dashboard_definitions",
+      "dashboard_widgets",
+      "user_dashboard_preferences",
+      "integration_configs",
+      "integration_sync_runs",
+      "integration_sync_records",
+      "idempotency_records",
+      "scheduled_jobs",
+      "system_error_events"
+    ],
+    "alters": []
+  },
+  {
+    "file": "V12__permission_catalogue_and_roles.sql",
+    "creates": [],
+    "alters": []
+  },
+  {
+    "file": "V13__retire_provisional_access_and_configuration.sql",
+    "creates": [],
+    "alters": []
+  },
+  {
+    "file": "V14__workflow_task_optimistic_locking.sql",
+    "creates": [],
+    "alters": [
+      "workflow_tasks"
+    ]
+  },
+  {
+    "file": "V15__installation_bootstrap_and_auth.sql",
+    "creates": [
+      "installation_state"
+    ],
+    "alters": [
+      "users"
+    ]
+  },
+  {
+    "file": "V16__request_numbering_and_limit_support.sql",
+    "creates": [],
+    "alters": [
+      "department_approval_limits",
+      "expense_requests",
+      "exceeding_limit_rules",
+      "recommending_authorities",
+      "request_documents"
+    ]
+  },
+  {
+    "file": "V17__workflow_configuration_and_approval_support.sql",
+    "creates": [],
+    "alters": [
+      "workflow_versions",
+      "workflow_transitions"
+    ]
+  },
+  {
+    "file": "V18__idempotency_actor_scope.sql",
+    "creates": [],
+    "alters": [
+      "idempotency_records"
+    ]
+  },
+  {
+    "file": "V19__idempotency_unknown_state.sql",
+    "creates": [],
+    "alters": [
+      "idempotency_records"
+    ]
+  },
+  {
+    "file": "V1__baseline.sql",
+    "creates": [
+      "institution"
+    ],
+    "alters": []
+  },
+  {
+    "file": "V20__phase4b_branding_themes_settings_featureflags.sql",
+    "creates": [],
+    "alters": [
+      "organization_profile",
+      "theme_tokens",
+      "feature_flags",
+      "branding_themes",
+      "application_settings"
+    ]
+  },
+  {
+    "file": "V21__phase4c_document_management_cloudinary.sql",
+    "creates": [
+      "doc_scan_events"
+    ],
+    "alters": [
+      "media_assets",
+      "request_documents"
+    ]
+  },
+  {
+    "file": "V22__phase4d_communication_management.sql",
+    "creates": [
+      "comm_smtp_configuration",
+      "comm_email_templates",
+      "comm_email_template_versions",
+      "comm_notification_event_configs",
+      "comm_notifications",
+      "comm_notification_preferences",
+      "comm_notification_preference_events",
+      "comm_notification_outbox",
+      "comm_smtp_test_history"
+    ],
+    "alters": []
+  },
+  {
+    "file": "V23__phase4e_admin_configuration.sql",
+    "creates": [],
+    "alters": []
+  },
+  {
+    "file": "V24__manager_cycle_trigger.sql",
+    "creates": [],
+    "alters": []
+  },
+  {
+    "file": "V25__business_rules_audit_columns.sql",
+    "creates": [],
+    "alters": [
+      "business_rules"
+    ]
+  },
+  {
+    "file": "V26__phase4h_integration_foundation.sql",
+    "creates": [
+      "integration_executions"
+    ],
+    "alters": [
+      "integration_configs"
+    ]
+  },
+  {
+    "file": "V27__phase4i_idempotency_unique_fix.sql",
+    "creates": [],
+    "alters": [
+      "integration_executions"
+    ]
+  },
+  {
+    "file": "V2__institution_seed.sql",
+    "creates": [],
+    "alters": []
+  },
+  {
+    "file": "V3__configuration_and_audit.sql",
+    "creates": [
+      "permission_definition",
+      "role",
+      "role_permission",
+      "user_membership",
+      "user_membership_role",
+      "expense_category",
+      "expense_subcategory",
+      "currency",
+      "department_head_limit",
+      "exceeding_limit",
+      "recommending_authority",
+      "committee_member",
+      "committee_level",
+      "committee_level_member",
+      "delegation_rule",
+      "delegation_rule_approver",
+      "delegation_rule_authority",
+      "audit_event"
+    ],
+    "alters": [
+      "committee_level",
+      "institution"
+    ]
+  },
+  {
+    "file": "V4_1__uuid_v7_function.sql",
+    "creates": [],
+    "alters": []
+  },
+  {
+    "file": "V4__request_spine_and_feature_flags.sql",
+    "creates": [
+      "institution_feature_flag",
+      "idempotency_record",
+      "department",
+      "workflow_definition",
+      "workflow_version",
+      "expense_request",
+      "expense_request_currency_snapshot",
+      "approval_task",
+      "request_history_entry",
+      "document"
+    ],
+    "alters": [
+      "institution"
+    ]
+  },
+  {
+    "file": "V5__access_management.sql",
+    "creates": [
+      "users",
+      "roles",
+      "permissions",
+      "role_permissions",
+      "user_roles",
+      "user_data_scopes",
+      "user_sessions",
+      "password_reset_tokens",
+      "login_attempts"
+    ],
+    "alters": []
+  },
+  {
+    "file": "V6__product_configuration_and_organization.sql",
+    "creates": [
+      "media_assets",
+      "organization_profile",
+      "application_settings",
+      "branding_themes",
+      "theme_tokens",
+      "feature_flags",
+      "system_parameters",
+      "organization_unit_types",
+      "organization_units",
+      "departments",
+      "branches"
+    ],
+    "alters": [
+      "users"
+    ]
+  },
+  {
+    "file": "V7__financial_master_data_and_expense_configuration.sql",
+    "creates": [
+      "currencies",
+      "exchange_rates",
+      "tax_authorities",
+      "vendors",
+      "expense_categories",
+      "expense_subcategories",
+      "expense_natures",
+      "expense_request_types",
+      "expense_delegation_rules",
+      "delegation_approver_steps",
+      "department_approval_limits",
+      "recommending_authorities",
+      "exceeding_limit_rules"
+    ],
+    "alters": [
+      "exchange_rates",
+      "organization_profile",
+      "expense_delegation_rules"
+    ]
+  },
+  {
+    "file": "V8__committees_and_workflow_engine.sql",
+    "creates": [
+      "expense_committees",
+      "committee_levels",
+      "committee_members",
+      "committee_level_members",
+      "workflow_definitions",
+      "workflow_versions",
+      "workflow_states",
+      "workflow_steps",
+      "workflow_step_approvers",
+      "workflow_transitions",
+      "workflow_instances",
+      "workflow_tasks",
+      "workflow_actions",
+      "workflow_events"
+    ],
+    "alters": [
+      "committee_levels"
+    ]
+  },
+  {
+    "file": "V9__expense_requests.sql",
+    "creates": [
+      "expense_requests",
+      "opex_request_details",
+      "capex_request_details",
+      "expense_request_items",
+      "expense_allocations",
+      "expense_quotations",
+      "expense_previous_summaries",
+      "capex_budget_summaries",
+      "capex_sta_details",
+      "expense_invoices",
+      "request_documents"
+    ],
+    "alters": [
+      "workflow_instances",
+      "capex_request_details",
+      "expense_requests"
+    ]
+  }
+]
