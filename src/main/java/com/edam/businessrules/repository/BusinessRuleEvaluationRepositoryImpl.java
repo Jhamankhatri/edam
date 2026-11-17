@@ -28,7 +28,7 @@ public class BusinessRuleEvaluationRepositoryImpl implements BusinessRuleEvaluat
 			   and (v.effective_from is null or v.effective_from <= now())
 			   and (v.effective_to   is null or v.effective_to   >  now())
 			   and r.is_active = true
-			 order by r.priority asc, r.rule_code asc
+			 order by r.priority asc, r.id asc
 			""";
 
 	private static final String ACTIVE_RULES_MODULE_SQL = """
@@ -43,7 +43,7 @@ public class BusinessRuleEvaluationRepositoryImpl implements BusinessRuleEvaluat
 			   and (v.effective_from is null or v.effective_from <= now())
 			   and (v.effective_to   is null or v.effective_to   >  now())
 			   and r.is_active = true
-			 order by s.rule_set_code, r.priority asc, r.rule_code asc
+			 order by s.rule_set_code, r.priority asc, r.id asc
 			""";
 
 	private final JdbcTemplate jdbc;

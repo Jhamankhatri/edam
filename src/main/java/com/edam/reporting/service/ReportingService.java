@@ -2,6 +2,7 @@ package com.edam.reporting.service;
 
 import java.math.BigDecimal;
 import java.sql.PreparedStatement;
+import com.edam.reporting.repository.ReportingJdbcRepository;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -49,7 +50,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.PreparedStatementSetter;
 import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Service;
@@ -187,7 +187,7 @@ public class ReportingService {
 	private final CurrencyRepository currencyRepo;
 	private final OrganizationProfileRepository profiles;
 	private final UserRepository users;
-	private final JdbcTemplate jdbc;
+	private final ReportingJdbcRepository jdbc;
 	private final AuditRecorder audit;
 
 	public ReportingService(DepartmentRepository departments,
@@ -197,7 +197,7 @@ public class ReportingService {
 			CurrencyRepository currencyRepo,
 			OrganizationProfileRepository profiles,
 			UserRepository users,
-			JdbcTemplate jdbc, AuditRecorder audit) {
+			ReportingJdbcRepository jdbc, AuditRecorder audit) {
 		this.departments = departments;
 		this.branches = branches;
 		this.categories = categories;
