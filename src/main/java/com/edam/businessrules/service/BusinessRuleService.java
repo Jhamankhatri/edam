@@ -163,7 +163,7 @@ public class BusinessRuleService {
 			return toDetail(existingDraft, true);
 		}
 		BusinessRuleVersion v = s.draftVersion();
-		this.sets.save(s);
+		v = this.versions.saveAndFlush(v);
 		// Re-load the newly-created draft with rules joined so toDetail sees an initialized collection.
 		v = this.versions.findByIdWithRules(v.getId())
 				.orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "New draft disappeared"));
