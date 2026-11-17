@@ -148,16 +148,16 @@ public class ReportingService {
 		long myRequests = this.jdbc.countMyRequests(caller.userId());
 
 		List<MetricCard> metrics = List.of(
-				card("total_requests", "Total requests", BigDecimal.valueOf(agg.totalCount), null, "Matching requests in period"),
-				card("pending_approvals", "Pending approvals (visible)", BigDecimal.valueOf(agg.pendingCount), null, "Awaiting approver action"),
+				card("total_requests", "Total requests", BigDecimal.valueOf(agg.totalCount()), null, "Matching requests in period"),
+				card("pending_approvals", "Pending approvals (visible)", BigDecimal.valueOf(agg.pendingCount()), null, "Awaiting approver action"),
 				card("pending_my_approval", "Pending my approval", BigDecimal.valueOf(pendingMyApproval), null, "Open tasks assigned to you"),
-				card("approved_total", "Approved total", BigDecimal.valueOf(agg.approvedCount), null, "Terminal approved"),
-				card("approved_base_amount", "Approved amount", agg.approvedBase, baseCode, "Base-currency total of approved requests"),
-				card("returned_total", "Returned", BigDecimal.valueOf(agg.returnedCount), null, null),
-				card("rejected_total", "Rejected", BigDecimal.valueOf(agg.rejectedCount), null, null),
-				card("cancelled_total", "Cancelled", BigDecimal.valueOf(agg.cancelledCount), null, null),
+				card("approved_total", "Approved total", BigDecimal.valueOf(agg.approvedCount()), null, "Terminal approved"),
+				card("approved_base_amount", "Approved amount", agg.approvedBase(), baseCode, "Base-currency total of approved requests"),
+				card("returned_total", "Returned", BigDecimal.valueOf(agg.returnedCount()), null, null),
+				card("rejected_total", "Rejected", BigDecimal.valueOf(agg.rejectedCount()), null, null),
+				card("cancelled_total", "Cancelled", BigDecimal.valueOf(agg.cancelledCount()), null, null),
 				card("my_requests", "My requests", BigDecimal.valueOf(myRequests), null, "Requests you have submitted"),
-				card("total_base_amount", "Total amount", agg.totalBase, baseCode, "Base-currency total of matching requests"));
+				card("total_base_amount", "Total amount", agg.totalBase(), baseCode, "Base-currency total of matching requests"));
 
 		List<DistributionRow> statusDist = this.jdbc.distribution(dashQ,
 				"select r.current_status_code as k, count(*) as cnt ",
