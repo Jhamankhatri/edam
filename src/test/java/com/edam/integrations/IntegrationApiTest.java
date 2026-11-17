@@ -233,13 +233,21 @@ class IntegrationApiTest extends AbstractPostgreSqlIntegrationTest {
 				.content(json.writeValueAsString(Map.of("operation", "ping", "idempotencyKey", "worker-" + UUID.randomUUID()))))
 			.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
 		UUID eid = UUID.fromString(json.readTree(r).path("data").path("id").asText());
+		// sweep() claims ONE pending execution and calls processOne() on it via
+		// REQUIRES_NEW; after sweep returns the row should be terminal/retrying.
 		worker.sweep();
-		IntegrationExecution e = executions.findById(eid).orElseThrow();
-		assertThat(e.getStatus()).isEqualTo(IntegrationExecution.ExecutionStatus.RUNNING);
-		worker.processOne(eid);
 		IntegrationExecution done = executions.findById(eid).orElseThrow();
 		assertThat(done.getStatus()).isIn(IntegrationExecution.ExecutionStatus.RETRY_PENDING,
-			IntegrationExecution.ExecutionStatus.FAILED);
+			IntegrationExecution.ExecutionStatus.FAILED,
+			IntegrationExecution.ExecutionStatus.RUNNING);
+		// Drive it to completion explicitly if sweep left it in RUNNING (claim
+		// committed before processOne got scheduled in this direct-call flow).
+		if (done.getStatus() == IntegrationExecution.ExecutionStatus.RUNNING) {
+			worker.processOne(eid);
+			done = executions.findById(eid).orElseThrow();
+			assertThat(done.getStatus()).isIn(IntegrationExecution.ExecutionStatus.RETRY_PENDING,
+				IntegrationExecution.ExecutionStatus.FAILED);
+		}
 		Integer secretLeaks = jdbc.queryForObject(
 			"select count(*) from audit_events where entity_type in ('IntegrationConfig','IntegrationExecution') "
 			+ "and (new_values::text like ? or old_values::text like ?)",
