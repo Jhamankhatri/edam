@@ -92,7 +92,7 @@ class BusinessRulesIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 	@DisplayName("create rule set, upsert rule, publish produces immutable PUBLISHED version")
 	void lifecycleCreateUpsertPublish() throws Exception {
 		// Create (unique suffix avoids cross-test UK collisions when running without @Transactional rollback)
-		String uniq = "EXP_" + UUID.randomUUID().toString().substring(0, 8).replace("-", "A");
+		String uniq = "EXP_" + UUID.randomUUID().toString().substring(0, 8).replace("-", "A").toUpperCase();
 		String bodyContent = "{\"code\":\"" + uniq + "\",\"name\":\"Expense Approval\",\"module\":\"EXPENSE\"}";
 		MvcResult created = this.mockMvc.perform(post(BASE)
 				.with(csrf()).with(user(adminPrincipal()))
@@ -176,7 +176,7 @@ class BusinessRulesIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 	@DisplayName("evaluation matches high-PKR-amount rule and enforces whitelist at eval time")
 	void evaluation() throws Exception {
 		var summary = service.createRuleSet(new RuleDtos.CreateRuleSetRequest(
-				"EVAL_" + UUID.randomUUID().toString().substring(0, 6).replace('-', 'A'), "Eval", "EXPENSE", null), adminPrincipal());
+				"EVAL_" + UUID.randomUUID().toString().substring(0, 6).replace("-", "A").toUpperCase(), "Eval", "EXPENSE", null), adminPrincipal());
 		UUID setId = summary.id();
 		RuleDtos.RuleVersionDetail detail = service.getRuleSet(setId);
 		service.upsertRule(detail.id(), new RuleDtos.RuleUpsertRequest(null, "HIGH", "High",
@@ -202,7 +202,7 @@ class BusinessRulesIntegrationTest extends AbstractPostgreSqlIntegrationTest {
 	@DisplayName("retiring the published version clears active evaluation results")
 	void retireClearsActive() throws Exception {
 		var summary = service.createRuleSet(new RuleDtos.CreateRuleSetRequest(
-				"RET_" + UUID.randomUUID().toString().substring(0, 6).replace('-', 'A'), "Retire", "EXPENSE", null), adminPrincipal());
+				"RET_" + UUID.randomUUID().toString().substring(0, 6).replace("-", "A").toUpperCase(), "Retire", "EXPENSE", null), adminPrincipal());
 		UUID setId = summary.id();
 		RuleDtos.RuleVersionDetail detail = service.getRuleSet(setId);
 		service.upsertRule(detail.id(), new RuleDtos.RuleUpsertRequest(null, "R1", "R1",
