@@ -283,6 +283,128 @@ jobs:
           echo "--- startup log excerpt ---"
           grep -E "Flyway|Successfully applied|Started EdamApplication" war.log | head -10 || true
           exit $fail
+      - name: Capture OpenAPI spec
+        id: openapi
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_SHA="620f7a795cc67a16e905115131f561bbd986af85"
+          OUT="openapi-${BASE_SHA}.json"
+          META="openapi-${BASE_SHA}.meta.txt"
+          URL="http://localhost:18080/v3/api-docs"
+          # Wait for readiness beyond the earlier smoke: health UP AND /v3/api-docs returning 200
+          ready=0
+          for i in $(seq 1 30); do
+            hc=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:18080/actuator/health || true)
+            dc=$(curl -sS -o /dev/null -w '%{http_code}' "$URL" || true)
+            if [ "$hc" = "200" ] && [ "$dc" = "200" ]; then ready=1; echo "Ready at attempt ${i} (health=$hc, docs=$dc)"; break; fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "::error title=OPENAPI_NOT_READY::/v3/api-docs not reachable (health=$hc, docs=$dc)"
+            tail -c 2000 war.log
+            exit 1
+          fi
+          # Retrieve the full unmodified JSON response
+          http_code=$(curl -sS -o "$OUT" -w '%{http_code}' "$URL")
+          echo "http_code=$http_code"
+          if [ "$http_code" != "200" ]; then
+            echo "::error title=OPENAPI_FETCH::HTTP $http_code from $URL"; head -c 800 "$OUT"; exit 1
+          fi
+          size=$(wc -c < "$OUT")
+          echo "size_bytes=$size"
+          if [ "$size" -lt 1000 ]; then
+            echo "::error title=OPENAPI_SMALL::response body suspiciously small ($size bytes)"; head -c 1000 "$OUT"; exit 1
+          fi
+          # Validate JSON is parseable and that required top-level keys exist
+          python3 - "$OUT" <<'PY'
+          import json, sys, collections
+          p = sys.argv[1]
+          with open(p, 'rb') as f:
+              raw = f.read()
+          doc = json.loads(raw)
+          assert isinstance(doc, dict), "top-level JSON is not an object"
+          for key in ('openapi', 'paths', 'components', 'info'):
+              assert key in doc, f"missing top-level key: {key}"
+          assert str(doc['openapi']).startswith('3.'), f"unexpected openapi version: {doc['openapi']}"
+          paths = doc['paths']
+          assert isinstance(paths, dict) and paths, "paths empty or not an object"
+          components = doc['components']
+          assert isinstance(components, dict), "components not an object"
+          schemas = components.get('schemas', {}) or {}
+          security_schemes = components.get('securitySchemes', {}) or {}
+          path_count = len(paths)
+          op_count = 0
+          methods = {'get','put','post','delete','options','head','patch','trace'}
+          for _, item in paths.items():
+              if isinstance(item, dict):
+                  for k in item:
+                      if k.lower() in methods:
+                          op_count += 1
+          schema_count = len(schemas)
+          sec_count = len(security_schemes)
+          print(f"paths={path_count}")
+          print(f"operations={op_count}")
+          print(f"schemas={schema_count}")
+          print(f"securitySchemes={sec_count}")
+          print(f"title={doc['info'].get('title')}")
+          print(f"version={doc['info'].get('version')}")
+          # Emit outputs for the step via $GITHUB_OUTPUT (values written to a side-channel file)
+          out_path = open(p.replace('.json','.counts.txt'),'w')
+          out_path.write(f"paths={path_count}\noperations={op_count}\nschemas={schema_count}\nsecuritySchemes={sec_count}\n")
+          out_path.close()
+          PY
+          # SHA-256 of the unmodified response body
+          sha=$(sha256sum "$OUT" | awk '{print $1}')
+          echo "sha256=$sha"
+          counts=$(cat "openapi-${BASE_SHA}.counts.txt")
+          paths_n=$(echo "$counts" | grep '^paths=' | cut -d= -f2)
+          ops_n=$(echo "$counts" | grep '^operations=' | cut -d= -f2)
+          schemas_n=$(echo "$counts" | grep '^schemas=' | cut -d= -f2)
+          sec_n=$(echo "$counts" | grep '^securitySchemes=' | cut -d= -f2)
+          # Metadata file (no secrets; only server-rendered JSON characteristics + commit + env hints)
+          {
+            echo "backend_commit_sha=${BASE_SHA}"
+            echo "workflow_run_sha=${GITHUB_SHA}"
+            echo "workflow_run_id=${GITHUB_RUN_ID}"
+            echo "workflow_run_url=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "source_url=${URL}"
+            echo "http_status=${http_code}"
+            echo "file_name=${OUT}"
+            echo "size_bytes=${size}"
+            echo "sha256=${sha}"
+            echo "paths=${paths_n}"
+            echo "operations=${ops_n}"
+            echo "component_schemas=${schemas_n}"
+            echo "security_schemes=${sec_n}"
+            echo "captured_from=live_Spring_Boot_WAR_started_in_war-package-smoke-test_job"
+          } > "$META"
+          # Write step outputs so they show up in the workflow log / summary
+          echo "base_sha=${BASE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "file=${OUT}" >> "$GITHUB_OUTPUT"
+          echo "meta=${META}" >> "$GITHUB_OUTPUT"
+          echo "size=${size}" >> "$GITHUB_OUTPUT"
+          echo "sha256=${sha}" >> "$GITHUB_OUTPUT"
+          echo "paths=${paths_n}" >> "$GITHUB_OUTPUT"
+          echo "operations=${ops_n}" >> "$GITHUB_OUTPUT"
+          echo "schemas=${schemas_n}" >> "$GITHUB_OUTPUT"
+          echo "security=${sec_n}" >> "$GITHUB_OUTPUT"
+          echo "### OpenAPI captured" >> "$GITHUB_STEP_SUMMARY"
+          echo "- backend commit: \`${BASE_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- HTTP status: ${http_code}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- size: ${size} bytes" >> "$GITHUB_STEP_SUMMARY"
+          echo "- paths: ${paths_n}, operations: ${ops_n}, schemas: ${schemas_n}, security schemes: ${sec_n}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- sha256: \`${sha}\`" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload OpenAPI spec artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-${{ steps.openapi.outputs.base_sha }}
+          path: |
+            ${{ steps.openapi.outputs.file }}
+            ${{ steps.openapi.outputs.meta }}
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 9
       - name: Diagnostics
         if: always()
         run: |
