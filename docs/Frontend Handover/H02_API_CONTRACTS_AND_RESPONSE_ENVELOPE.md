@@ -229,8 +229,7 @@ enforced by `IdempotencyAspect` + `IdempotencyService`):
 
 - REQ-002 POST create, REQ-004 PUT update, REQ-006 POST cancel, REQ-007 POST submit,
 - APL-004 POST approve, APL-005 POST forward, APL-006 POST reject, APL-008 POST revert,
-- AUTH-006 POST login,
-- Integration execution submission (`IntegrationService.submitExecution`) for keyed calls.
+- Integration execution submission (`IntegrationService.submitExecution`) for keyed calls (note: this is an internal service path; the HTTP-exposed idempotency set is exactly the 8 endpoints listed above).
 
 Client rules:
 
