@@ -389,6 +389,15 @@ jobs:
           echo "operations=${ops_n}" >> "$GITHUB_OUTPUT"
           echo "schemas=${schemas_n}" >> "$GITHUB_OUTPUT"
           echo "security=${sec_n}" >> "$GITHUB_OUTPUT"
+          # Also emit ::notice annotations so the metrics are visible in the checks API without log download
+          printf '::notice title=OPENAPI_BACKEND_COMMIT::%s\n' "${BASE_SHA}"
+          printf '::notice title=OPENAPI_HTTP_STATUS::%s\n' "${http_code}"
+          printf '::notice title=OPENAPI_SIZE_BYTES::%s\n' "${size}"
+          printf '::notice title=OPENAPI_SHA256::%s\n' "${sha}"
+          printf '::notice title=OPENAPI_PATHS::%s\n' "${paths_n}"
+          printf '::notice title=OPENAPI_OPERATIONS::%s\n' "${ops_n}"
+          printf '::notice title=OPENAPI_SCHEMAS::%s\n' "${schemas_n}"
+          printf '::notice title=OPENAPI_SECURITY_SCHEMES::%s\n' "${sec_n}"
           echo "### OpenAPI captured" >> "$GITHUB_STEP_SUMMARY"
           echo "- backend commit: \`${BASE_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- HTTP status: ${http_code}" >> "$GITHUB_STEP_SUMMARY"
@@ -500,3 +509,4 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
           compression-level: 9
+# placeholder line to force rerun? No -- instead annotate Capture step with explicit ::notice lines
