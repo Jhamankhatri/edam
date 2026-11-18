@@ -509,4 +509,3 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
           compression-level: 9
-# placeholder line to force rerun? No -- instead annotate Capture step with explicit ::notice lines
