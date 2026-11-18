@@ -177,35 +177,64 @@ public class IdempotencyService {
 		validateKey(trimmed);
 		String keyHash = sha256(trimmed);
 		// Run the claim in its own transaction so the IN_PROGRESS row is committed before the
-		// business service's @Transactional begins. Using Programmatic Tx here avoids relying on
-		// self-invocation of @Transactional through the same bean proxy (which would silently
-		// join the outer transaction if the caller's TX happened to be open already).
-		return this.newTxTemplate.execute(status -> {
-			Optional<IdempotencyRecord> existing = this.records.findByKey(keyHash, operationType, actorId);
-			String claimKey = claimKey(keyHash, operationType, actorId);
-			if (existing.isEmpty()) {
-				Instant now = Instant.now();
-				try {
-					this.records.saveAndFlush(new IdempotencyRecord(keyHash, operationType, actorId, fingerprint,
-							now.plus(RETENTION)));
-				}
-				catch (DataIntegrityViolationException ex) {
-					// Lost the race with a concurrent identical request; re-read and decide against
-					// the winner's record.
-					existing = this.records.findByKey(keyHash, operationType, actorId);
-					if (existing.isEmpty()) {
-						throw new BusinessException(ErrorCode.IDEMPOTENCY_IN_PROGRESS,
-								"An identical request is already being processed. Retry after a short delay.");
-					}
-					return decideForExisting(existing.get(), claimKey, keyHash, operationType, actorId, fingerprint);
-				}
-				// Claim registered on this JVM — register before returning Proceed so the stale-grace
-				// path in decideForExisting recognises long-running local claims.
-				this.inFlightByLocalJvm.put(claimKey, Boolean.TRUE);
-				return (Decision) Proceed.INSTANCE;
-			}
+		// business service's @Transactional begins. Programmatic Tx is used because the
+		// surrounding code may not be transactional (Aspect runs before controller advice), and
+		// declarative @Transactional self-invocation would silently join the caller's TX.
+		//
+		// IMPORTANT: DataIntegrityViolationException must NOT be caught inside the callback.
+		// When a unique-key violation hits on PostgreSQL the current TX is aborted at the JDBC
+		// level; returning normally from the callback and letting TransactionTemplate commit
+		// would throw UnexpectedRollbackException. Instead we run the insert in its own
+		// REQUIRES_NEW TX, let the exception propagate out, and re-read the winner in a fresh
+		// TX. Same pattern as IntegrationService.tryInsertExecution.
+		String claimKey = claimKey(keyHash, operationType, actorId);
+
+		// 1) Fast path: a record already exists — decide against it.
+		Optional<IdempotencyRecord> existing = this.newTxTemplate.execute(readOnlyStatus ->
+				this.records.findByKey(keyHash, operationType, actorId));
+		if (existing.isPresent()) {
 			return decideForExisting(existing.get(), claimKey, keyHash, operationType, actorId, fingerprint);
-		});
+		}
+
+		// 2) Attempt to claim. Dedicated insert-TX so a collision rolls back only that TX.
+		//    Return TRUE from the callback when we successfully inserted our own IN_PROGRESS
+		//    claim, FALSE when the in-TX pre-check found a winner that appeared between the
+		//    fast-path read and this TX starting.
+		boolean claimed;
+		try {
+			claimed = Boolean.TRUE.equals(this.newTxTemplate.execute(insertStatus -> {
+				Optional<IdempotencyRecord> winner = this.records.findByKey(keyHash, operationType, actorId);
+				if (winner.isPresent()) {
+					return Boolean.FALSE; // winner visible in this insert-TX; do not insert
+				}
+				this.records.saveAndFlush(new IdempotencyRecord(keyHash, operationType, actorId, fingerprint,
+						Instant.now().plus(RETENTION)));
+				return Boolean.TRUE;
+			}));
+		}
+		catch (DataIntegrityViolationException ex) {
+			// Lost the race to a concurrent identical insert; the insert-TX rolled back.
+			claimed = false;
+		}
+
+		// 3) Re-read the winner in a fresh TX (regardless of whether we collided or were
+		//    preempted by the in-TX pre-check) and decide against it.
+		existing = this.newTxTemplate.execute(readOnlyStatus ->
+				this.records.findByKey(keyHash, operationType, actorId));
+
+		if (claimed) {
+			// Our IN_PROGRESS row is now the record on file.
+			this.inFlightByLocalJvm.put(claimKey, Boolean.TRUE);
+			return (Decision) Proceed.INSTANCE;
+		}
+		if (existing.isEmpty()) {
+			// Insert collided (PostgreSQL aborted the insert-TX) but no winner is visible in
+			// the re-read — should be extremely rare (winner TX not yet committed from our
+			// MVCC snapshot). Fail closed.
+			throw new BusinessException(ErrorCode.IDEMPOTENCY_IN_PROGRESS,
+					"An identical request is already being processed. Retry after a short delay.");
+		}
+		return decideForExisting(existing.get(), claimKey, keyHash, operationType, actorId, fingerprint);
 	}
 
 	/** Resolve the decision for an existing IN_PROGRESS / UNKNOWN / FAILED / COMPLETED record. */
