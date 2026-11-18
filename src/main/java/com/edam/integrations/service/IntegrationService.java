@@ -306,29 +306,23 @@ public class IntegrationService {
 		String metaJson = writeJson(safeMeta);
 		UUID triggeredBy = caller == null ? null : caller.userId();
 		// Insert in a nested REQUIRES_NEW transaction so a unique-key collision rolls back
-		// only that insert and leaves the outer transaction usable to look up the winner.
-		// Catching DataIntegrityViolationException in the same TX cannot recover once the
-		// connection's TX has been marked rollback-only (Spring translates the constraint
-		// error after the statement fails), hence the nested transaction via self-proxy.
-		// The inner method builds a fresh entity inside its own persistence context so the
-		// outer PC never holds a rolled-back instance.
+		// only that inner insert and leaves the outer transaction usable to look up the
+		// winner. DataIntegrityViolationException must NOT be caught inside the inner TX:
+		// on a unique-key violation PostgreSQL aborts the transaction at the SQL level,
+		// and catching the exception inside tryInsertExecution would cause that method to
+		// return normally, after which Spring would attempt to commit the (already-aborted)
+		// inner TX and throw UnexpectedRollbackException. Instead we let the exception
+		// propagate out of tryInsertExecution: Spring rolls back the inner REQUIRES_NEW
+		// TX cleanly, the outer TX stays intact, and we re-read the winner here.
 		UUID newId;
 		try {
 			newId = self.tryInsertExecution(configId, req.operation(), idemKey, triggeredBy, metaJson);
 		} catch (DataIntegrityViolationException dup) {
 			// Another concurrent request with the same idempotency key beat us to insert;
-			// replay the existing row rather than surfacing a constraint error. Only honoured
-			// when a key was supplied (duplicate null-key inserts are legitimate separate
-			// executions — see V27 ux_integration_executions_idempotency_key).
+			// replay the existing row rather than surfacing a constraint error. Only
+			// honoured when a key was supplied (duplicate null-key inserts are legitimate
+			// separate executions — see V27 partial unique index).
 			if (idemKey == null) throw dup;
-			return executions.findByIdempotencyKeyAndIntegrationConfigIdAndOperationType(
-					idemKey, configId, req.operation())
-				.map(this::toExecSummary)
-				.orElseThrow(() -> dup);
-		}
-		// Inner TX returned null (only possible on a keyed concurrent insert where the
-		// nested TX rolled back). The winner must now be visible; replay it.
-		if (newId == null) {
 			return executions.findByIdempotencyKeyAndIntegrationConfigIdAndOperationType(
 					idemKey, configId, req.operation())
 				.map(this::toExecSummary)
@@ -342,16 +336,15 @@ public class IntegrationService {
 	}
 
 	/**
-	 * Insert a new execution row in its own transaction so a unique-key collision rolls back
-	 * only this TX and never marks the caller's TX rollback-only. Returns the new row's id on
-	 * success, or {@code null} when {@code keyed} is true and the insert collided with a
-	 * concurrent winner — the caller then re-queries for the winner. For null-key inserts
-	 * ({@code keyed=false}) a collision propagates as an exception.
+	 * Insert a new execution row in its own REQUIRES_NEW transaction and return the new
+	 * row's id. A unique-key collision (only possible when {@code idemKey} is non-null,
+	 * because V27 uses a partial unique index that excludes nulls) propagates as
+	 * {@link DataIntegrityViolationException} and Spring rolls back this nested TX —
+	 * callers must catch that and re-read the winning row in the outer TX.
 	 */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public UUID tryInsertExecution(UUID configId, String operation, String idemKey,
 			UUID triggeredBy, String metaJson) {
-		boolean keyed = idemKey != null;
 		IntegrationExecution e = new IntegrationExecution();
 		e.setIntegrationConfigId(configId);
 		e.setOperationType(operation);
@@ -363,16 +356,18 @@ public class IntegrationService {
 		e.setTriggeredBy(triggeredBy);
 		e.setNextRetryAt(Instant.now());
 		e.setRequestMetadata(metaJson);
-		try {
-			// Force INSERT + unique-index check inside this nested TX by flushing; otherwise
-			// the statement is deferred to commit and DataIntegrityViolationException would
-			// surface outside our try/catch.
-			IntegrationExecution saved = executions.saveAndFlush(e);
-			return saved.getId();
-		} catch (DataIntegrityViolationException dup) {
-			if (!keyed) throw dup;
-			return null;
-		}
+		// Force INSERT + unique-index check inside this nested TX by flushing so a key
+		// collision surfaces here instead of being deferred to commit. We deliberately DO
+		// NOT catch DataIntegrityViolationException inside this method: catching it would
+		// cause the method to return normally and the @Transactional interceptor to COMMIT
+		// the nested transaction, but PostgreSQL has already aborted the transaction at
+		// the SQL level on a unique-key violation and Hibernate marks the Session as
+		// rollback-only — the commit would then throw UnexpectedRollbackException (which
+		// the outer caller is not expecting). Instead we let the exception propagate out
+		// of this REQUIRES_NEW method so Spring rolls back the inner TX cleanly; the
+		// outer submitExecution() catches it and replays the winner row.
+		IntegrationExecution saved = executions.saveAndFlush(e);
+		return saved.getId();
 	}
 
 	@Transactional
